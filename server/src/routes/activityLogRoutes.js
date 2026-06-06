@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { ActivityLog } from '../models/ActivityLog.js';
+import { teamMemberIds } from '../utils/crmScope.js';
 
 const router = Router();
 
-function activityScope(user) {
+async function activityScope(user) {
   if (user.role === 'SUPERADMIN') {
     return {};
   }
@@ -14,6 +15,9 @@ function activityScope(user) {
   if (user.role === 'CALLCENTER') {
     return { companyId: user.companyId, userId: user._id };
   }
+  if (user.role === 'SUPERVISOR') {
+    return { companyId: user.companyId, userId: { $in: await teamMemberIds(user) } };
+  }
   return { companyId: user.companyId };
 }
 
@@ -21,7 +25,7 @@ router.use(authMiddleware);
 
 router.get('/', async (req, res, next) => {
   try {
-    const activities = await ActivityLog.find(activityScope(req.user))
+    const activities = await ActivityLog.find(await activityScope(req.user))
       .populate('companyId', 'name')
       .populate('distributorId', 'name')
       .populate('userId', 'name email role')

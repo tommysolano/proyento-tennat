@@ -1,42 +1,63 @@
 import mongoose from 'mongoose';
+import { CRM_PRIORITIES } from './Contact.js';
+
+export const CONVERSATION_CHANNELS = [
+  'internal',
+  'whatsapp_cloud',
+  'facebook_messenger',
+  'instagram_dm',
+  'email',
+  'sms',
+  // Legacy aliases remain valid for existing Phase 1 data.
+  'whatsapp',
+  'facebook',
+  'messenger',
+  'phone'
+];
+export const CONVERSATION_STATUSES = ['open', 'pending', 'resolved', 'closed', 'archived'];
 
 const conversationSchema = new mongoose.Schema(
   {
-    companyId: {
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
+    distributorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Distributor', default: null },
+    contactId: { type: mongoose.Schema.Types.ObjectId, ref: 'Contact', required: true },
+    channel: { type: String, enum: CONVERSATION_CHANNELS, default: 'internal' },
+    channelConfigId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Company',
-      required: true
-    },
-    contactId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Contact',
-      required: true
-    },
-    assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'ChannelConfig',
       default: null
     },
-    channel: {
-      type: String,
-      enum: ['whatsapp', 'facebook', 'messenger', 'phone', 'email'],
-      default: 'whatsapp'
-    },
-    status: {
-      type: String,
-      enum: ['open', 'pending', 'resolved', 'archived'],
-      default: 'open'
-    },
-    lastMessage: {
-      type: String,
-      default: ''
-    },
-    unreadCount: {
-      type: Number,
-      default: 0
-    }
+    externalConversationId: { type: String, trim: true, default: '' },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    status: { type: String, enum: CONVERSATION_STATUSES, default: 'open' },
+    priority: { type: String, enum: CRM_PRIORITIES, default: 'medium' },
+    unreadCount: { type: Number, min: 0, default: 0 },
+    lastMessage: { type: String, default: '' },
+    lastMessageAt: { type: Date, default: null },
+    lastInboundAt: { type: Date, default: null },
+    lastOutboundAt: { type: Date, default: null },
+    closedAt: { type: Date, default: null },
+    closedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    tags: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Tag' }],
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    archivedAt: { type: Date, default: null }
   },
   { timestamps: true }
+);
+
+conversationSchema.index({ companyId: 1, assignedTo: 1, status: 1, lastMessageAt: -1 });
+conversationSchema.index({ companyId: 1, contactId: 1, channel: 1 });
+conversationSchema.index(
+  { channelConfigId: 1, externalConversationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      channelConfigId: { $type: 'objectId' },
+      externalConversationId: { $type: 'string', $gt: '' }
+    }
+  }
 );
 
 export const Conversation = mongoose.model('Conversation', conversationSchema);

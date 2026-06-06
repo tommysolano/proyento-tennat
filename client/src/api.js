@@ -1,5 +1,13 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
+function queryString(filters = {}) {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
+  return query.toString() ? `?${query}` : '';
+}
+
 export async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('tenantdesk_token');
   const response = await fetch(`${API_URL}${path}`, {
@@ -65,12 +73,11 @@ export const updateSubscription = (subscriptionId, subscription) =>
   });
 
 export function getContacts(filters = {}) {
-  const query = new URLSearchParams();
-  if (filters.status) query.set('status', filters.status);
-  if (filters.search) query.set('search', filters.search);
-  const suffix = query.toString() ? `?${query}` : '';
-  return apiRequest(`/contacts${suffix}`);
+  return apiRequest(`/contacts${queryString(filters)}`);
 }
+
+export const getContact = (contactId) => apiRequest(`/contacts/${contactId}`);
+export const getContactTimeline = (contactId) => apiRequest(`/contacts/${contactId}/timeline`);
 
 export const createContact = (contact) =>
   apiRequest('/contacts', {
@@ -94,6 +101,138 @@ export const addContactNote = (contactId, text) =>
     method: 'POST',
     body: JSON.stringify({ text })
   });
+
+export const importContacts = (contacts, updateDuplicates = false) =>
+  apiRequest('/contacts/import', {
+    method: 'POST',
+    body: JSON.stringify({ contacts, updateDuplicates })
+  });
+
+export async function exportContacts(filters = {}) {
+  const token = localStorage.getItem('tenantdesk_token');
+  const response = await fetch(`${API_URL}/contacts/export${queryString(filters)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || 'No se pudo exportar');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'contactos.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export const getTags = () => apiRequest('/crm/tags');
+export const createTag = (payload) => apiRequest('/crm/tags', { method: 'POST', body: JSON.stringify(payload) });
+export const updateTag = (id, payload) => apiRequest(`/crm/tags/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const deleteTag = (id) => apiRequest(`/crm/tags/${id}`, { method: 'DELETE' });
+
+export const getCustomFields = (entityType = '') => apiRequest(`/crm/custom-fields${queryString({ entityType })}`);
+export const createCustomField = (payload) => apiRequest('/crm/custom-fields', { method: 'POST', body: JSON.stringify(payload) });
+export const updateCustomField = (id, payload) => apiRequest(`/crm/custom-fields/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const deleteCustomField = (id) => apiRequest(`/crm/custom-fields/${id}`, { method: 'DELETE' });
+
+export const getSegments = () => apiRequest('/crm/segments');
+export const createSegment = (payload) => apiRequest('/crm/segments', { method: 'POST', body: JSON.stringify(payload) });
+export const updateSegment = (id, payload) => apiRequest(`/crm/segments/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const deleteSegment = (id) => apiRequest(`/crm/segments/${id}`, { method: 'DELETE' });
+
+export const getPipelines = () => apiRequest('/pipelines');
+export const createPipeline = (payload) => apiRequest('/pipelines', { method: 'POST', body: JSON.stringify(payload) });
+export const updatePipeline = (id, payload) => apiRequest(`/pipelines/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const getPipelineStages = (id) => apiRequest(`/pipelines/${id}/stages`);
+export const createPipelineStage = (id, payload) => apiRequest(`/pipelines/${id}/stages`, { method: 'POST', body: JSON.stringify(payload) });
+export const updatePipelineStage = (pipelineId, stageId, payload) => apiRequest(`/pipelines/${pipelineId}/stages/${stageId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const reorderPipelineStages = (id, stageIds) => apiRequest(`/pipelines/${id}/stages/reorder`, { method: 'PUT', body: JSON.stringify({ stageIds }) });
+
+export const getOpportunities = (filters = {}) => apiRequest(`/opportunities${queryString(filters)}`);
+export const getOpportunity = (id) => apiRequest(`/opportunities/${id}`);
+export const getOpportunityTimeline = (id) => apiRequest(`/opportunities/${id}/timeline`);
+export const createOpportunity = (payload) => apiRequest('/opportunities', { method: 'POST', body: JSON.stringify(payload) });
+export const updateOpportunity = (id, payload) => apiRequest(`/opportunities/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const moveOpportunityStage = (id, stageId) => apiRequest(`/opportunities/${id}/move`, { method: 'PATCH', body: JSON.stringify({ stageId }) });
+export const markOpportunityWon = (id) => apiRequest(`/opportunities/${id}/won`, { method: 'PATCH', body: '{}' });
+export const markOpportunityLost = (id, lostReason = '') => apiRequest(`/opportunities/${id}/lost`, { method: 'PATCH', body: JSON.stringify({ lostReason }) });
+
+export const getTasks = (filters = {}) => apiRequest(`/tasks${queryString(filters)}`);
+export const createTask = (payload) => apiRequest('/tasks', { method: 'POST', body: JSON.stringify(payload) });
+export const updateTask = (id, payload) => apiRequest(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const completeTask = (id) => apiRequest(`/tasks/${id}/complete`, { method: 'PATCH', body: '{}' });
+
+export const getNotes = (relatedType, relatedId) => apiRequest(`/notes${queryString({ relatedType, relatedId })}`);
+export const createNote = (payload) => apiRequest('/notes', { method: 'POST', body: JSON.stringify(payload) });
+export const getCrmDashboard = () => apiRequest('/crm/dashboard');
+
+export const getConversations = (filters = {}) =>
+  apiRequest(`/conversations${queryString(filters)}`);
+export const getConversation = (id) => apiRequest(`/conversations/${id}`);
+export const createConversation = (payload) =>
+  apiRequest('/conversations', { method: 'POST', body: JSON.stringify(payload) });
+export const updateConversation = (id, payload) =>
+  apiRequest(`/conversations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const assignConversation = (id, assignedTo) =>
+  apiRequest(`/conversations/${id}/assign`, {
+    method: 'PATCH',
+    body: JSON.stringify({ assignedTo })
+  });
+export const closeConversation = (id) =>
+  apiRequest(`/conversations/${id}/close`, { method: 'PATCH', body: '{}' });
+export const reopenConversation = (id) =>
+  apiRequest(`/conversations/${id}/reopen`, { method: 'PATCH', body: '{}' });
+export const archiveConversation = (id) =>
+  apiRequest(`/conversations/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const markConversationRead = (id) =>
+  apiRequest(`/conversations/${id}/read`, { method: 'PATCH', body: '{}' });
+export const getConversationMessages = (id) =>
+  apiRequest(`/conversations/${id}/messages`);
+export const sendMessage = (id, payload) =>
+  apiRequest(`/conversations/${id}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const createConversationInternalNote = (id, text) =>
+  apiRequest(`/conversations/${id}/internal-note`, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+export const retryMessage = (id) =>
+  apiRequest(`/messages/${id}/retry`, { method: 'POST', body: '{}' });
+export const getInboxMetrics = () => apiRequest('/conversations/metrics');
+
+export const getChannelConfigs = () => apiRequest('/channel-configs');
+export const getChannelConfig = (id) => apiRequest(`/channel-configs/${id}`);
+export const createChannelConfig = (payload) =>
+  apiRequest('/channel-configs', { method: 'POST', body: JSON.stringify(payload) });
+export const updateChannelConfig = (id, payload) =>
+  apiRequest(`/channel-configs/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const disableChannelConfig = (id) =>
+  apiRequest(`/channel-configs/${id}/disable`, { method: 'PATCH', body: '{}' });
+export const testChannelConfig = (id) =>
+  apiRequest(`/channel-configs/${id}/test`, { method: 'PATCH', body: '{}' });
+
+export const getMessageTemplates = (filters = {}) =>
+  apiRequest(`/message-templates${queryString(filters)}`);
+export const createMessageTemplate = (payload) =>
+  apiRequest('/message-templates', { method: 'POST', body: JSON.stringify(payload) });
+export const updateMessageTemplate = (id, payload) =>
+  apiRequest(`/message-templates/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const disableMessageTemplate = (id) =>
+  apiRequest(`/message-templates/${id}/disable`, { method: 'PATCH', body: '{}' });
+
+export function webhookUrl(channelConfigId) {
+  const apiBase = API_URL.replace(/\/api\/?$/, '');
+  return `${apiBase}/api/webhooks/whatsapp/${channelConfigId}`;
+}
 
 export const getActivityLogs = () => apiRequest('/activity-logs');
 

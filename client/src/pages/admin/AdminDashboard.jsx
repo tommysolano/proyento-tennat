@@ -1,4 +1,4 @@
-import { Activity, ContactRound, Headphones, Plus, UserCog, UsersRound } from 'lucide-react';
+import { Activity, CircleDollarSign, ContactRound, Headphones, ListTodo, MessageSquare, Plus, Radio, Target, Trophy, UserCog, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   addContactNote,
@@ -14,6 +14,8 @@ import {
   getContacts,
   getSubscriptions,
   getUsers,
+  getCrmDashboard,
+  getInboxMetrics,
   updateCompanyOnboarding,
   updateContact
 } from '../../api.js';
@@ -36,6 +38,8 @@ export function AdminDashboard() {
   const [companyPayments, setCompanyPayments] = useState([]);
   const [companySettings, setCompanySettings] = useState(null);
   const [onboarding, setOnboarding] = useState(null);
+  const [crmSummary, setCrmSummary] = useState(null);
+  const [inboxSummary, setInboxSummary] = useState(null);
   const [commercialError, setCommercialError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -48,19 +52,23 @@ export function AdminDashboard() {
     setCommercialError('');
 
     try {
-      const [userData, contactData, activityData, companyData, subscriptionData] =
+      const [userData, contactData, activityData, companyData, subscriptionData, crmData, inboxData] =
         await Promise.all([
           getUsers(),
           getContacts(),
           getActivityLogs(),
           getCompanies(),
-          getSubscriptions()
+          getSubscriptions(),
+          getCrmDashboard(),
+          getInboxMetrics()
         ]);
       setUsers(userData);
       setContacts(contactData);
       setActivities(activityData);
       setCompany(companyData[0] || null);
       setSubscription(subscriptionData[0] || null);
+      setCrmSummary(crmData);
+      setInboxSummary(inboxData);
 
       const [settingsData, onboardingData] = await Promise.all([
         getCompanySettings(),
@@ -197,6 +205,22 @@ export function AdminDashboard() {
         <MetricCard label="Contactos" value={contacts.length} helper={`${contacts.filter((item) => item.status === 'seguimiento').length} en seguimiento`} icon={ContactRound} tone="rose" />
         <MetricCard label="Cerrados" value={contacts.filter((item) => item.status === 'cerrado').length} helper="Contactos finalizados" icon={Activity} tone="slate" />
       </div>
+      {crmSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <MetricCard label="Oportunidades abiertas" value={crmSummary.opportunitiesOpen} helper={`$${crmSummary.openValue}`} icon={Target} tone="cyan" />
+        <MetricCard label="Ganadas" value={crmSummary.opportunitiesWon} helper={`$${crmSummary.wonValue}`} icon={Trophy} tone="emerald" />
+        <MetricCard label="Perdidas" value={crmSummary.opportunitiesLost} helper="Deals cerrados" icon={Activity} tone="rose" />
+        <MetricCard label="Tareas pendientes" value={crmSummary.pendingTasks} helper="Operaciones por completar" icon={ListTodo} tone="amber" />
+        <MetricCard label="Seguimientos vencidos" value={crmSummary.overdueFollowUps} helper={`${crmSummary.todayFollowUps} para hoy`} icon={ContactRound} tone="rose" />
+        <MetricCard label="Valor ganado" value={`$${crmSummary.wonValue}`} helper="Acumulado visible" icon={CircleDollarSign} tone="slate" />
+      </div> : null}
+      {inboxSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <MetricCard label="Conversaciones abiertas" value={inboxSummary.open} helper="Inbox de empresa" icon={MessageSquare} tone="cyan" />
+        <MetricCard label="Pendientes" value={inboxSummary.pending} helper="Requieren gestion" icon={ListTodo} tone="amber" />
+        <MetricCard label="Sin asignar" value={inboxSummary.unassigned} helper="Routing manual" icon={UsersRound} tone="rose" />
+        <MetricCard label="Mensajes no leidos" value={inboxSummary.unreadMessages} helper="Entrantes pendientes" icon={MessageSquare} tone="emerald" />
+        <MetricCard label="Ultimo mensaje" value={formatDate(inboxSummary.latestMessageAt)} helper={`${inboxSummary.unanswered} sin responder`} icon={Headphones} tone="amber" />
+        <MetricCard label="Canales conectados" value={inboxSummary.connectedChannels} helper="Configuraciones activas" icon={Radio} tone="slate" />
+      </div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_0.72fr]">
         <Card id="usuarios">

@@ -15,3 +15,15 @@ export function requirePermission(permission) {
     next();
   };
 }
+
+export function requireAnyPermission(...permissions) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: 'Usuario no autenticado' });
+    if (!permissions.some((permission) => hasPermission(req.user.role, permission))) {
+      return res.status(403).json({
+        message: `No tienes ninguno de los permisos requeridos: ${permissions.join(', ')}`
+      });
+    }
+    next();
+  };
+}

@@ -4,6 +4,8 @@ export const CONTACT_STATUS_OPTIONS = [
   { value: 'interesado', label: 'Interesado' },
   { value: 'no_interesado', label: 'No interesado' },
   { value: 'seguimiento', label: 'Seguimiento' },
+  { value: 'cliente', label: 'Cliente' },
+  { value: 'perdido', label: 'Perdido' },
   { value: 'cerrado', label: 'Cerrado' }
 ];
 

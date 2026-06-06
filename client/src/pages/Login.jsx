@@ -9,8 +9,8 @@ import { roleHome } from '../routes/roleHome.js';
 export function Login() {
   const navigate = useNavigate();
   const { isAuthenticated, login, user } = useAuth();
-  const [email, setEmail] = useState('superadmin@example.com');
-  const [password, setPassword] = useState('Admin123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -88,7 +88,7 @@ export function Login() {
               </div>
               <h2 className="text-2xl font-semibold text-slate-950">Iniciar sesion</h2>
               <p className="mt-2 text-sm text-slate-500">
-                Usa una cuenta demo de desarrollo. SUPERADMIN usa Admin123456 y los demas Demo1234!
+                Usa las credenciales configuradas para tu entorno.
               </p>
             </div>
 
@@ -111,7 +111,7 @@ export function Login() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Demo1234!"
+                  placeholder="Tu password"
                 />
               </label>
 

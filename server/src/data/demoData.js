@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   ActivityLog,
   ChannelConfig,
@@ -8,25 +9,50 @@ import {
   GlobalSettings,
   Invoice,
   ModuleEntitlement,
+  Message,
+  MessageTemplate,
   Payment,
   Plan,
   PlatformPlan,
   PlatformSubscription,
   Subscription,
   UsageRecord,
-  User
+  User,
+  WebhookEvent
 } from '../models/index.js';
+import { CustomField } from '../models/CustomField.js';
+import { Note } from '../models/Note.js';
+import { Opportunity } from '../models/Opportunity.js';
+import { Pipeline } from '../models/Pipeline.js';
+import { PipelineStage } from '../models/PipelineStage.js';
+import { Segment } from '../models/Segment.js';
+import { Tag } from '../models/Tag.js';
+import { Task } from '../models/Task.js';
 import {
   refreshCompanyOnboarding,
   refreshDistributorOnboarding
 } from '../utils/onboarding.js';
 
-const demoPassword = 'Demo1234!';
+const demoPassword =
+  process.env.DEMO_PASSWORD || `${randomBytes(12).toString('base64url')}A1!`;
+const superAdminPassword =
+  process.env.SUPERADMIN_DEMO_PASSWORD || `${randomBytes(12).toString('base64url')}A1!`;
 
 export async function seedDemoData({ clear = true } = {}) {
   if (clear) {
     await Promise.all([
       ActivityLog.deleteMany({}),
+      WebhookEvent.deleteMany({}),
+      Message.deleteMany({}),
+      MessageTemplate.deleteMany({}),
+      Note.deleteMany({}),
+      Task.deleteMany({}),
+      Opportunity.deleteMany({}),
+      PipelineStage.deleteMany({}),
+      Pipeline.deleteMany({}),
+      Segment.deleteMany({}),
+      CustomField.deleteMany({}),
+      Tag.deleteMany({}),
       ChannelConfig.deleteMany({}),
       Conversation.deleteMany({}),
       Contact.deleteMany({}),
@@ -44,7 +70,17 @@ export async function seedDemoData({ clear = true } = {}) {
       User.deleteMany({})
     ]);
   }
-  await Promise.all([Invoice.syncIndexes(), Plan.syncIndexes()]);
+  await Promise.all([
+    Invoice.syncIndexes(),
+    Plan.syncIndexes(),
+    Tag.syncIndexes(),
+    CustomField.syncIndexes(),
+    ChannelConfig.syncIndexes(),
+    Conversation.syncIndexes(),
+    Message.syncIndexes(),
+    MessageTemplate.syncIndexes(),
+    WebhookEvent.syncIndexes()
+  ]);
 
   const [andesDistributor, norteDistributor] = await Distributor.create([
     {
@@ -108,7 +144,7 @@ export async function seedDemoData({ clear = true } = {}) {
       currency: 'USD',
       billingCycle: 'monthly',
       limits: { users: 8, contacts: 2500, messages: 0, storageMb: 2048, modules: 3 },
-      includedModules: ['core', 'crm', 'contacts'],
+      includedModules: ['core', 'crm', 'contacts', 'opportunities', 'tasks', 'conversations', 'inbox'],
       features: ['1 canal', 'Contactos basicos', 'Reportes simples'],
       status: 'active'
     },
@@ -121,7 +157,7 @@ export async function seedDemoData({ clear = true } = {}) {
       currency: 'USD',
       billingCycle: 'monthly',
       limits: { users: 25, contacts: 15000, messages: 0, storageMb: 10240, modules: 5 },
-      includedModules: ['core', 'crm', 'contacts', 'billing', 'reporting'],
+      includedModules: ['core', 'crm', 'contacts', 'opportunities', 'tasks', 'conversations', 'inbox', 'whatsapp', 'billing', 'reporting'],
       features: ['WhatsApp Cloud API', 'Facebook', 'Messenger', 'Metricas por agente'],
       status: 'active'
     },
@@ -134,7 +170,7 @@ export async function seedDemoData({ clear = true } = {}) {
       currency: 'USD',
       billingCycle: 'monthly',
       limits: { users: 120, contacts: 100000, messages: 0, storageMb: 51200, modules: 8 },
-      includedModules: ['core', 'crm', 'contacts', 'billing', 'reporting'],
+      includedModules: ['core', 'crm', 'contacts', 'opportunities', 'tasks', 'conversations', 'inbox', 'whatsapp', 'billing', 'reporting'],
       features: ['Multi-sede', 'SLA prioritario', 'Onboarding asistido'],
       status: 'inactive'
     }
@@ -168,7 +204,7 @@ export async function seedDemoData({ clear = true } = {}) {
     {
       name: 'Super Admin',
       email: 'superadmin@example.com',
-      password: 'Admin123456',
+      password: superAdminPassword,
       role: 'SUPERADMIN',
       status: 'active'
     },
@@ -285,7 +321,7 @@ export async function seedDemoData({ clear = true } = {}) {
         storageMb: 5120,
         messages: 0
       },
-      includedModules: ['core', 'crm', 'contacts', 'billing', 'reporting'],
+      includedModules: ['core', 'crm', 'contacts', 'opportunities', 'tasks', 'conversations', 'inbox', 'whatsapp', 'billing', 'reporting'],
       status: 'active'
     },
     {
@@ -303,7 +339,7 @@ export async function seedDemoData({ clear = true } = {}) {
         storageMb: 51200,
         messages: 0
       },
-      includedModules: ['core', 'crm', 'contacts', 'billing', 'reporting', 'integrations'],
+      includedModules: ['core', 'crm', 'contacts', 'opportunities', 'tasks', 'conversations', 'inbox', 'whatsapp', 'billing', 'reporting', 'integrations'],
       status: 'active'
     }
   ]);
@@ -491,15 +527,113 @@ export async function seedDemoData({ clear = true } = {}) {
     billingSettings: { invoicePrefix: 'PLAT', paymentTermsDays: 15 }
   });
 
+  const [hotTag, renewalTag, corporateTag] = await Tag.create([
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      name: 'Lead caliente',
+      normalizedName: 'lead caliente',
+      color: '#dc2626',
+      description: 'Alta intencion comercial',
+      createdBy: adminUser._id
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      name: 'Renovacion',
+      normalizedName: 'renovacion',
+      color: '#0e7490',
+      createdBy: adminUser._id
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      name: 'Corporativo',
+      normalizedName: 'corporativo',
+      color: '#7c3aed',
+      createdBy: adminUser._id
+    }
+  ]);
+
+  await CustomField.create([
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      entityType: 'contact',
+      key: 'tipo_poliza',
+      label: 'Tipo de poliza',
+      type: 'select',
+      options: ['Vida', 'Vehiculo', 'Salud', 'Hogar'],
+      order: 1,
+      createdBy: adminUser._id
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      entityType: 'opportunity',
+      key: 'prima_estimada',
+      label: 'Prima estimada',
+      type: 'number',
+      order: 1,
+      createdBy: adminUser._id
+    }
+  ]);
+
+  await Segment.create({
+    companyId: novaCompany._id,
+    distributorId: andesDistributor._id,
+    name: 'Seguimientos prioritarios',
+    description: 'Contactos de alta prioridad que requieren seguimiento',
+    filters: { status: 'seguimiento', priority: 'high' },
+    createdBy: adminUser._id
+  });
+
+  const salesPipeline = await Pipeline.create({
+    companyId: novaCompany._id,
+    distributorId: andesDistributor._id,
+    name: 'Ventas de seguros',
+    description: 'Pipeline comercial principal',
+    createdBy: adminUser._id
+  });
+  const pipelineStages = await PipelineStage.create(
+    [
+      ['Nuevo lead', 0, 10, '#0e7490'],
+      ['Contactado', 1, 25, '#0284c7'],
+      ['Calificado', 2, 45, '#7c3aed'],
+      ['Propuesta enviada', 3, 65, '#d97706'],
+      ['Negociacion', 4, 80, '#ea580c'],
+      ['Ganado', 5, 100, '#059669'],
+      ['Perdido', 6, 0, '#dc2626']
+    ].map(([name, order, probability, color]) => ({
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      pipelineId: salesPipeline._id,
+      name,
+      order,
+      probability,
+      color
+    }))
+  );
+
   const [contactA, contactB, contactC, contactD] = await Contact.create([
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       assignedTo: callcenterUser._id,
       name: 'Mariana Paredes',
+      firstName: 'Mariana',
+      lastName: 'Paredes',
+      fullName: 'Mariana Paredes',
       phone: '+593 99 220 1100',
       email: 'mariana@example.com',
       source: 'Campana renovacion',
       status: 'interesado',
+      lifecycleStage: 'prospect',
+      priority: 'high',
+      tags: [hotTag._id, renewalTag._id],
+      customFields: { tipo_poliza: 'Vida' },
+      createdBy: adminUser._id,
+      updatedBy: callcenterUser._id,
       lastContactAt: new Date(),
       nextFollowUpAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       notes: [
@@ -511,61 +645,263 @@ export async function seedDemoData({ clear = true } = {}) {
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       assignedTo: callcenterUser._id,
       name: 'Jorge Almeida',
       phone: '+593 98 555 4231',
       email: 'jorge@example.com',
       source: 'Landing seguros',
       status: 'contactado',
+      lifecycleStage: 'prospect',
+      priority: 'medium',
+      tags: [renewalTag._id],
+      customFields: { tipo_poliza: 'Vehiculo' },
+      createdBy: adminUser._id,
+      updatedBy: callcenterUser._id,
       lastContactAt: new Date(),
       nextFollowUpAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       assignedTo: secondAgent._id,
       name: 'Paola Suarez',
       phone: '+593 97 144 3312',
       source: 'Facebook Lead',
       status: 'nuevo'
+      ,lifecycleStage: 'lead'
+      ,priority: 'high'
+      ,tags: [corporateTag._id]
+      ,customFields: { tipo_poliza: 'Salud' }
+      ,createdBy: adminUser._id
+      ,updatedBy: adminUser._id
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       assignedTo: secondAgent._id,
       name: 'Ivan Herrera',
       phone: '+593 96 881 7601',
       source: 'Base fria',
       status: 'no_interesado',
+      lifecycleStage: 'lost',
+      priority: 'low',
+      createdBy: adminUser._id,
+      updatedBy: secondAgent._id,
       lastContactAt: new Date()
     }
   ]);
 
-  await Conversation.create([
+  const [opportunityA, opportunityB] = await Opportunity.create([
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      contactId: contactA._id,
+      pipelineId: salesPipeline._id,
+      stageId: pipelineStages[2]._id,
+      title: 'Poliza familiar Mariana',
+      value: 1450,
+      currency: 'USD',
+      probability: 45,
+      expectedCloseDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      nextFollowUpAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      assignedTo: callcenterUser._id,
+      source: 'Campana renovacion',
+      priority: 'high',
+      customFields: { prima_estimada: 1450 },
+      createdBy: adminUser._id,
+      updatedBy: callcenterUser._id
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      contactId: contactC._id,
+      pipelineId: salesPipeline._id,
+      stageId: pipelineStages[1]._id,
+      title: 'Cobertura para emprendimiento',
+      value: 2800,
+      currency: 'USD',
+      probability: 25,
+      expectedCloseDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+      assignedTo: secondAgent._id,
+      source: 'Facebook Lead',
+      priority: 'medium',
+      createdBy: adminUser._id,
+      updatedBy: secondAgent._id
+    }
+  ]);
+
+  await Task.create([
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      title: 'Enviar comparativo de coberturas',
+      description: 'Adjuntar opciones familiar y premium',
+      relatedType: 'opportunity',
+      relatedId: opportunityA._id,
+      assignedTo: callcenterUser._id,
+      createdBy: supervisorUser._id,
+      dueAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      priority: 'high'
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      title: 'Llamar para calificacion',
+      relatedType: 'contact',
+      relatedId: contactC._id,
+      assignedTo: secondAgent._id,
+      createdBy: supervisorUser._id,
+      dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      priority: 'medium'
+    }
+  ]);
+
+  await Note.create({
+    companyId: novaCompany._id,
+    distributorId: andesDistributor._id,
+    relatedType: 'opportunity',
+    relatedId: opportunityA._id,
+    text: 'Cliente solicita incluir cobertura internacional.',
+    createdBy: callcenterUser._id,
+    visibility: 'team'
+  });
+
+  const whatsappConfig = await ChannelConfig.create({
+    companyId: novaCompany._id,
+    distributorId: andesDistributor._id,
+    channel: 'whatsapp_cloud',
+    displayName: 'WhatsApp Comercial Nova',
+    phoneNumberId: 'demo_phone_number_id',
+    status: 'pending',
+    settings: { apiVersion: '' },
+    createdBy: adminUser._id,
+    metadata: { demoPreparedOnly: true }
+  });
+
+  const [conversationA, conversationB, conversationC] = await Conversation.create([
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       contactId: contactA._id,
       assignedTo: callcenterUser._id,
-      channel: 'whatsapp',
+      channel: 'whatsapp_cloud',
+      channelConfigId: whatsappConfig._id,
+      externalConversationId: '593992201100',
       status: 'open',
+      priority: 'high',
       lastMessage: 'Estoy interesada, enviame los detalles del plan familiar.',
-      unreadCount: 2
+      lastMessageAt: new Date(),
+      lastInboundAt: new Date(),
+      unreadCount: 2,
+      createdBy: adminUser._id,
+      updatedBy: callcenterUser._id
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       contactId: contactB._id,
       assignedTo: callcenterUser._id,
-      channel: 'messenger',
+      channel: 'internal',
       status: 'pending',
       lastMessage: 'Gracias, lo reviso y te confirmo hoy.',
-      unreadCount: 0
+      lastMessageAt: new Date(Date.now() - 60 * 60 * 1000),
+      lastOutboundAt: new Date(Date.now() - 60 * 60 * 1000),
+      unreadCount: 0,
+      createdBy: supervisorUser._id,
+      updatedBy: callcenterUser._id
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       contactId: contactC._id,
       assignedTo: secondAgent._id,
-      channel: 'facebook',
+      channel: 'internal',
       status: 'open',
       lastMessage: 'Necesito cobertura para mi emprendimiento.',
-      unreadCount: 1
+      lastMessageAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      lastInboundAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      unreadCount: 1,
+      createdBy: supervisorUser._id,
+      updatedBy: secondAgent._id
+    }
+  ]);
+
+  await Message.create([
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      conversationId: conversationA._id,
+      contactId: contactA._id,
+      channel: 'whatsapp_cloud',
+      direction: 'inbound',
+      type: 'text',
+      text: 'Estoy interesada, enviame los detalles del plan familiar.',
+      status: 'received',
+      externalMessageId: 'demo_inbound_message_1',
+      provider: 'whatsapp_cloud'
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      conversationId: conversationB._id,
+      contactId: contactB._id,
+      channel: 'internal',
+      direction: 'outbound',
+      type: 'text',
+      text: 'Gracias, lo reviso y te confirmo hoy.',
+      status: 'sent',
+      provider: 'internal',
+      sentBy: callcenterUser._id
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      conversationId: conversationC._id,
+      contactId: contactC._id,
+      channel: 'internal',
+      direction: 'inbound',
+      type: 'text',
+      text: 'Necesito cobertura para mi emprendimiento.',
+      status: 'received',
+      provider: 'internal'
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      conversationId: conversationA._id,
+      contactId: contactA._id,
+      channel: 'whatsapp_cloud',
+      direction: 'internal',
+      type: 'system',
+      text: 'Confirmar presupuesto antes de responder.',
+      status: 'sent',
+      provider: 'internal',
+      sentBy: supervisorUser._id
+    }
+  ]);
+
+  await MessageTemplate.create([
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      name: 'Saludo comercial',
+      channel: 'internal',
+      type: 'quick_reply',
+      content: 'Hola, gracias por contactarnos. En que podemos ayudarte?',
+      status: 'active',
+      createdBy: adminUser._id
+    },
+    {
+      companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
+      name: 'Seguimiento de propuesta',
+      channel: 'whatsapp_cloud',
+      type: 'quick_reply',
+      content: 'Hola, queremos confirmar si pudiste revisar nuestra propuesta.',
+      status: 'active',
+      createdBy: adminUser._id,
+      metadata: { providerApprovalRequiredForOutsideWindow: true }
     }
   ]);
 
@@ -603,41 +939,6 @@ export async function seedDemoData({ clear = true } = {}) {
     }
   ]);
 
-  await ChannelConfig.create([
-    {
-      companyId: novaCompany._id,
-      channel: 'whatsapp_cloud_api',
-      displayName: 'WhatsApp Comercial Nova',
-      credentials: {
-        appId: 'app_demo_1029',
-        phoneNumberId: 'phone_5542',
-        tokenPreview: 'EAAB...demo'
-      },
-      status: 'connected'
-    },
-    {
-      companyId: novaCompany._id,
-      channel: 'facebook',
-      displayName: 'Facebook Nova Seguros',
-      credentials: {
-        appId: 'fb_app_2030',
-        pageId: 'nova_page_01',
-        tokenPreview: 'FB...demo'
-      },
-      status: 'draft'
-    },
-    {
-      companyId: novaCompany._id,
-      channel: 'messenger',
-      displayName: 'Messenger Nova',
-      credentials: {
-        pageId: 'nova_page_01',
-        tokenPreview: 'MS...demo'
-      },
-      status: 'draft'
-    }
-  ]);
-
   await Promise.all([
     refreshDistributorOnboarding(andesDistributor._id),
     refreshDistributorOnboarding(norteDistributor._id),
@@ -658,7 +959,7 @@ export async function seedDemoData({ clear = true } = {}) {
     demoPassword,
     superAdmin: {
       email: 'superadmin@example.com',
-      password: 'Admin123456',
+      password: superAdminPassword,
       developmentOnly: true
     }
   };

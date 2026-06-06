@@ -30,14 +30,54 @@ export const MODULE_REGISTRY = [
     status: 'active'
   },
   {
+    key: 'opportunities',
+    name: 'Oportunidades',
+    description: 'Pipelines, etapas, oportunidades y vista Kanban.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'tasks',
+    name: 'Tareas',
+    description: 'Tareas comerciales, vencimientos y seguimientos.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
     key: 'conversations',
     name: 'Conversaciones',
-    description: 'Bandeja preparada para canales externos futuros.',
-    version: '0.1.0',
-    enabledByDefault: false,
+    description: 'Conversaciones y mensajes omnicanal por empresa.',
+    version: '1.0.0',
+    enabledByDefault: true,
     requiredPermissions: [],
-    requiredPlanFeatures: ['conversations'],
-    status: 'planned'
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'inbox',
+    name: 'Inbox',
+    description: 'Bandeja operativa, asignaciones y notas internas.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'whatsapp',
+    name: 'WhatsApp Cloud',
+    description: 'Adaptador y webhooks preparados para WhatsApp Cloud API.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
   },
   {
     key: 'calendar',

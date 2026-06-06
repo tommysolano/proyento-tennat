@@ -1,9 +1,11 @@
-import { CheckCircle2, Headphones, ListTodo, UsersRound } from 'lucide-react';
+import { CheckCircle2, Headphones, ListTodo, MessageSquare, Target, Trophy, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   addContactNote,
   getActivityLogs,
   getContacts,
+  getCrmDashboard,
+  getInboxMetrics,
   getUsers,
   updateContact
 } from '../../api.js';
@@ -19,6 +21,8 @@ export function SupervisorDashboard() {
   const [agents, setAgents] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [crmSummary, setCrmSummary] = useState(null);
+  const [inboxSummary, setInboxSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -28,14 +32,18 @@ export function SupervisorDashboard() {
     if (showLoader) setLoading(true);
     setError('');
     try {
-      const [agentData, contactData, activityData] = await Promise.all([
+      const [agentData, contactData, activityData, crmData, inboxData] = await Promise.all([
         getUsers(),
         getContacts(),
-        getActivityLogs()
+        getActivityLogs(),
+        getCrmDashboard(),
+        getInboxMetrics()
       ]);
       setAgents(agentData);
       setContacts(contactData);
       setActivities(activityData);
+      setCrmSummary(crmData);
+      setInboxSummary(inboxData);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -115,6 +123,18 @@ export function SupervisorDashboard() {
         <MetricCard label="En seguimiento" value={contacts.filter((contact) => contact.status === 'seguimiento').length} helper="Pendientes de nueva gestion" icon={ListTodo} tone="amber" />
         <MetricCard label="Cerrados" value={contacts.filter((contact) => contact.status === 'cerrado').length} helper="Gestion finalizada" icon={CheckCircle2} tone="slate" />
       </div>
+      {crmSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Oportunidades abiertas" value={crmSummary.opportunitiesOpen} helper="Del equipo" icon={Target} tone="cyan" />
+        <MetricCard label="Oportunidades ganadas" value={crmSummary.opportunitiesWon} helper={`$${crmSummary.wonValue}`} icon={Trophy} tone="emerald" />
+        <MetricCard label="Tareas pendientes" value={crmSummary.pendingTasks} helper="Del equipo" icon={ListTodo} tone="amber" />
+        <MetricCard label="Seguimientos vencidos" value={crmSummary.overdueFollowUps} helper={`${crmSummary.todayFollowUps} para hoy`} icon={CheckCircle2} tone="rose" />
+      </div> : null}
+      {inboxSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Conversaciones abiertas" value={inboxSummary.open} helper="Del equipo" icon={MessageSquare} tone="cyan" />
+        <MetricCard label="Pendientes del equipo" value={inboxSummary.pending} helper="Inbox operativo" icon={ListTodo} tone="amber" />
+        <MetricCard label="No leidas" value={inboxSummary.unreadMessages} helper="Mensajes entrantes" icon={Headphones} tone="rose" />
+        <MetricCard label="Sin responder" value={inboxSummary.unanswered} helper="Ultimo mensaje inbound" icon={MessageSquare} tone="slate" />
+      </div> : null}
 
       <Card id="agentes">
         <CardHeader

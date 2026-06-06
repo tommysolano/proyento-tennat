@@ -1,8 +1,10 @@
 # TenantDesk MERN Multi-Tenant
 
 Base SaaS multi-tenant con React, Vite, Tailwind, Node.js, Express, MongoDB,
-Mongoose y JWT. Incluye gobierno de plataforma y la capa comercial completa
-del distribuidor hacia sus empresas.
+Mongoose y JWT. Incluye gobierno de plataforma, capa comercial del distribuidor
+y CRM operativo avanzado para las empresas.
+La Fase 4 agrega inbox omnicanal, mensajes, notas internas, plantillas,
+configuracion de canales y webhooks preparados para WhatsApp Cloud API.
 
 ## Requisitos
 
@@ -33,15 +35,18 @@ configuracion es: variables del proceso, `server/.env`, `.env` raiz.
 
 El seed es exclusivamente para desarrollo.
 
-| Rol | Email | Password |
-| --- | --- | --- |
-| SUPERADMIN | superadmin@example.com | Admin123456 |
-| DISTRIBUTOR | distributor@demo.com | Demo1234! |
-| ADMIN | admin@demo.com | Demo1234! |
-| SUPERVISOR | supervisor@demo.com | Demo1234! |
-| CALLCENTER | callcenter@demo.com | Demo1234! |
+| Rol | Email |
+| --- | --- |
+| SUPERADMIN | superadmin@example.com |
+| DISTRIBUTOR | distributor@demo.com |
+| ADMIN | admin@demo.com |
+| SUPERVISOR | supervisor@demo.com |
+| CALLCENTER | callcenter@demo.com |
 
-No use estas credenciales en produccion.
+El seed genera passwords aleatorios y los muestra una sola vez en consola.
+Opcionalmente pueden definirse `DEMO_PASSWORD` y
+`SUPERADMIN_DEMO_PASSWORD` antes de ejecutar `npm run seed`. No use cuentas
+demo en produccion.
 
 ## Scripts
 
@@ -85,6 +90,18 @@ Frontend:
 - `/admin/dashboard`
 - `/supervisor/dashboard`
 - `/callcenter/dashboard`
+- `/crm`
+- `/crm/contacts`
+- `/crm/opportunities`
+- `/crm/pipeline`
+- `/crm/tasks`
+- `/crm/tags`
+- `/crm/custom-fields`
+- `/crm/segments`
+- `/crm/import`
+- `/inbox`
+- `/inbox/channels`
+- `/inbox/templates`
 
 API de plataforma:
 
@@ -120,6 +137,29 @@ API de empresa:
 - `/api/company/settings`
 - `/api/company/onboarding`
 
+API CRM:
+
+- `/api/contacts`
+- `/api/contacts/import`
+- `/api/contacts/export`
+- `/api/crm/tags`
+- `/api/crm/custom-fields`
+- `/api/crm/segments`
+- `/api/crm/dashboard`
+- `/api/pipelines`
+- `/api/opportunities`
+- `/api/tasks`
+- `/api/notes`
+
+API de conversaciones:
+
+- `/api/conversations`
+- `/api/conversations/:id/messages`
+- `/api/messages/:id/retry`
+- `/api/channel-configs`
+- `/api/message-templates`
+- `/api/webhooks/whatsapp/:channelConfigId`
+
 ## Limites
 
 `checkPlatformLimit()` valida en backend la creacion de empresas, usuarios y
@@ -135,10 +175,15 @@ datos existentes. Una suscripcion `suspended` o `cancelled` bloquea siempre.
 - [PERMISSIONS.md](PERMISSIONS.md)
 - [WHITE_LABEL.md](WHITE_LABEL.md)
 - [DISTRIBUTOR_GUIDE.md](DISTRIBUTOR_GUIDE.md)
+- [CRM.md](CRM.md)
+- [CONVERSATIONS.md](CONVERSATIONS.md)
+- [WHATSAPP.md](WHATSAPP.md)
 
 ## Alcance
 
-No existen pasarelas de pago, DNS, certificados ni canales reales de WhatsApp,
-Facebook, Instagram, Messenger, SMS o email. Tampoco se implementan funnels,
-automatizaciones avanzadas, landing pages o calendario real. Facturas y pagos
-son manuales; dominios e integraciones solo dejan contratos preparados.
+WhatsApp Cloud queda preparado para envio real solo cuando una empresa aporta
+credenciales validas y configura una version de Graph API. El seed no contiene
+tokens y nunca simula un envio exitoso. Facebook, Instagram, Messenger, SMS y
+email siguen como adaptadores placeholder. Tampoco existen pasarelas de pago,
+DNS, certificados, funnels, automatizaciones visuales, landing pages o
+calendario real.

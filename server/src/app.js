@@ -16,6 +16,15 @@ import platformBillingRoutes from './routes/platformBillingRoutes.js';
 import superAdminRoutes from './routes/superAdminRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import crmCatalogRoutes from './routes/crmCatalogRoutes.js';
+import crmDashboardRoutes from './routes/crmDashboardRoutes.js';
+import noteRoutes from './routes/noteRoutes.js';
+import opportunityRoutes from './routes/opportunityRoutes.js';
+import pipelineRoutes from './routes/pipelineRoutes.js';
+import taskRoutes from './routes/taskRoutes.js';
+import messageRoutes from './routes/messageRoutes.js';
+import messageTemplateRoutes from './routes/messageTemplateRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 export const app = express();
 
@@ -48,9 +57,18 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/plans', planRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/crm', crmCatalogRoutes);
+app.use('/api/crm', crmDashboardRoutes);
+app.use('/api/pipelines', pipelineRoutes);
+app.use('/api/opportunities', opportunityRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/notes', noteRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/message-templates', messageTemplateRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/channel-configs', channelConfigRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });

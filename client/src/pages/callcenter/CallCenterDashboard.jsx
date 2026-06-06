@@ -1,9 +1,12 @@
-import { CheckCircle2, ContactRound, PhoneCall, Target, TimerReset } from 'lucide-react';
+import { CheckCircle2, ContactRound, ListTodo, MessageSquare, PhoneCall, Target, TimerReset, Trophy } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   addContactNote,
   getActivityLogs,
   getContacts,
+  getCrmDashboard,
+  getInboxMetrics,
   updateContact
 } from '../../api.js';
 import { Card, CardHeader } from '../../components/Card.jsx';
@@ -16,6 +19,8 @@ import { formatDate } from '../../utils/contacts.js';
 export function CallCenterDashboard() {
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [crmSummary, setCrmSummary] = useState(null);
+  const [inboxSummary, setInboxSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -25,12 +30,16 @@ export function CallCenterDashboard() {
     if (showLoader) setLoading(true);
     setError('');
     try {
-      const [contactData, activityData] = await Promise.all([
+      const [contactData, activityData, crmData, inboxData] = await Promise.all([
         getContacts(),
-        getActivityLogs()
+        getActivityLogs(),
+        getCrmDashboard(),
+        getInboxMetrics()
       ]);
       setContacts(contactData);
       setActivities(activityData);
+      setCrmSummary(crmData);
+      setInboxSummary(inboxData);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -105,6 +114,36 @@ export function CallCenterDashboard() {
         <MetricCard label="Seguimiento" value={contacts.filter((contact) => contact.status === 'seguimiento').length} helper={`${followUps.length} con fecha programada`} icon={Target} tone="emerald" />
         <MetricCard label="Cerrados" value={contacts.filter((contact) => contact.status === 'cerrado').length} helper="Gestion finalizada" icon={CheckCircle2} tone="slate" />
       </div>
+      {crmSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Mis oportunidades" value={crmSummary.opportunitiesOpen} helper="Abiertas" icon={Target} tone="cyan" />
+        <MetricCard label="Ganadas" value={crmSummary.opportunitiesWon} helper="Oportunidades propias" icon={Trophy} tone="emerald" />
+        <MetricCard label="Mis tareas" value={crmSummary.pendingTasks} helper="Pendientes" icon={ListTodo} tone="amber" />
+        <MetricCard label="Seguimientos vencidos" value={crmSummary.overdueFollowUps} helper={`${crmSummary.todayFollowUps} para hoy`} icon={TimerReset} tone="rose" />
+      </div> : null}
+      {inboxSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <MetricCard label="Mis conversaciones" value={inboxSummary.open} helper="Abiertas" icon={MessageSquare} tone="cyan" />
+        <MetricCard label="Mis no leidas" value={inboxSummary.unreadMessages} helper={`${inboxSummary.pending} pendientes`} icon={Headphones} tone="rose" />
+        <MetricCard label="Sin responder" value={inboxSummary.unanswered} helper="Requieren respuesta" icon={MessageSquare} tone="amber" />
+      </div> : null}
+      {inboxSummary?.latest?.length ? <Card>
+        <CardHeader title="Ultimas conversaciones" description="Actividad reciente de tu inbox asignado." />
+        <Table
+          data={inboxSummary.latest.map((item) => ({
+            ...item,
+            id: item._id,
+            contactName: item.contactId?.name || 'Contacto',
+            lastMessageLabel: item.lastMessage || 'Sin mensajes',
+            dateLabel: formatDate(item.lastMessageAt)
+          }))}
+          columns={[
+            { key: 'contactName', header: 'Contacto' },
+            { key: 'channel', header: 'Canal' },
+            { key: 'lastMessageLabel', header: 'Ultimo mensaje' },
+            { key: 'dateLabel', header: 'Fecha' },
+            { key: 'open', header: '', render: (row) => <Link className="font-semibold text-cyan-700 hover:underline" to={`/inbox?conversationId=${row._id}`}>Abrir</Link> }
+          ]}
+        />
+      </Card> : null}
 
       <ContactManager
         contacts={contacts}

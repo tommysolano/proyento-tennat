@@ -22,6 +22,11 @@ El frontend nunca decide el tenant efectivo.
 - `SUPERVISOR`: agentes y contactos de su equipo.
 - `CALLCENTER`: contactos asignados.
 
+En Fase 3, `crmScope.js` centraliza el alcance de contactos, oportunidades y
+tareas. ADMIN usa `companyId`; SUPERVISOR usa sus agentes y a si mismo;
+CALLCENTER usa `assignedTo = user._id`. Un query param nunca sustituye ese
+filtro base.
+
 ## Core y modulos
 
 El core contiene autenticacion, usuarios, tenants, permisos, auditoria,
@@ -95,3 +100,37 @@ Se permite un solo nivel:
 El JWT impersonado incluye el actor original. El frontend conserva la sesion
 original, muestra un indicador persistente y llama al endpoint de cierre antes
 de restaurarla. Inicio y fin quedan en `ActivityLog`.
+
+## Dominio CRM
+
+`Contact` mantiene compatibilidad con Fases 1 y 2. `Tag`, `CustomField`,
+`Segment`, `Pipeline`, `PipelineStage`, `Opportunity`, `Task` y `Note`
+pertenecen siempre a una empresa. Los timelines combinan actividad, notas,
+tareas y oportunidades relacionadas.
+
+Las rutas CRM aplican permisos, `requireModule('crm')` y el modulo especifico.
+La UI vive bajo `/crm`; Kanban mueve etapas mediante selector y la importacion
+MVP recibe JSON o CSV pegado.
+
+## Dominio de conversaciones
+
+`Conversation` es el agregado omnicanal por contacto. `Message` registra
+entradas, salidas y notas internas; `MessageTemplate` contiene respuestas por
+empresa; `ChannelConfig` resuelve credenciales y ajustes del proveedor; y
+`WebhookEvent` garantiza idempotencia por proveedor, configuracion y evento.
+
+La logica compartida vive en `ConversationService`. Las rutas autenticadas y
+los webhooks usan el mismo servicio para actualizar ultimo mensaje, no leidos,
+asignacion, estado y actividad. Los adaptadores bajo
+`server/src/modules/conversations/adapters` aislan el transporte del dominio.
+
+El scope se calcula siempre en backend:
+
+1. ADMIN: toda su empresa.
+2. SUPERVISOR: si mismo y agentes cuyo `supervisorId` apunta al supervisor.
+3. CALLCENTER: conversaciones con `assignedTo` igual al usuario.
+4. Webhook: empresa y distribuidor salen exclusivamente de `ChannelConfig`.
+
+Los payloads del proveedor se guardan con `select: false`. Las credenciales y
+tokens del canal tampoco se seleccionan por defecto y las respuestas usan una
+representacion redactada.

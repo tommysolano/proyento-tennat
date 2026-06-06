@@ -25,27 +25,66 @@ export const ROLE_PERMISSIONS = {
   ],
   ADMIN: [
     'users:manage',
+    'crm:manage',
     'contacts:manage',
     'contacts:assign',
+    'contacts:import',
+    'contacts:export',
+    'tags:manage',
+    'custom_fields:manage',
+    'segments:manage',
+    'pipelines:manage',
+    'opportunities:manage',
+    'tasks:manage',
+    'notes:manage',
+    'conversations:manage',
+    'conversations:read',
+    'conversations:assign',
+    'conversations:send',
+    'conversations:close',
+    'channel_configs:manage',
+    'message_templates:manage',
     'activity:read',
     'company_billing:read',
     'company_settings:read',
     'company_onboarding:update'
   ],
   SUPERVISOR: [
+    'crm:read_team',
     'contacts:read_team',
     'contacts:update_team',
     'contacts:assign_team',
+    'opportunities:read_team',
+    'opportunities:update_team',
+    'opportunities:assign_team',
+    'tasks:create_team',
+    'tasks:update_team',
+    'notes:create_team',
+    'conversations:read_team',
+    'conversations:assign_team',
+    'conversations:send_team',
+    'conversations:close_team',
+    'message_templates:read',
     'activity:read_team'
   ],
   CALLCENTER: [
     'contacts:read_assigned',
     'contacts:update_assigned',
     'contacts:notes',
-    'contacts:followup'
+    'contacts:followup',
+    'opportunities:read_assigned',
+    'opportunities:update_assigned',
+    'tasks:read_assigned',
+    'tasks:update_assigned',
+    'notes:create_assigned',
+    'followups:manage_assigned',
+    'conversations:read_assigned',
+    'conversations:send_assigned',
+    'conversations:internal_notes',
+    'message_templates:use'
   ]
 };
 
 export function hasPermission(role, permission) {
-  return ROLE_PERMISSIONS[role]?.includes(permission) || false;
+  return role === 'SUPERADMIN' || ROLE_PERMISSIONS[role]?.includes(permission) || false;
 }

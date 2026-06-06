@@ -7,7 +7,11 @@
 - `core`
 - `crm`
 - `contacts`
+- `opportunities`
+- `tasks`
 - `conversations`
+- `inbox`
+- `whatsapp`
 - `calendar`
 - `billing`
 - `reporting`
@@ -36,6 +40,18 @@ En la UI de plataforma se gestionan overrides para plan de plataforma y
 distribuidor. Los planes comerciales pueden declarar `includedModules`. Las
 rutas comerciales usan `requireModule('billing')`, por lo que desactivar el
 modulo bloquea billing en backend aunque la navegacion siga siendo visible.
+
+Las rutas de Fase 3 requieren `crm` y, segun el recurso, `contacts`,
+`opportunities` o `tasks`. Estos modulos estan activos y
+`enabledByDefault` para conservar compatibilidad con tenants existentes. Un
+`ModuleEntitlement` explicito puede bloquearlos con HTTP 403.
+
+Las rutas de conversaciones y mensajes requieren `conversations` e `inbox`.
+La administracion de `ChannelConfig` requiere ademas `whatsapp`. Los tres
+modulos estan activos y `enabledByDefault` para el MVP; un entitlement
+explicito en plan, distribuidor, empresa o suscripcion puede bloquearlos.
+Los webhooks publicos resuelven el mismo entitlement `whatsapp` desde el
+tenant del `ChannelConfig`; ademas ignoran configuraciones desactivadas.
 
 Branding, configuracion y onboarding no dependen del modulo billing, lo que
 permite recuperar o configurar el tenant aun si billing esta desactivado.
