@@ -1,0 +1,130 @@
+import { ArrowLeft, Building2, ContactRound, CreditCard, UsersRound } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { getDistributorCompanyDetail } from '../../api.js';
+import { Badge } from '../../components/Badge.jsx';
+import { Button } from '../../components/Button.jsx';
+import { Card, CardHeader } from '../../components/Card.jsx';
+import { MetricCard } from '../../components/MetricCard.jsx';
+import { PageShell } from '../../components/PageShell.jsx';
+import { Table } from '../../components/Table.jsx';
+
+function money(value, currency = 'USD') {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2
+  }).format(Number(value) || 0);
+}
+
+export function CompanyDetailForDistributor() {
+  const { id } = useParams();
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadDetail = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setDetail(await getDistributorCompanyDetail(id));
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadDetail();
+  }, [loadDetail]);
+
+  if (loading) {
+    return <Card className="p-8 text-center text-sm text-slate-500">Cargando detalle...</Card>;
+  }
+
+  if (error || !detail) {
+    return <Card className="p-8 text-center text-sm text-rose-700">{error || 'Empresa no encontrada'}</Card>;
+  }
+
+  const { company, users, subscription, invoices, payments, contactsTotal, activeModules } = detail;
+
+  return (
+    <PageShell
+      eyebrow="Detalle de empresa"
+      title={company.name}
+      description="Vista consolidada del tenant desde el distribuidor."
+    >
+      <Button as={Link} to="/distributor/companies" variant="secondary" className="w-fit">
+        <ArrowLeft className="h-4 w-4" /> Volver a empresas
+      </Button>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Usuarios" value={users.length} helper="Usuarios del tenant" icon={UsersRound} tone="cyan" />
+        <MetricCard label="Contactos" value={contactsTotal} helper="Contactos totales" icon={ContactRound} tone="emerald" />
+        <MetricCard label="Facturas" value={invoices.length} helper={`${invoices.filter((invoice) => ['open', 'overdue'].includes(invoice.status)).length} pendientes`} icon={CreditCard} tone="amber" />
+        <MetricCard label="Estado" value={company.status} helper={subscription?.planId?.name || 'Sin plan'} icon={Building2} tone="rose" />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Empresa y suscripcion" description="Datos comerciales y modulos activos." />
+          <div className="space-y-3 p-5 text-sm text-slate-600">
+            <p><strong>Tax ID:</strong> {company.taxId || '-'}</p>
+            <p><strong>Industria:</strong> {company.industry}</p>
+            <p><strong>Plan:</strong> {subscription?.planId?.name || 'Sin plan'}</p>
+            <p><strong>Suscripcion:</strong> {subscription?.status || 'Sin suscripcion'}</p>
+            <p><strong>Modulos:</strong> {activeModules.join(', ') || 'Sin modulos'}</p>
+            <p><strong>Onboarding:</strong> {company.onboarding?.completed ? 'Completado' : 'Pendiente'}</p>
+          </div>
+        </Card>
+        <Card>
+          <CardHeader title="Usuarios principales" description="Roles y estado dentro de la empresa." />
+          <Table
+            data={users.map((user) => ({ ...user, id: user._id }))}
+            emptyText="No hay usuarios"
+            columns={[
+              { key: 'name', header: 'Nombre' },
+              { key: 'email', header: 'Email' },
+              { key: 'role', header: 'Rol' },
+              { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+            ]}
+          />
+        </Card>
+      </div>
+      <Card>
+        <CardHeader title="Facturas" description="Historial distribuidor → empresa." />
+        <Table
+          data={invoices.map((invoice) => ({
+            ...invoice,
+            id: invoice._id,
+            totalLabel: money(invoice.total, invoice.currency)
+          }))}
+          emptyText="No hay facturas"
+          columns={[
+            { key: 'number', header: 'Numero' },
+            { key: 'totalLabel', header: 'Total' },
+            { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
+            { key: 'dueDate', header: 'Vencimiento', render: (row) => new Date(row.dueDate).toLocaleDateString('es-EC') }
+          ]}
+        />
+      </Card>
+      <Card>
+        <CardHeader title="Pagos" description="Pagos asociados a facturas de esta empresa." />
+        <Table
+          data={payments.map((payment) => ({
+            ...payment,
+            id: payment._id,
+            invoiceLabel: payment.invoiceId?.number || '-',
+            amountLabel: money(payment.amount, payment.currency)
+          }))}
+          emptyText="No hay pagos"
+          columns={[
+            { key: 'invoiceLabel', header: 'Factura' },
+            { key: 'amountLabel', header: 'Monto' },
+            { key: 'method', header: 'Metodo' },
+            { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+          ]}
+        />
+      </Card>
+    </PageShell>
+  );
+}

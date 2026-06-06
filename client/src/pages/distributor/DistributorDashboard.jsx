@@ -8,9 +8,14 @@ import {
   createUser,
   getActivityLogs,
   getCompanies,
+  getMyPlatformInvoices,
+  getMyPlatformPayments,
+  getMyPlatformSubscription,
+  getMyUsage,
   getPlans,
   getSubscriptions,
-  getUsers
+  getUsers,
+  updatePlan
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
@@ -23,12 +28,11 @@ import { formatDate, idOf } from '../../utils/contacts.js';
 
 const cycleLabels = {
   monthly: 'Mensual',
-  quarterly: 'Trimestral',
   yearly: 'Anual'
 };
 
 function formatLimits(limits = {}) {
-  return `${limits.users ?? 0} usuarios / ${limits.contacts ?? 0} contactos / ${limits.channels ?? 0} canales`;
+  return `${limits.users ?? 0} usuarios / ${limits.contacts ?? 0} contactos / ${limits.modules ?? 0} modulos`;
 }
 
 function formatPrice(price) {
@@ -47,6 +51,11 @@ export function DistributorDashboard() {
   const [users, setUsers] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [platformSubscription, setPlatformSubscription] = useState(null);
+  const [platformInvoices, setPlatformInvoices] = useState([]);
+  const [platformPayments, setPlatformPayments] = useState([]);
+  const [platformUsage, setPlatformUsage] = useState({ current: {}, records: [] });
+  const [platformBillingError, setPlatformBillingError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState('');
   const [notice, setNotice] = useState('');
@@ -56,19 +65,35 @@ export function DistributorDashboard() {
     if (showLoader) setLoading(true);
     setError('');
     try {
-      const [companyData, planData, userData, subscriptionData, activityData] =
-        await Promise.all([
+      const [companyData, planData, userData, subscriptionData, activityData] = await Promise.all([
           getCompanies(),
           getPlans(),
           getUsers(),
           getSubscriptions(),
           getActivityLogs()
-        ]);
+      ]);
       setCompanies(companyData);
       setPlans(planData);
       setUsers(userData);
       setSubscriptions(subscriptionData);
       setActivities(activityData);
+
+      const platformData = await Promise.all([
+        getMyPlatformSubscription(),
+        getMyPlatformInvoices(),
+        getMyPlatformPayments(),
+        getMyUsage()
+      ]).catch((requestError) => {
+        setPlatformBillingError(requestError.message);
+        return null;
+      });
+      if (platformData) {
+        setPlatformBillingError('');
+        setPlatformSubscription(platformData[0]);
+        setPlatformInvoices(platformData[1]);
+        setPlatformPayments(platformData[2]);
+        setPlatformUsage(platformData[3]);
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -99,7 +124,7 @@ export function DistributorDashboard() {
         const subscription = subscriptions.find(
           (item) =>
             idOf(item.companyId) === company._id &&
-            ['active', 'trial'].includes(item.status)
+            ['active', 'trial', 'past_due', 'suspended'].includes(item.status)
         );
         const admin =
           (typeof company.adminId === 'object' && company.adminId) ||
@@ -122,7 +147,9 @@ export function DistributorDashboard() {
   );
   const subscribedCompanyIds = new Set(
     subscriptions
-      .filter((subscription) => ['active', 'trial'].includes(subscription.status))
+      .filter((subscription) =>
+        ['active', 'trial', 'past_due', 'suspended'].includes(subscription.status)
+      )
       .map((subscription) => idOf(subscription.companyId))
   );
   const companiesWithoutSubscription = companies.filter(
@@ -162,8 +189,16 @@ export function DistributorDashboard() {
           limits: {
             users: Number(data.get('users')),
             contacts: Number(data.get('contacts')),
-            channels: Number(data.get('channels'))
+            messages: Number(data.get('messages')),
+            storageMb: Number(data.get('storageMb')),
+            modules: Number(data.get('modules'))
           },
+          code: data.get('code'),
+          currency: data.get('currency'),
+          includedModules: String(data.get('includedModules') || '')
+            .split(',')
+            .map((moduleKey) => moduleKey.trim())
+            .filter(Boolean),
           features: String(data.get('features') || '')
             .split(',')
             .map((feature) => feature.trim())
@@ -173,6 +208,27 @@ export function DistributorDashboard() {
       `Plan "${name}" creado correctamente.`
     );
     if (created) form.reset();
+  }
+
+  async function handleEditPlan(plan) {
+    const name = window.prompt('Nombre del plan', plan.name);
+    if (!name) return;
+    const price = window.prompt('Precio', plan.price);
+    if (price === null) return;
+    await runMutation(
+      `plan-edit-${plan._id}`,
+      () => updatePlan(plan._id, { name, price: Number(price) }),
+      `Plan "${name}" actualizado.`
+    );
+  }
+
+  async function handlePlanStatus(plan) {
+    const status = plan.status === 'active' ? 'inactive' : 'active';
+    await runMutation(
+      `plan-status-${plan._id}`,
+      () => updatePlan(plan._id, { status }),
+      `Plan ${status === 'active' ? 'activado' : 'desactivado'}.`
+    );
   }
 
   async function handleCreateCompany(event) {
@@ -289,6 +345,7 @@ export function DistributorDashboard() {
             emptyText="Todavia no hay planes creados"
             columns={[
               { key: 'name', header: 'Nombre' },
+              { key: 'code', header: 'Codigo' },
               { key: 'priceLabel', header: 'Precio' },
               { key: 'cycleLabel', header: 'Ciclo' },
               { key: 'limitsLabel', header: 'Limites' },
@@ -297,6 +354,20 @@ export function DistributorDashboard() {
                 key: 'status',
                 header: 'Estado',
                 render: (row) => <Badge tone={row.status}>{row.status}</Badge>
+              },
+              {
+                key: 'actions',
+                header: 'Acciones',
+                render: (row) => (
+                  <div className="flex gap-2">
+                    <Button className="px-3" variant="secondary" onClick={() => handleEditPlan(row)}>
+                      Editar
+                    </Button>
+                    <Button className="px-3" variant="secondary" onClick={() => handlePlanStatus(row)}>
+                      {row.status === 'active' ? 'Desactivar' : 'Activar'}
+                    </Button>
+                  </div>
+                )
               }
             ]}
           />
@@ -306,24 +377,27 @@ export function DistributorDashboard() {
           <CardHeader title="Crear plan" description="Precio, ciclo, limites y funciones validados." />
           <form className="space-y-4 p-5" onSubmit={handleCreatePlan}>
             <input required name="name" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Nombre del plan" />
+            <input required name="code" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="codigo-del-plan" />
             <div className="grid gap-3 sm:grid-cols-2">
               <input required min="0" step="0.01" type="number" name="price" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Precio USD" />
               <select name="billingCycle" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm">
                 <option value="monthly">Mensual</option>
-                <option value="quarterly">Trimestral</option>
                 <option value="yearly">Anual</option>
               </select>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <input name="currency" defaultValue="USD" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Moneda" />
+            <div className="grid gap-3 sm:grid-cols-2">
               <input required min="0" type="number" name="users" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Usuarios" />
               <input required min="0" type="number" name="contacts" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contactos" />
-              <input required min="0" type="number" name="channels" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Canales" />
+              <input required min="0" type="number" name="messages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Mensajes" />
+              <input required min="0" type="number" name="storageMb" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Storage MB" />
+              <input required min="0" type="number" name="modules" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos" />
             </div>
             <textarea name="description" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Descripcion" />
+            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts" />
             <input name="features" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funciones separadas por coma" />
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activo</option>
-              <option value="draft">Borrador</option>
               <option value="inactive">Inactivo</option>
             </select>
             <Button className="w-full" type="submit" disabled={Boolean(submitting)}>
@@ -382,7 +456,7 @@ export function DistributorDashboard() {
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activa</option>
               <option value="trial">Prueba</option>
-              <option value="inactive">Inactiva</option>
+              <option value="suspended">Suspendida</option>
             </select>
             <Button className="w-full" type="submit" disabled={Boolean(submitting)}>
               <Plus className="h-4 w-4" />
@@ -467,6 +541,86 @@ export function DistributorDashboard() {
           ]}
         />
       </Card>
+
+      <div id="plataforma" className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Mi plan de plataforma" description="Suscripcion del distribuidor con la plataforma." />
+          <div className="space-y-4 p-5">
+            {platformBillingError ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                {platformBillingError}
+              </p>
+            ) : platformSubscription ? (
+              <>
+                <div className="flex items-start justify-between rounded-lg border border-slate-200 p-4">
+                  <div>
+                    <p className="text-sm text-slate-500">Plan</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-950">
+                      {platformSubscription.platformPlanId?.name}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {formatPrice(platformSubscription.platformPlanId?.price)} / {platformSubscription.platformPlanId?.billingCycle}
+                    </p>
+                  </div>
+                  <Badge tone={platformSubscription.status}>{platformSubscription.status}</Badge>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {['companies', 'users', 'contacts'].map((metric) => (
+                    <div key={metric} className="rounded-lg bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase text-slate-500">{metric}</p>
+                      <p className="mt-1 text-xl font-semibold text-slate-950">
+                        {platformUsage.current?.[metric] ?? 0}
+                        <span className="text-sm font-normal text-slate-400">
+                          {' '}/ {platformSubscription.platformPlanId?.limits?.[metric] ?? '-'}
+                        </span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-slate-500">
+                  Modulos incluidos: {platformSubscription.platformPlanId?.includedModules?.join(', ') || 'Sin modulos'}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">No hay una suscripcion de plataforma visible.</p>
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Facturas y pagos de plataforma" description="Solo datos del distribuidor autenticado." />
+          <div className="grid gap-5 p-5 sm:grid-cols-2">
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-950">Facturas</p>
+              <div className="space-y-2">
+                {platformInvoices.length ? platformInvoices.slice(0, 5).map((invoice) => (
+                  <div key={invoice._id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="font-semibold">{invoice.number}</span>
+                      <Badge tone={invoice.status}>{invoice.status}</Badge>
+                    </div>
+                    <p className="mt-2 text-slate-500">{formatPrice(invoice.total)}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">Sin facturas.</p>}
+              </div>
+            </div>
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-950">Pagos</p>
+              <div className="space-y-2">
+                {platformPayments.length ? platformPayments.slice(0, 5).map((payment) => (
+                  <div key={payment._id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="font-semibold">{payment.invoiceId?.number || 'Pago manual'}</span>
+                      <Badge tone={payment.status}>{payment.status}</Badge>
+                    </div>
+                    <p className="mt-2 text-slate-500">{formatPrice(payment.amount)}</p>
+                  </div>
+                )) : <p className="text-sm text-slate-500">Sin pagos.</p>}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
     </PageShell>
   );
 }

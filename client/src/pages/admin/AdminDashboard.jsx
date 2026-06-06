@@ -6,10 +6,15 @@ import {
   createUser,
   deleteContact,
   getActivityLogs,
+  getCompanyInvoices,
+  getCompanyOnboarding,
+  getCompanyPayments,
+  getCompanySettings,
   getCompanies,
   getContacts,
   getSubscriptions,
   getUsers,
+  updateCompanyOnboarding,
   updateContact
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
@@ -27,6 +32,11 @@ export function AdminDashboard() {
   const [activities, setActivities] = useState([]);
   const [company, setCompany] = useState(null);
   const [subscription, setSubscription] = useState(null);
+  const [companyInvoices, setCompanyInvoices] = useState([]);
+  const [companyPayments, setCompanyPayments] = useState([]);
+  const [companySettings, setCompanySettings] = useState(null);
+  const [onboarding, setOnboarding] = useState(null);
+  const [commercialError, setCommercialError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -35,6 +45,7 @@ export function AdminDashboard() {
   const loadDashboard = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     setError('');
+    setCommercialError('');
 
     try {
       const [userData, contactData, activityData, companyData, subscriptionData] =
@@ -50,6 +61,26 @@ export function AdminDashboard() {
       setActivities(activityData);
       setCompany(companyData[0] || null);
       setSubscription(subscriptionData[0] || null);
+
+      const [settingsData, onboardingData] = await Promise.all([
+        getCompanySettings(),
+        getCompanyOnboarding()
+      ]);
+      setCompanySettings(settingsData);
+      setOnboarding(onboardingData);
+
+      const billingData = await Promise.all([
+        getCompanyInvoices(),
+        getCompanyPayments()
+      ]).catch((billingError) => {
+        setCommercialError(billingError.message);
+        return null;
+      });
+      if (billingData) {
+        setCommercialError('');
+        setCompanyInvoices(billingData[0]);
+        setCompanyPayments(billingData[1]);
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -119,6 +150,13 @@ export function AdminDashboard() {
   async function handleDeleteContact(contactId) {
     if (!window.confirm('Eliminar este contacto de forma permanente?')) return false;
     return runMutation(() => deleteContact(contactId), 'Contacto eliminado.');
+  }
+
+  async function handleProfileOnboarding() {
+    await runMutation(
+      () => updateCompanyOnboarding({ profile: true }),
+      'Perfil de empresa marcado como completado.'
+    );
   }
 
   if (loading) {
@@ -286,6 +324,100 @@ export function AdminDashboard() {
                 </div>
               ))}
             </div>
+          </div>
+        </Card>
+      </div>
+
+      <div id="facturacion" className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Facturas de la empresa" description="Solo lectura para la empresa autenticada." />
+          {commercialError ? (
+            <p className="p-5 text-sm text-amber-700">{commercialError}</p>
+          ) : (
+            <Table
+              data={companyInvoices.map((invoice) => ({
+                ...invoice,
+                id: invoice._id,
+                totalLabel: new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: invoice.currency || 'USD'
+                }).format(invoice.total || 0),
+                dueLabel: new Date(invoice.dueDate).toLocaleDateString('es-EC'),
+                paymentsLabel: `${invoice.payments?.length || 0} pago(s)`
+              }))}
+              emptyText="No hay facturas emitidas"
+              columns={[
+                { key: 'number', header: 'Numero' },
+                { key: 'totalLabel', header: 'Total' },
+                { key: 'dueLabel', header: 'Vence' },
+                { key: 'paymentsLabel', header: 'Pagos' },
+                { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+              ]}
+            />
+          )}
+        </Card>
+        <Card>
+          <CardHeader title="Pagos de la empresa" description="Pagos registrados por el distribuidor." />
+          <Table
+            data={companyPayments.map((payment) => ({
+              ...payment,
+              id: payment._id,
+              invoiceLabel: payment.invoiceId?.number || '-',
+              amountLabel: new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: payment.currency || 'USD'
+              }).format(payment.amount || 0),
+              paidLabel: payment.paidAt
+                ? new Date(payment.paidAt).toLocaleDateString('es-EC')
+                : '-'
+            }))}
+            emptyText="No hay pagos registrados"
+            columns={[
+              { key: 'invoiceLabel', header: 'Factura' },
+              { key: 'amountLabel', header: 'Monto' },
+              { key: 'method', header: 'Metodo' },
+              { key: 'paidLabel', header: 'Fecha' },
+              { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+            ]}
+          />
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card id="configuracion">
+          <CardHeader title="Configuracion de empresa" description="Vista comercial de solo lectura." />
+          <div className="space-y-3 p-5 text-sm text-slate-600">
+            <p><strong>Empresa:</strong> {companySettings?.name || company?.name}</p>
+            <p><strong>Tax ID:</strong> {companySettings?.taxId || '-'}</p>
+            <p><strong>Industria:</strong> {companySettings?.industry || '-'}</p>
+            <p><strong>Timezone:</strong> {companySettings?.settings?.timezone || '-'}</p>
+            <p><strong>Locale:</strong> {companySettings?.settings?.locale || '-'}</p>
+            <p><strong>Marca del distribuidor:</strong> {companySettings?.distributorId?.branding?.companyName || companySettings?.distributorId?.name || '-'}</p>
+          </div>
+        </Card>
+        <Card id="onboarding">
+          <CardHeader title="Onboarding de empresa" description="Checklist calculado con datos reales." />
+          <div className="space-y-3 p-5">
+            {Object.entries(onboarding?.steps || {}).map(([step, completed]) => (
+              <div key={step} className="flex items-center justify-between rounded-md border border-slate-200 px-4 py-3 text-sm">
+                <span className="font-medium text-slate-700">
+                  {{
+                    profile: 'Completar perfil de empresa',
+                    users: 'Crear usuarios',
+                    contacts: 'Crear o importar contactos',
+                    firstAssignment: 'Asignar contactos'
+                  }[step] || step}
+                </span>
+                <Badge tone={completed ? 'active' : 'pending'}>
+                  {completed ? 'completo' : 'pendiente'}
+                </Badge>
+              </div>
+            ))}
+            {!onboarding?.steps?.profile ? (
+              <Button onClick={handleProfileOnboarding} disabled={busy}>
+                Marcar perfil completado
+              </Button>
+            ) : null}
           </div>
         </Card>
       </div>

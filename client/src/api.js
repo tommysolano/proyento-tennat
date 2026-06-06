@@ -39,6 +39,11 @@ export const createPlan = (plan) =>
     method: 'POST',
     body: JSON.stringify(plan)
   });
+export const updatePlan = (planId, plan) =>
+  apiRequest(`/plans/${planId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(plan)
+  });
 
 export const getUsers = () => apiRequest('/users');
 export const createUser = (user) =>
@@ -91,3 +96,143 @@ export const addContactNote = (contactId, text) =>
   });
 
 export const getActivityLogs = () => apiRequest('/activity-logs');
+
+export const getSuperAdminOverview = () => apiRequest('/superadmin/overview');
+export const getDistributors = () => apiRequest('/superadmin/distributors');
+export const createDistributor = (payload) =>
+  apiRequest('/superadmin/distributors', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updateDistributor = (id, payload) =>
+  apiRequest(`/superadmin/distributors/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const getPlatformPlans = () => apiRequest('/superadmin/platform-plans');
+export const createPlatformPlan = (payload) =>
+  apiRequest('/superadmin/platform-plans', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updatePlatformPlan = (id, payload) =>
+  apiRequest(`/superadmin/platform-plans/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const getPlatformSubscriptions = () =>
+  apiRequest('/superadmin/platform-subscriptions');
+export const createPlatformSubscription = (payload) =>
+  apiRequest('/superadmin/platform-subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updatePlatformSubscription = (id, payload) =>
+  apiRequest(`/superadmin/platform-subscriptions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const getPlatformInvoices = () => apiRequest('/superadmin/invoices');
+export const createPlatformInvoice = (payload) =>
+  apiRequest('/superadmin/invoices', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updatePlatformInvoice = (id, payload) =>
+  apiRequest(`/superadmin/invoices/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const getPlatformPayments = () => apiRequest('/superadmin/payments');
+export const createPlatformPayment = (payload) =>
+  apiRequest('/superadmin/payments', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const getModules = () => apiRequest('/superadmin/modules');
+export const updateModuleEntitlement = (payload) =>
+  apiRequest('/superadmin/modules/entitlements', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+export const getAuditLog = () => apiRequest('/superadmin/audit');
+
+export const getMyPlatformSubscription = () =>
+  apiRequest('/billing/my-platform-subscription');
+export const getMyPlatformInvoices = () => apiRequest('/billing/my-platform-invoices');
+export const getMyPlatformPayments = () => apiRequest('/billing/my-platform-payments');
+export const getMyUsage = () => apiRequest('/billing/my-usage');
+
+export const getDistributorBillingOverview = () =>
+  apiRequest('/distributor/billing/overview');
+export const getDistributorCompanies = () => apiRequest('/distributor/companies');
+export const getDistributorCompanyDetail = (companyId) =>
+  apiRequest(`/distributor/companies/${companyId}/detail`);
+export const suspendCompany = (companyId) =>
+  apiRequest(`/distributor/companies/${companyId}/suspend`, { method: 'POST' });
+export const reactivateCompany = (companyId) =>
+  apiRequest(`/distributor/companies/${companyId}/reactivate`, { method: 'POST' });
+export const setCompanySubscription = (companyId, payload) =>
+  apiRequest(`/distributor/companies/${companyId}/subscription`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+
+export function getDistributorInvoices(filters = {}) {
+  const query = new URLSearchParams();
+  if (filters.companyId) query.set('companyId', filters.companyId);
+  if (filters.status) query.set('status', filters.status);
+  return apiRequest(`/distributor/invoices${query.toString() ? `?${query}` : ''}`);
+}
+export const getDistributorInvoice = (invoiceId) =>
+  apiRequest(`/distributor/invoices/${invoiceId}`);
+export const createDistributorInvoice = (payload) =>
+  apiRequest('/distributor/invoices', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updateDistributorInvoice = (invoiceId, payload) =>
+  apiRequest(`/distributor/invoices/${invoiceId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export function getDistributorPayments(filters = {}) {
+  const query = new URLSearchParams();
+  if (filters.companyId) query.set('companyId', filters.companyId);
+  if (filters.status) query.set('status', filters.status);
+  return apiRequest(`/distributor/payments${query.toString() ? `?${query}` : ''}`);
+}
+export const createDistributorPayment = (payload) =>
+  apiRequest('/distributor/payments', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const getDistributorSettings = () => apiRequest('/distributor/settings');
+export const updateDistributorSettings = (payload) =>
+  apiRequest('/distributor/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const updateDistributorBranding = (payload) =>
+  apiRequest('/distributor/branding', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const getDistributorOnboarding = () => apiRequest('/distributor/onboarding');
+
+export const getCompanyInvoices = () => apiRequest('/company/billing/invoices');
+export const getCompanyPayments = () => apiRequest('/company/billing/payments');
+export const getCompanySettings = () => apiRequest('/company/settings');
+export const getCompanyOnboarding = () => apiRequest('/company/onboarding');
+export const updateCompanyOnboarding = (payload) =>
+  apiRequest('/company/onboarding', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });

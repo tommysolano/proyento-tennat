@@ -9,6 +9,9 @@
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --tenant-primary: #0e7490;
+  --tenant-secondary: #0f172a;
+  --tenant-accent: #06b6d4;
 }
 
 body {

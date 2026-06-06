@@ -4,6 +4,11 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
 import { User } from '../models/User.js';
 import { recordActivity } from '../utils/activity.js';
+import { checkPlatformLimit } from '../utils/platformLimits.js';
+import {
+  refreshCompanyOnboarding,
+  refreshDistributorOnboarding
+} from '../utils/onboarding.js';
 import {
   cleanString,
   EMAIL_PATTERN,
@@ -137,6 +142,7 @@ router.post('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) 
       }
     }
 
+    await checkPlatformLimit(distributorId, 'users');
     const user = await User.create({
       name,
       email,
@@ -163,6 +169,8 @@ router.post('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) 
       summary: `${role} creado: ${user.name}`,
       metadata: { createdUserId: user._id, role, email: user.email }
     });
+    await refreshDistributorOnboarding(distributorId);
+    await refreshCompanyOnboarding(companyId);
 
     await user.populate([
       { path: 'distributorId', select: 'name' },

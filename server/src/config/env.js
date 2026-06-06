@@ -7,8 +7,8 @@ const serverRoot = resolve(currentDir, '../..');
 const projectRoot = resolve(serverRoot, '..');
 
 export function loadEnv() {
+  dotenv.config({ path: resolve(serverRoot, '.env') });
   dotenv.config({ path: resolve(projectRoot, '.env') });
-  dotenv.config({ path: resolve(serverRoot, '.env'), override: true });
 }
 
 export function validateEnv() {

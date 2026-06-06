@@ -6,10 +6,14 @@ import activityLogRoutes from './routes/activityLogRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import channelConfigRoutes from './routes/channelConfigRoutes.js';
 import companyRoutes from './routes/companyRoutes.js';
+import companyPortalRoutes from './routes/companyPortalRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import conversationRoutes from './routes/conversationRoutes.js';
 import distributorRoutes from './routes/distributorRoutes.js';
+import distributorCommercialRoutes from './routes/distributorCommercialRoutes.js';
 import planRoutes from './routes/planRoutes.js';
+import platformBillingRoutes from './routes/platformBillingRoutes.js';
+import superAdminRoutes from './routes/superAdminRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
@@ -34,6 +38,10 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/superadmin', superAdminRoutes);
+app.use('/api/billing', platformBillingRoutes);
+app.use('/api/distributor', distributorCommercialRoutes);
+app.use('/api/company', companyPortalRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/distributors', distributorRoutes);
 app.use('/api/companies', companyRoutes);

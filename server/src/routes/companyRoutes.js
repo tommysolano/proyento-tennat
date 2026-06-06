@@ -3,10 +3,15 @@ import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
 import { recordActivity } from '../utils/activity.js';
+import { checkPlatformLimit } from '../utils/platformLimits.js';
 import { cleanString } from '../utils/validation.js';
+import {
+  refreshCompanyOnboarding,
+  refreshDistributorOnboarding
+} from '../utils/onboarding.js';
 
 const router = Router();
-const COMPANY_STATUSES = ['active', 'inactive', 'trial'];
+const COMPANY_STATUSES = ['active', 'suspended', 'cancelled', 'trial'];
 
 function companyScope(user) {
   if (user.role === 'DISTRIBUTOR') return { distributorId: user.distributorId };
@@ -83,6 +88,7 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       return res.status(403).json({ message: 'El distribuidor autenticado no tiene distributorId' });
     }
 
+    await checkPlatformLimit(req.user.distributorId, 'companies');
     const company = await Company.create({
       ...companyPayload(req.body),
       distributorId: req.user.distributorId
@@ -94,6 +100,8 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       summary: `Empresa creada: ${company.name}`,
       metadata: { companyId: company._id, taxId: company.taxId }
     });
+    await refreshDistributorOnboarding(req.user.distributorId);
+    await refreshCompanyOnboarding(company._id);
     await company.populate([
       { path: 'distributorId', select: 'name' },
       { path: 'adminId', select: 'name email status' }
@@ -104,14 +112,33 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   }
 });
 
-router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
+async function updateCompany(req, res, next) {
   try {
-    const company = await Company.findOneAndUpdate(
-      { _id: req.params.id, distributorId: req.user.distributorId },
-      companyPayload(req.body, true),
-      { new: true, runValidators: true }
-    );
+    const company = await Company.findOne({
+      _id: req.params.id,
+      distributorId: req.user.distributorId
+    });
     if (!company) return res.status(404).json({ message: 'Empresa no encontrada' });
+    const previousStatus = company.status;
+    Object.assign(company, companyPayload(req.body, true));
+    await company.save();
+    let type = 'company_updated';
+    if (company.status === 'suspended' && previousStatus !== 'suspended') {
+      type = 'company_suspended';
+    } else if (
+      ['active', 'trial'].includes(company.status) &&
+      ['suspended', 'inactive'].includes(previousStatus)
+    ) {
+      type = 'company_reactivated';
+    }
+    await recordActivity({
+      user: req.user,
+      type,
+      companyId: company._id,
+      summary: `Empresa actualizada: ${company.name}`,
+      metadata: { previousStatus, status: company.status }
+    });
+    await refreshCompanyOnboarding(company._id);
     await company.populate([
       { path: 'distributorId', select: 'name' },
       { path: 'adminId', select: 'name email status' }
@@ -120,7 +147,10 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+}
+
+router.patch('/:id', roleMiddleware('DISTRIBUTOR'), updateCompany);
+router.put('/:id', roleMiddleware('DISTRIBUTOR'), updateCompany);
 
 router.delete('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   try {

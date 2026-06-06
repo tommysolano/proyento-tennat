@@ -4,23 +4,41 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Plan } from '../models/Plan.js';
 import { recordActivity } from '../utils/activity.js';
 import { cleanString } from '../utils/validation.js';
+import { refreshDistributorOnboarding } from '../utils/onboarding.js';
 
 const router = Router();
-const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly'];
-const PLAN_STATUSES = ['active', 'inactive', 'draft'];
-const LIMIT_FIELDS = ['users', 'contacts', 'channels'];
+const BILLING_CYCLES = ['monthly', 'yearly'];
+const PLAN_STATUSES = ['active', 'inactive', 'archived'];
+const LIMIT_FIELDS = ['users', 'contacts', 'messages', 'storageMb', 'modules'];
 
 function planScope(user) {
+  if (user.role === 'SUPERADMIN') return {};
   return { distributorId: user.distributorId };
+}
+
+function codeFromName(name) {
+  return cleanString(name)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 function planPayload(body, partial = false) {
   const data = {};
+  let parsedName;
 
   if (!partial || 'name' in body) {
-    const name = cleanString(body.name);
-    if (!name) throw Object.assign(new Error('name es requerido'), { status: 400 });
-    data.name = name;
+    parsedName = cleanString(body.name);
+    if (!parsedName) throw Object.assign(new Error('name es requerido'), { status: 400 });
+    data.name = parsedName;
+  }
+
+  if (!partial || 'code' in body) {
+    const code = cleanString(body.code).toLowerCase() || codeFromName(parsedName);
+    if (!code) throw Object.assign(new Error('code es requerido'), { status: 400 });
+    data.code = code;
   }
 
   if (!partial || 'price' in body) {
@@ -36,6 +54,10 @@ function planPayload(body, partial = false) {
       throw Object.assign(new Error('description debe ser un string'), { status: 400 });
     }
     data.description = cleanString(body.description);
+  }
+
+  if ('currency' in body) {
+    data.currency = cleanString(body.currency).toUpperCase() || 'USD';
   }
 
   if ('billingCycle' in body) {
@@ -78,13 +100,26 @@ function planPayload(body, partial = false) {
     data.features = body.features.map(cleanString).filter(Boolean);
   }
 
+  if ('includedModules' in body) {
+    if (
+      !Array.isArray(body.includedModules) ||
+      body.includedModules.some((item) => typeof item !== 'string')
+    ) {
+      throw Object.assign(new Error('includedModules debe ser una lista de strings'), {
+        status: 400
+      });
+    }
+    data.includedModules = [...new Set(body.includedModules.map(cleanString).filter(Boolean))];
+  }
+
+  if ('metadata' in body) data.metadata = body.metadata || {};
+
   return data;
 }
 
 router.use(authMiddleware);
-router.use(roleMiddleware('DISTRIBUTOR'));
 
-router.get('/', async (req, res, next) => {
+router.get('/', roleMiddleware('DISTRIBUTOR', 'SUPERADMIN'), async (req, res, next) => {
   try {
     const plans = await Plan.find(planScope(req.user))
       .populate('distributorId', 'name')
@@ -96,7 +131,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', roleMiddleware('DISTRIBUTOR', 'SUPERADMIN'), async (req, res, next) => {
   try {
     const plan = await Plan.findOne({ _id: req.params.id, ...planScope(req.user) })
       .populate('distributorId', 'name');
@@ -107,7 +142,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   try {
     if (!req.user.distributorId) {
       return res.status(403).json({ message: 'El distribuidor autenticado no tiene distributorId' });
@@ -123,6 +158,7 @@ router.post('/', async (req, res, next) => {
       summary: `Plan creado: ${plan.name}`,
       metadata: { planId: plan._id, price: plan.price, billingCycle: plan.billingCycle }
     });
+    await refreshDistributorOnboarding(req.user.distributorId);
     await plan.populate('distributorId', 'name');
     res.status(201).json(plan);
   } catch (error) {
@@ -130,7 +166,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+async function updatePlan(req, res, next) {
   try {
     const plan = await Plan.findOneAndUpdate(
       { _id: req.params.id, distributorId: req.user.distributorId },
@@ -138,20 +174,36 @@ router.put('/:id', async (req, res, next) => {
       { new: true, runValidators: true }
     ).populate('distributorId', 'name');
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });
+    await recordActivity({
+      user: req.user,
+      type: 'plan_updated',
+      summary: `Plan actualizado: ${plan.name}`,
+      metadata: { planId: plan._id, status: plan.status, code: plan.code }
+    });
     res.json(plan);
   } catch (error) {
     next(error);
   }
-});
+}
 
-router.delete('/:id', async (req, res, next) => {
+router.patch('/:id', roleMiddleware('DISTRIBUTOR'), updatePlan);
+router.put('/:id', roleMiddleware('DISTRIBUTOR'), updatePlan);
+
+router.delete('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   try {
-    const plan = await Plan.findOneAndDelete({
-      _id: req.params.id,
-      distributorId: req.user.distributorId
-    });
+    const plan = await Plan.findOneAndUpdate(
+      { _id: req.params.id, distributorId: req.user.distributorId },
+      { status: 'archived' },
+      { new: true }
+    );
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });
-    res.json({ message: 'Plan eliminado' });
+    await recordActivity({
+      user: req.user,
+      type: 'plan_updated',
+      summary: `Plan archivado: ${plan.name}`,
+      metadata: { planId: plan._id, status: plan.status }
+    });
+    res.json(plan);
   } catch (error) {
     next(error);
   }

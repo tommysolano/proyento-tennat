@@ -6,9 +6,11 @@ import { Plan } from '../models/Plan.js';
 import { Subscription } from '../models/Subscription.js';
 import { recordActivity } from '../utils/activity.js';
 import { isValidObjectId } from '../utils/validation.js';
+import { refreshDistributorOnboarding } from '../utils/onboarding.js';
 
 const router = Router();
-const SUBSCRIPTION_STATUSES = ['active', 'past_due', 'cancelled', 'trial'];
+const SUBSCRIPTION_STATUSES = ['trial', 'active', 'past_due', 'cancelled', 'suspended'];
+const CURRENT_SUBSCRIPTION_STATUSES = ['trial', 'active', 'past_due', 'suspended'];
 
 function subscriptionScope(user) {
   if (user.role === 'DISTRIBUTOR') return { distributorId: user.distributorId };
@@ -18,14 +20,23 @@ function subscriptionScope(user) {
 function populateSubscription(query) {
   return query
     .populate('companyId', 'name status')
-    .populate('planId', 'name price billingCycle status')
+    .populate(
+      'planId',
+      'name code price currency billingCycle status limits includedModules features'
+    )
     .populate('distributorId', 'name');
 }
 
 function subscriptionDates(body) {
   const data = {};
 
-  for (const field of ['startsAt', 'endsAt']) {
+  for (const field of [
+    'startsAt',
+    'endsAt',
+    'trialEndsAt',
+    'currentPeriodStart',
+    'currentPeriodEnd'
+  ]) {
     if (field in body) {
       if (body[field] === null && field === 'endsAt') {
         data[field] = null;
@@ -39,6 +50,12 @@ function subscriptionDates(body) {
       data[field] = date;
     }
   }
+
+  if ('cancelAtPeriodEnd' in body) data.cancelAtPeriodEnd = Boolean(body.cancelAtPeriodEnd);
+  for (const field of ['paymentProvider', 'providerCustomerId', 'providerSubscriptionId']) {
+    if (field in body) data[field] = typeof body[field] === 'string' ? body[field].trim() : '';
+  }
+  if ('metadata' in body) data.metadata = body.metadata || {};
 
   return data;
 }
@@ -109,7 +126,7 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     const existingSubscription = await Subscription.findOne({
       companyId: req.body.companyId,
       distributorId: req.user.distributorId,
-      status: { $in: ['active', 'trial'] }
+      status: { $in: CURRENT_SUBSCRIPTION_STATUSES }
     });
     if (existingSubscription) {
       return res.status(409).json({
@@ -140,9 +157,13 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
         status: subscription.status
       }
     });
+    await refreshDistributorOnboarding(req.user.distributorId);
     await subscription.populate([
       { path: 'companyId', select: 'name status' },
-      { path: 'planId', select: 'name price billingCycle status' },
+      {
+        path: 'planId',
+        select: 'name code price currency billingCycle status limits includedModules features'
+      },
       { path: 'distributorId', select: 'name' }
     ]);
     res.status(201).json(subscription);
@@ -171,12 +192,12 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     current.planId = planId;
     if ('status' in req.body) current.status = req.body.status;
 
-    if (['active', 'trial'].includes(current.status)) {
+    if (CURRENT_SUBSCRIPTION_STATUSES.includes(current.status)) {
       const duplicate = await Subscription.exists({
         _id: { $ne: current._id },
         companyId,
         distributorId: req.user.distributorId,
-        status: { $in: ['active', 'trial'] }
+        status: { $in: CURRENT_SUBSCRIPTION_STATUSES }
       });
       if (duplicate) {
         return res.status(409).json({
@@ -200,7 +221,10 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     });
     await current.populate([
       { path: 'companyId', select: 'name status' },
-      { path: 'planId', select: 'name price billingCycle status' },
+      {
+        path: 'planId',
+        select: 'name code price currency billingCycle status limits includedModules features'
+      },
       { path: 'distributorId', select: 'name' }
     ]);
     res.json(current);

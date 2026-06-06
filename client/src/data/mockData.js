@@ -282,7 +282,7 @@ export const conversations = [
 ];
 
 export const demoAccounts = [
-  { role: 'Programador VPS', email: 'programador@demo.com' },
+  { role: 'Superadmin', email: 'superadmin@example.com' },
   { role: 'Distribuidor', email: 'distributor@demo.com' },
   { role: 'Administrador / Empresa', email: 'admin@demo.com' },
   { role: 'Admin Altamar', email: 'admin.altamar@demo.com' },

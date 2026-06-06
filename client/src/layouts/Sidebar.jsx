@@ -5,8 +5,10 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { sidebarItemsByRole } from './sidebarItems.js';
 
 export function Sidebar({ open, onClose }) {
-  const { user, impersonator, logout } = useAuth();
+  const { user, tenant, impersonator, logout } = useAuth();
   const items = sidebarItemsByRole[user?.role] || [];
+  const branding = tenant?.distributor?.branding || {};
+  const brandName = branding.companyName || tenant?.distributor?.name || 'TenantDesk';
 
   return (
     <>
@@ -22,11 +24,22 @@ export function Sidebar({ open, onClose }) {
         }`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-cyan-700 text-white">
-            <PanelsTopLeft className="h-5 w-5" />
-          </div>
+          {branding.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt={brandName}
+              className="h-10 w-10 rounded-md border border-slate-200 object-contain"
+            />
+          ) : (
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-md text-white"
+              style={{ backgroundColor: 'var(--tenant-primary)' }}
+            >
+              <PanelsTopLeft className="h-5 w-5" />
+            </div>
+          )}
           <div>
-            <p className="text-sm font-bold text-slate-950">TenantDesk</p>
+            <p className="text-sm font-bold text-slate-950">{brandName}</p>
             <p className="text-xs text-slate-500">SaaS multi-tenant</p>
           </div>
         </div>

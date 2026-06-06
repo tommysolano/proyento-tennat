@@ -1,18 +1,13 @@
-# Plataforma Multi-Tenant MERN
+# TenantDesk MERN Multi-Tenant
 
-Cascaron inicial de una web app SaaS multi-tenant con MongoDB, Express, React y Node.js.
-
-## Estructura
-
-```text
-client/   Frontend React + Vite + Tailwind
-server/   Backend Node.js + Express + MongoDB/Mongoose
-```
+Base SaaS multi-tenant con React, Vite, Tailwind, Node.js, Express, MongoDB,
+Mongoose y JWT. Incluye gobierno de plataforma y la capa comercial completa
+del distribuidor hacia sus empresas.
 
 ## Requisitos
 
 - Node.js 20+
-- MongoDB local o una URI de MongoDB Atlas
+- MongoDB local o MongoDB Atlas
 
 ## Instalacion
 
@@ -20,107 +15,130 @@ server/   Backend Node.js + Express + MongoDB/Mongoose
 npm install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
+npm run seed
+npm run dev
 ```
 
-En Windows PowerShell puedes crear los archivos locales asi:
+En PowerShell:
 
 ```powershell
 Copy-Item server/.env.example server/.env
 Copy-Item client/.env.example client/.env
 ```
 
-Si PowerShell bloquea `npm` por politica de ejecucion, usa `npm.cmd` en los mismos comandos.
+Los `.env` reales estan ignorados y no deben versionarse. La precedencia de
+configuracion es: variables del proceso, `server/.env`, `.env` raiz.
 
-Edita `server/.env` para configurar `MONGODB_URI`, `PORT`, `JWT_SECRET` y `CLIENT_URL`.
-Estos archivos estan ignorados por Git y nunca deben incluirse en el repositorio.
+## Cuentas demo
 
-## Datos demo
+El seed es exclusivamente para desarrollo.
 
-Para cargar datos demo:
+| Rol | Email | Password |
+| --- | --- | --- |
+| SUPERADMIN | superadmin@example.com | Admin123456 |
+| DISTRIBUTOR | distributor@demo.com | Demo1234! |
+| ADMIN | admin@demo.com | Demo1234! |
+| SUPERVISOR | supervisor@demo.com | Demo1234! |
+| CALLCENTER | callcenter@demo.com | Demo1234! |
 
-```bash
-npm run seed
-```
+No use estas credenciales en produccion.
 
-Tambien puedes poner `DEMO_SEED=true` en `server/.env` para recargar los datos al iniciar el backend.
-
-Usuarios demo, todos con password `Demo1234!`:
-
-| Rol | Email |
-| --- | --- |
-| Programador VPS | programador@demo.com |
-| Distribuidor | distributor@demo.com |
-| Administrador / Empresa | admin@demo.com |
-| Administrador Altamar | admin.altamar@demo.com |
-| Supervisor Call Center | supervisor@demo.com |
-| Call Center | callcenter@demo.com |
-
-El acceso separado de superadmin fue eliminado del cascaron. El programador entra como usuario distribuidor al mismo VPS/datos del distribuidor. Desde el dashboard del distribuidor puedes usar `Entrar` en una empresa para abrir la cuenta admin de ese tenant y luego volver al distribuidor.
-
-## Ejecutar en desarrollo
+## Scripts
 
 ```bash
 npm run dev
+npm run seed
+npm run build
 ```
 
 - Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:4000/api`
-- Health check: `http://localhost:4000/health`
+- API: `http://localhost:4000/api`
+- Health: `http://localhost:4000/health`
 
-Si ves `EADDRINUSE` o Vite se mueve a `5174`, hay un proceso anterior ocupando los puertos. En PowerShell puedes liberarlos asi:
+## Jerarquia
 
-```powershell
-$pids = netstat -ano | Select-String ':4000|:5173|:5174' | ForEach-Object { ($_ -split '\s+')[-1] } | Sort-Object -Unique
-if ($pids) { Stop-Process -Id $pids -Force }
-```
+1. `SUPERADMIN`: propietario de la plataforma.
+2. `DISTRIBUTOR`: administra su cartera de empresas.
+3. `ADMIN`: administra una empresa.
+4. `SUPERVISOR`: administra su equipo.
+5. `CALLCENTER`: trabaja sus contactos asignados.
 
 ## Rutas principales
 
 Frontend:
 
-- `/login`
+- `/superadmin`
+- `/superadmin/distributors`
+- `/superadmin/platform-plans`
+- `/superadmin/subscriptions`
+- `/superadmin/billing`
+- `/superadmin/modules`
+- `/superadmin/audit`
 - `/distributor/dashboard`
+- `/distributor/companies`
+- `/distributor/finance`
+- `/distributor/invoices`
+- `/distributor/payments`
+- `/distributor/branding`
+- `/distributor/settings`
+- `/distributor/onboarding`
 - `/admin/dashboard`
 - `/supervisor/dashboard`
 - `/callcenter/dashboard`
 
-API:
+API de plataforma:
 
-- `/api/auth/login`
-- `/api/auth/me`
-- `/api/users`
-- `/api/distributors`
-- `/api/companies`
-- `/api/plans`
-- `/api/subscriptions`
-- `/api/contacts`
-- `/api/contacts?status=seguimiento`
-- `/api/contacts?search=texto`
-- `/api/contacts/:id/notes`
-- `/api/conversations`
-- `/api/activity-logs`
-- `/api/channel-configs`
+- `/api/superadmin/overview`
+- `/api/superadmin/distributors`
+- `/api/superadmin/platform-plans`
+- `/api/superadmin/platform-subscriptions`
+- `/api/superadmin/invoices`
+- `/api/superadmin/payments`
+- `/api/superadmin/modules`
+- `/api/superadmin/audit`
 
-## Contactos y permisos
+API del distribuidor:
 
-Estados soportados:
+- `/api/billing/my-platform-subscription`
+- `/api/billing/my-platform-invoices`
+- `/api/billing/my-platform-payments`
+- `/api/billing/my-usage`
+- `/api/distributor/billing/overview`
+- `/api/distributor/companies`
+- `/api/distributor/companies/:id/detail`
+- `/api/distributor/companies/:id/subscription`
+- `/api/distributor/invoices`
+- `/api/distributor/payments`
+- `/api/distributor/settings`
+- `/api/distributor/branding`
+- `/api/distributor/onboarding`
 
-- `nuevo`
-- `contactado`
-- `interesado`
-- `no_interesado`
-- `seguimiento`
-- `cerrado`
+API de empresa:
 
-Permisos principales:
+- `/api/company/billing/invoices`
+- `/api/company/billing/payments`
+- `/api/company/settings`
+- `/api/company/onboarding`
 
-- `DISTRIBUTOR`: empresas, admins, planes, suscripciones e impersonacion.
-- `ADMIN`: supervisores, agentes y CRUD completo de contactos de su empresa.
-- `SUPERVISOR`: agentes vinculados por `supervisorId`, contactos del equipo, notas y reasignacion.
-- `CALLCENTER`: solo contactos asignados, estados, notas y proximos seguimientos.
+## Limites
 
-## Estado del proyecto
+`checkPlatformLimit()` valida en backend la creacion de empresas, usuarios y
+contactos. En `production`, no tener `PlatformSubscription` bloquea la
+operacion. En desarrollo se permite con warning para facilitar migraciones de
+datos existentes. Una suscripcion `suspended` o `cancelled` bloquea siempre.
 
-Los dashboards de distribuidor, administrador, supervisor y call center usan datos reales de la API. Las operaciones principales crean ActivityLog y respetan filtros multi-tenant por distribuidor, empresa, equipo y agente.
+## Documentacion
 
-No incluye integraciones reales de WhatsApp/Facebook/Messenger, pagos, facturacion, funnels, email marketing ni automatizaciones avanzadas.
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [BILLING.md](BILLING.md)
+- [MODULES.md](MODULES.md)
+- [PERMISSIONS.md](PERMISSIONS.md)
+- [WHITE_LABEL.md](WHITE_LABEL.md)
+- [DISTRIBUTOR_GUIDE.md](DISTRIBUTOR_GUIDE.md)
+
+## Alcance
+
+No existen pasarelas de pago, DNS, certificados ni canales reales de WhatsApp,
+Facebook, Instagram, Messenger, SMS o email. Tampoco se implementan funnels,
+automatizaciones avanzadas, landing pages o calendario real. Facturas y pagos
+son manuales; dominios e integraciones solo dejan contratos preparados.

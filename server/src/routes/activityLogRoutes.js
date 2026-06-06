@@ -5,6 +5,9 @@ import { ActivityLog } from '../models/ActivityLog.js';
 const router = Router();
 
 function activityScope(user) {
+  if (user.role === 'SUPERADMIN') {
+    return {};
+  }
   if (user.role === 'DISTRIBUTOR') {
     return { distributorId: user.distributorId };
   }

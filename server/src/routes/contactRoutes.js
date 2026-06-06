@@ -4,6 +4,8 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Contact, CONTACT_STATUSES } from '../models/Contact.js';
 import { User } from '../models/User.js';
 import { recordActivity } from '../utils/activity.js';
+import { checkPlatformLimit } from '../utils/platformLimits.js';
+import { refreshCompanyOnboarding } from '../utils/onboarding.js';
 import { cleanString, EMAIL_PATTERN, isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
@@ -197,6 +199,7 @@ router.post('/', roleMiddleware('ADMIN'), async (req, res, next) => {
       return res.status(403).json({ message: 'El administrador no tiene companyId' });
     }
 
+    await checkPlatformLimit(req.user.distributorId, 'contacts');
     const contact = await Contact.create({
       ...(await contactPayload(req.user, req.body, { creating: true })),
       companyId: req.user.companyId
@@ -208,6 +211,7 @@ router.post('/', roleMiddleware('ADMIN'), async (req, res, next) => {
       summary: `Contacto creado: ${contact.name}`,
       metadata: { contactId: contact._id, assignedTo: contact.assignedTo }
     });
+    await refreshCompanyOnboarding(req.user.companyId);
     res.status(201).json(await populateContactDocument(contact));
   } catch (error) {
     next(error);
@@ -285,6 +289,7 @@ async function updateContact(req, res, next) {
       });
     }
 
+    await refreshCompanyOnboarding(req.user.companyId);
     res.json(await populateContactDocument(contact));
   } catch (error) {
     next(error);

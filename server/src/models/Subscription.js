@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const subscriptionSchema = new mongoose.Schema(
   {
+    // Company subscription to a commercial Plan owned by its Distributor.
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
@@ -19,7 +20,7 @@ const subscriptionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'past_due', 'cancelled', 'trial'],
+      enum: ['trial', 'active', 'past_due', 'cancelled', 'suspended'],
       default: 'active'
     },
     startsAt: {
@@ -29,9 +30,19 @@ const subscriptionSchema = new mongoose.Schema(
     endsAt: {
       type: Date,
       default: null
-    }
+    },
+    trialEndsAt: { type: Date, default: null },
+    currentPeriodStart: { type: Date, default: Date.now },
+    currentPeriodEnd: { type: Date, default: null },
+    cancelAtPeriodEnd: { type: Boolean, default: false },
+    paymentProvider: { type: String, default: 'manual' },
+    providerCustomerId: { type: String, default: '' },
+    providerSubscriptionId: { type: String, default: '' },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
 );
+
+subscriptionSchema.index({ distributorId: 1, companyId: 1, createdAt: -1 });
 
 export const Subscription = mongoose.model('Subscription', subscriptionSchema);
