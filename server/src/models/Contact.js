@@ -1,5 +1,34 @@
 import mongoose from 'mongoose';
 
+export const CONTACT_STATUSES = [
+  'nuevo',
+  'contactado',
+  'interesado',
+  'no_interesado',
+  'seguimiento',
+  'cerrado'
+];
+
+const contactNoteSchema = new mongoose.Schema(
+  {
+    text: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  { _id: true }
+);
+
 const contactSchema = new mongoose.Schema(
   {
     companyId: {
@@ -33,12 +62,20 @@ const contactSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pendiente', 'contactado', 'interesado', 'no_interesado'],
-      default: 'pendiente'
+      enum: CONTACT_STATUSES,
+      default: 'nuevo'
     },
     lastContactAt: {
       type: Date,
       default: null
+    },
+    nextFollowUpAt: {
+      type: Date,
+      default: null
+    },
+    notes: {
+      type: [contactNoteSchema],
+      default: []
     }
   },
   { timestamps: true }

@@ -31,7 +31,9 @@ export function Header({ onMenuClick }) {
         </button>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-slate-950">{roleLabels[user?.role]}</p>
-          <p className="truncate text-xs text-slate-500">Entorno demo listo para presentacion</p>
+          <p className="truncate text-xs text-slate-500">
+            {impersonator ? `Impersonando desde ${impersonator.email}` : 'Sesion multi-tenant activa'}
+          </p>
         </div>
       </div>
 
@@ -45,7 +47,7 @@ export function Header({ onMenuClick }) {
           <button
             type="button"
             onClick={handleReturn}
-            className="hidden min-h-10 items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-sm font-semibold text-cyan-800 md:inline-flex"
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-sm font-semibold text-cyan-800"
           >
             <RotateCcw className="h-4 w-4" />
             Volver al distribuidor

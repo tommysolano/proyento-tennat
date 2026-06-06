@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
 import { User } from '../models/User.js';
+import { recordActivity } from '../utils/activity.js';
 import {
   cleanString,
   EMAIL_PATTERN,
@@ -14,8 +15,12 @@ const USER_STATUSES = ['active', 'inactive', 'pending'];
 
 function userScope(user) {
   if (user.role === 'DISTRIBUTOR') return { distributorId: user.distributorId };
-  if (user.role === 'ADMIN' || user.role === 'SUPERVISOR') return { companyId: user.companyId };
-  return { _id: user._id };
+  if (user.role === 'ADMIN') return { companyId: user.companyId };
+  return {
+    companyId: user.companyId,
+    role: 'CALLCENTER',
+    supervisorId: user._id
+  };
 }
 
 function editableUserScope(user) {
@@ -54,6 +59,10 @@ router.use(authMiddleware);
 
 router.get('/', async (req, res, next) => {
   try {
+    if (req.user.role === 'CALLCENTER') {
+      return res.status(403).json({ message: 'CALLCENTER no puede listar usuarios' });
+    }
+
     const users = await User.find(userScope(req.user))
       .populate('distributorId', 'name')
       .populate('companyId', 'name')
@@ -104,6 +113,12 @@ router.post('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) 
       if (!company) {
         return res.status(400).json({ message: 'La empresa no pertenece al distribuidor autenticado' });
       }
+      if (
+        company.adminId &&
+        (await User.exists({ _id: company.adminId, role: 'ADMIN', status: 'active' }))
+      ) {
+        return res.status(409).json({ message: 'La empresa ya tiene un ADMIN activo' });
+      }
 
       companyId = company._id;
     } else {
@@ -139,6 +154,15 @@ router.post('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) 
         { $set: { adminId: user._id } }
       );
     }
+
+    await recordActivity({
+      user: req.user,
+      type: 'user_created',
+      companyId,
+      distributorId,
+      summary: `${role} creado: ${user.name}`,
+      metadata: { createdUserId: user._id, role, email: user.email }
+    });
 
     await user.populate([
       { path: 'distributorId', select: 'name' },

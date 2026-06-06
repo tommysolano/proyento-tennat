@@ -210,7 +210,14 @@ export async function seedDemoData({ clear = true } = {}) {
       email: 'mariana@example.com',
       source: 'Campana renovacion',
       status: 'interesado',
-      lastContactAt: new Date()
+      lastContactAt: new Date(),
+      nextFollowUpAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      notes: [
+        {
+          text: 'Solicito informacion del plan familiar.',
+          createdBy: callcenterUser._id
+        }
+      ]
     },
     {
       companyId: novaCompany._id,
@@ -220,7 +227,8 @@ export async function seedDemoData({ clear = true } = {}) {
       email: 'jorge@example.com',
       source: 'Landing seguros',
       status: 'contactado',
-      lastContactAt: new Date()
+      lastContactAt: new Date(),
+      nextFollowUpAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
     },
     {
       companyId: novaCompany._id,
@@ -228,7 +236,7 @@ export async function seedDemoData({ clear = true } = {}) {
       name: 'Paola Suarez',
       phone: '+593 97 144 3312',
       source: 'Facebook Lead',
-      status: 'pendiente'
+      status: 'nuevo'
     },
     {
       companyId: novaCompany._id,
@@ -274,6 +282,7 @@ export async function seedDemoData({ clear = true } = {}) {
   await ActivityLog.create([
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       userId: callcenterUser._id,
       type: 'call',
       summary: 'Llamada de seguimiento con Mariana Paredes',
@@ -281,6 +290,7 @@ export async function seedDemoData({ clear = true } = {}) {
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       userId: callcenterUser._id,
       type: 'message',
       summary: 'Respuesta enviada por WhatsApp a Jorge Almeida',
@@ -288,6 +298,7 @@ export async function seedDemoData({ clear = true } = {}) {
     },
     {
       companyId: novaCompany._id,
+      distributorId: andesDistributor._id,
       userId: secondAgent._id,
       type: 'status_change',
       summary: 'Ivan Herrera marcado como no interesado',

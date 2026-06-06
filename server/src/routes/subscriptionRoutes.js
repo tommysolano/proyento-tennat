@@ -4,6 +4,7 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
 import { Plan } from '../models/Plan.js';
 import { Subscription } from '../models/Subscription.js';
+import { recordActivity } from '../utils/activity.js';
 import { isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
@@ -68,7 +69,7 @@ async function validateTenantReferences(companyId, planId, distributorId) {
 
 router.use(authMiddleware);
 
-router.get('/', async (req, res, next) => {
+router.get('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) => {
   try {
     const subscriptions = await populateSubscription(
       Subscription.find(subscriptionScope(req.user)).sort({ createdAt: -1 }).limit(100)
@@ -79,7 +80,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) => {
   try {
     const subscription = await populateSubscription(
       Subscription.findOne({ _id: req.params.id, ...subscriptionScope(req.user) })
@@ -105,6 +106,17 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       req.user.distributorId
     );
 
+    const existingSubscription = await Subscription.findOne({
+      companyId: req.body.companyId,
+      distributorId: req.user.distributorId,
+      status: { $in: ['active', 'trial'] }
+    });
+    if (existingSubscription) {
+      return res.status(409).json({
+        message: 'La empresa ya tiene una suscripcion activa o en prueba'
+      });
+    }
+
     if ('status' in req.body && !SUBSCRIPTION_STATUSES.includes(req.body.status)) {
       return res.status(400).json({ message: 'status de suscripcion invalido' });
     }
@@ -115,6 +127,18 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       distributorId: req.user.distributorId,
       status: req.body.status || 'active',
       ...subscriptionDates(req.body)
+    });
+    await recordActivity({
+      user: req.user,
+      type: 'subscription_created',
+      companyId: subscription.companyId,
+      summary: 'Suscripcion creada',
+      metadata: {
+        subscriptionId: subscription._id,
+        companyId: subscription.companyId,
+        planId: subscription.planId,
+        status: subscription.status
+      }
     });
     await subscription.populate([
       { path: 'companyId', select: 'name status' },
@@ -146,8 +170,34 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     current.companyId = companyId;
     current.planId = planId;
     if ('status' in req.body) current.status = req.body.status;
+
+    if (['active', 'trial'].includes(current.status)) {
+      const duplicate = await Subscription.exists({
+        _id: { $ne: current._id },
+        companyId,
+        distributorId: req.user.distributorId,
+        status: { $in: ['active', 'trial'] }
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          message: 'La empresa ya tiene otra suscripcion activa o en prueba'
+        });
+      }
+    }
+
     Object.assign(current, subscriptionDates(req.body));
     await current.save();
+    await recordActivity({
+      user: req.user,
+      type: 'subscription_updated',
+      companyId: current.companyId,
+      summary: 'Suscripcion actualizada',
+      metadata: {
+        subscriptionId: current._id,
+        planId: current.planId,
+        status: current.status
+      }
+    });
     await current.populate([
       { path: 'companyId', select: 'name status' },
       { path: 'planId', select: 'name price billingCycle status' },

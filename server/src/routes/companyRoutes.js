@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
+import { recordActivity } from '../utils/activity.js';
 import { cleanString } from '../utils/validation.js';
 
 const router = Router();
@@ -53,7 +54,7 @@ function populateCompany(query) {
 
 router.use(authMiddleware);
 
-router.get('/', async (req, res, next) => {
+router.get('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) => {
   try {
     const companies = await populateCompany(
       Company.find(companyScope(req.user)).sort({ createdAt: -1 }).limit(100)
@@ -64,7 +65,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) => {
   try {
     const company = await populateCompany(
       Company.findOne({ _id: req.params.id, ...companyScope(req.user) })
@@ -85,6 +86,13 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     const company = await Company.create({
       ...companyPayload(req.body),
       distributorId: req.user.distributorId
+    });
+    await recordActivity({
+      user: req.user,
+      type: 'company_created',
+      companyId: company._id,
+      summary: `Empresa creada: ${company.name}`,
+      metadata: { companyId: company._id, taxId: company.taxId }
     });
     await company.populate([
       { path: 'distributorId', select: 'name' },

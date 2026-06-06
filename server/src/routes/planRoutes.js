@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Plan } from '../models/Plan.js';
+import { recordActivity } from '../utils/activity.js';
 import { cleanString } from '../utils/validation.js';
 
 const router = Router();
@@ -81,6 +82,7 @@ function planPayload(body, partial = false) {
 }
 
 router.use(authMiddleware);
+router.use(roleMiddleware('DISTRIBUTOR'));
 
 router.get('/', async (req, res, next) => {
   try {
@@ -105,7 +107,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     if (!req.user.distributorId) {
       return res.status(403).json({ message: 'El distribuidor autenticado no tiene distributorId' });
@@ -115,6 +117,12 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       ...planPayload(req.body),
       distributorId: req.user.distributorId
     });
+    await recordActivity({
+      user: req.user,
+      type: 'plan_created',
+      summary: `Plan creado: ${plan.name}`,
+      metadata: { planId: plan._id, price: plan.price, billingCycle: plan.billingCycle }
+    });
     await plan.populate('distributorId', 'name');
     res.status(201).json(plan);
   } catch (error) {
@@ -122,7 +130,7 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   }
 });
 
-router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
+router.put('/:id', async (req, res, next) => {
   try {
     const plan = await Plan.findOneAndUpdate(
       { _id: req.params.id, distributorId: req.user.distributorId },
@@ -136,7 +144,7 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
   }
 });
 
-router.delete('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const plan = await Plan.findOneAndDelete({
       _id: req.params.id,

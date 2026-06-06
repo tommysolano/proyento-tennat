@@ -1,94 +1,176 @@
-import { Activity, Clock3, Headphones, MessageSquare, PhoneCall } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from '../../components/Button.jsx';
+import { CheckCircle2, Headphones, ListTodo, UsersRound } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  addContactNote,
+  getActivityLogs,
+  getContacts,
+  getUsers,
+  updateContact
+} from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { ContactManager } from '../../components/ContactManager.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
-import { agentActivity, agents } from '../../data/mockData.js';
+import { formatDate, idOf } from '../../utils/contacts.js';
 
 export function SupervisorDashboard() {
-  const [selectedAgent, setSelectedAgent] = useState(agents[0]);
+  const [agents, setAgents] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const loadDashboard = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    setError('');
+    try {
+      const [agentData, contactData, activityData] = await Promise.all([
+        getUsers(),
+        getContacts(),
+        getActivityLogs()
+      ]);
+      setAgents(agentData);
+      setContacts(contactData);
+      setActivities(activityData);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const teamActivities = useMemo(() => {
+    const teamIds = new Set(agents.map((agent) => agent._id));
+    return activities.filter((item) => {
+      const userId = idOf(item.userId);
+      return teamIds.has(userId) || item.userId?.role === 'SUPERVISOR';
+    });
+  }, [activities, agents]);
+
+  async function runMutation(action, message) {
+    setBusy(true);
+    setNotice('');
+    setError('');
+    try {
+      await action();
+      await loadDashboard(false);
+      setNotice(message);
+      return true;
+    } catch (requestError) {
+      setError(requestError.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const handleUpdateContact = (contactId, payload) =>
+    runMutation(() => updateContact(contactId, payload), 'Contacto actualizado y equipo refrescado.');
+
+  const handleAddNote = (contactId, text) =>
+    runMutation(() => addContactNote(contactId, text), 'Nota agregada al contacto.');
+
+  if (loading) {
+    return (
+      <PageShell
+        eyebrow="Supervision operativa"
+        title="Dashboard de supervision"
+        description="Cargando equipo y contactos reales..."
+      >
+        <Card className="p-8 text-center text-sm text-slate-500">
+          Cargando datos desde la API...
+        </Card>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell
       eyebrow="Supervision operativa"
       title="Dashboard de supervision"
-      description="Lectura diaria de agentes call center, actividad por usuario y metricas de conversaciones atendidas."
+      description="Equipo asignado, contactos reales, reasignaciones y actividad persistente."
     >
-      <div id="metricas" className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Llamadas" value="74" helper="Hoy" icon={PhoneCall} tone="cyan" />
-        <MetricCard label="Contactos realizados" value="118" helper="Meta diaria 140" icon={Headphones} tone="emerald" />
-        <MetricCard label="Conversaciones" value="39" helper="12 abiertas" icon={MessageSquare} tone="amber" />
-        <MetricCard label="Horas conectadas" value="21.5" helper="Equipo activo" icon={Clock3} tone="rose" />
+      {notice ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+          {notice}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+          {error}
+        </div>
+      ) : null}
+
+      <div id="metricas" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Agentes del equipo" value={agents.length} helper={`${agents.filter((agent) => agent.status === 'active').length} activos`} icon={UsersRound} tone="cyan" />
+        <MetricCard label="Contactos asignados" value={contacts.length} helper="Solo contactos del equipo" icon={Headphones} tone="emerald" />
+        <MetricCard label="En seguimiento" value={contacts.filter((contact) => contact.status === 'seguimiento').length} helper="Pendientes de nueva gestion" icon={ListTodo} tone="amber" />
+        <MetricCard label="Cerrados" value={contacts.filter((contact) => contact.status === 'cerrado').length} helper="Gestion finalizada" icon={CheckCircle2} tone="slate" />
       </div>
 
       <Card id="agentes">
-        <CardHeader title="Lista de agentes call center" description="Estado y produccion simulada por agente." />
+        <CardHeader
+          title="Agentes del equipo"
+          description="CALLCENTER con supervisorId asociado al supervisor autenticado."
+        />
         <Table
-          data={agents}
+          data={agents.map((agent) => ({
+            ...agent,
+            id: agent._id,
+            contactCount: contacts.filter((contact) => idOf(contact.assignedTo) === agent._id).length
+          }))}
+          emptyText="No hay agentes vinculados a este supervisor"
           columns={[
             { key: 'name', header: 'Agente' },
-            { key: 'shift', header: 'Horario' },
-            { key: 'calls', header: 'Llamadas' },
-            { key: 'contacts', header: 'Contactos' },
-            { key: 'conversations', header: 'Conversaciones' },
-            { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
+            { key: 'email', header: 'Email' },
+            { key: 'contactCount', header: 'Contactos asignados' },
             {
-              key: 'action',
-              header: 'Detalle',
-              render: (row) => (
-                <Button className="min-h-9 px-3" variant="secondary" onClick={() => setSelectedAgent(row)}>
-                  Ver
-                </Button>
-              )
+              key: 'status',
+              header: 'Estado',
+              render: (row) => <Badge tone={row.status}>{row.status}</Badge>
             }
           ]}
         />
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_0.75fr]">
-        <Card id="actividad">
-          <CardHeader title="Actividad simulada por agente" description="Eventos recientes para monitoreo." />
-          <Table
-            data={agentActivity}
-            columns={[
-              { key: 'time', header: 'Hora' },
-              { key: 'agent', header: 'Agente' },
-              { key: 'type', header: 'Tipo' },
-              { key: 'summary', header: 'Resumen' },
-              { key: 'result', header: 'Resultado', render: (row) => <Badge tone={row.result}>{row.result}</Badge> }
-            ]}
-          />
-        </Card>
+      <ContactManager
+        contacts={contacts}
+        agents={agents.filter((agent) => agent.status === 'active')}
+        busy={busy}
+        canEditDetails
+        canAssign
+        onUpdate={handleUpdateContact}
+        onAddNote={handleAddNote}
+        title="Contactos del equipo"
+        description="Filtra, edita y reasigna solo entre agentes vinculados a tu equipo."
+      />
 
-        <Card>
-          <CardHeader title="Ritmo del equipo" description={`Detalle activo: ${selectedAgent.name}`} />
-          <div className="space-y-5 p-5">
-            {[
-              ['Contactos', selectedAgent.contacts],
-              ['Conversaciones atendidas', selectedAgent.conversations * 4],
-              ['Llamadas efectivas', selectedAgent.calls]
-            ].map(([label, percent]) => (
-              <div key={label}>
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="font-medium text-slate-700">{label}</span>
-                  <span className="text-slate-500">{percent}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div className="h-2 rounded-full bg-cyan-700" style={{ width: `${Math.min(percent, 100)}%` }} />
-                </div>
-              </div>
-            ))}
-            <div className="rounded-lg border border-slate-200 p-4">
-              <Activity className="mb-3 h-5 w-5 text-cyan-700" />
-              <p className="text-sm font-semibold text-slate-950">Alertas operativas</p>
-              <p className="mt-1 text-sm text-slate-500">2 conversaciones llevan mas de 20 minutos sin respuesta.</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <Card id="actividad">
+        <CardHeader title="Actividad del equipo" description="Eventos recientes de agentes y supervisor." />
+        <Table
+          data={teamActivities.map((item) => ({
+            ...item,
+            id: item._id,
+            dateLabel: formatDate(item.createdAt),
+            userLabel: item.userId?.name || 'Usuario'
+          }))}
+          emptyText="No hay actividad del equipo"
+          columns={[
+            { key: 'dateLabel', header: 'Fecha' },
+            { key: 'userLabel', header: 'Usuario' },
+            { key: 'type', header: 'Tipo' },
+            { key: 'summary', header: 'Resumen' }
+          ]}
+        />
+      </Card>
     </PageShell>
   );
 }

@@ -81,10 +81,10 @@ export function AuthProvider({ children }) {
     return data;
   }
 
-  async function impersonateAdmin(email) {
+  async function impersonateAdmin(companyId) {
     const data = await apiRequest('/auth/impersonate', {
       method: 'POST',
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ companyId })
     });
 
     localStorage.setItem('tenantdesk_original_session', JSON.stringify({ token, user }));

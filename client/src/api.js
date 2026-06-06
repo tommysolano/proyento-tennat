@@ -53,3 +53,41 @@ export const createSubscription = (subscription) =>
     method: 'POST',
     body: JSON.stringify(subscription)
   });
+export const updateSubscription = (subscriptionId, subscription) =>
+  apiRequest(`/subscriptions/${subscriptionId}`, {
+    method: 'PUT',
+    body: JSON.stringify(subscription)
+  });
+
+export function getContacts(filters = {}) {
+  const query = new URLSearchParams();
+  if (filters.status) query.set('status', filters.status);
+  if (filters.search) query.set('search', filters.search);
+  const suffix = query.toString() ? `?${query}` : '';
+  return apiRequest(`/contacts${suffix}`);
+}
+
+export const createContact = (contact) =>
+  apiRequest('/contacts', {
+    method: 'POST',
+    body: JSON.stringify(contact)
+  });
+
+export const updateContact = (contactId, contact) =>
+  apiRequest(`/contacts/${contactId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(contact)
+  });
+
+export const deleteContact = (contactId) =>
+  apiRequest(`/contacts/${contactId}`, {
+    method: 'DELETE'
+  });
+
+export const addContactNote = (contactId, text) =>
+  apiRequest(`/contacts/${contactId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+
+export const getActivityLogs = () => apiRequest('/activity-logs');

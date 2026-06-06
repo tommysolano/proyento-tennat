@@ -94,10 +94,33 @@ API:
 - `/api/plans`
 - `/api/subscriptions`
 - `/api/contacts`
+- `/api/contacts?status=seguimiento`
+- `/api/contacts?search=texto`
+- `/api/contacts/:id/notes`
 - `/api/conversations`
 - `/api/activity-logs`
 - `/api/channel-configs`
 
+## Contactos y permisos
+
+Estados soportados:
+
+- `nuevo`
+- `contactado`
+- `interesado`
+- `no_interesado`
+- `seguimiento`
+- `cerrado`
+
+Permisos principales:
+
+- `DISTRIBUTOR`: empresas, admins, planes, suscripciones e impersonacion.
+- `ADMIN`: supervisores, agentes y CRUD completo de contactos de su empresa.
+- `SUPERVISOR`: agentes vinculados por `supervisorId`, contactos del equipo, notas y reasignacion.
+- `CALLCENTER`: solo contactos asignados, estados, notas y proximos seguimientos.
+
 ## Estado del proyecto
 
-El dashboard del distribuidor usa empresas, planes, usuarios y suscripciones reales de la API. Los dashboards de administrador, supervisor y call center todavia conservan datos simulados. No incluye integraciones reales de WhatsApp/Facebook/Messenger ni pagos reales.
+Los dashboards de distribuidor, administrador, supervisor y call center usan datos reales de la API. Las operaciones principales crean ActivityLog y respetan filtros multi-tenant por distribuidor, empresa, equipo y agente.
+
+No incluye integraciones reales de WhatsApp/Facebook/Messenger, pagos, facturacion, funnels, email marketing ni automatizaciones avanzadas.

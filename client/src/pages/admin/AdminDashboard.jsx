@@ -1,169 +1,294 @@
-import { ContactRound, CreditCard, Headphones, Plus, RadioTower, UsersRound } from 'lucide-react';
-import { useState } from 'react';
+import { Activity, ContactRound, Headphones, Plus, UserCog, UsersRound } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  addContactNote,
+  createContact,
+  createUser,
+  deleteContact,
+  getActivityLogs,
+  getCompanies,
+  getContacts,
+  getSubscriptions,
+  getUsers,
+  updateContact
+} from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { ContactManager } from '../../components/ContactManager.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
-import { channelConfigs, internalUsers } from '../../data/mockData.js';
+import { contactStatusLabel, formatDate } from '../../utils/contacts.js';
 
 export function AdminDashboard() {
-  const [users, setUsers] = useState(internalUsers);
-  const [channels, setChannels] = useState(channelConfigs);
+  const [users, setUsers] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [company, setCompany] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
 
-  function scrollTo(id) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const loadDashboard = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    setError('');
+
+    try {
+      const [userData, contactData, activityData, companyData, subscriptionData] =
+        await Promise.all([
+          getUsers(),
+          getContacts(),
+          getActivityLogs(),
+          getCompanies(),
+          getSubscriptions()
+        ]);
+      setUsers(userData);
+      setContacts(contactData);
+      setActivities(activityData);
+      setCompany(companyData[0] || null);
+      setSubscription(subscriptionData[0] || null);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const supervisors = useMemo(
+    () => users.filter((user) => user.role === 'SUPERVISOR'),
+    [users]
+  );
+  const agents = useMemo(
+    () => users.filter((user) => user.role === 'CALLCENTER'),
+    [users]
+  );
+
+  async function runMutation(action, successMessage) {
+    setBusy(true);
+    setNotice('');
+    setError('');
+    try {
+      await action();
+      await loadDashboard(false);
+      setNotice(successMessage);
+      return true;
+    } catch (requestError) {
+      setError(requestError.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function handleCreateUser(event) {
+  async function handleCreateUser(event) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const role = formData.get('role') || 'CALLCENTER';
-    const name = formData.get('name') || 'Usuario demo';
-    const email = formData.get('email') || `usuario.${Date.now()}@demo.com`;
-
-    setUsers((current) => [
-      {
-        id: `user-${Date.now()}`,
-        name,
-        email,
-        role,
-        status: 'active'
-      },
-      ...current
-    ]);
-    setNotice(`${name} fue agregado al equipo interno.`);
-    event.currentTarget.reset();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const role = data.get('role');
+    const name = data.get('name');
+    const created = await runMutation(
+      () =>
+        createUser({
+          name,
+          email: data.get('email'),
+          password: data.get('password'),
+          role,
+          supervisorId: role === 'CALLCENTER' ? data.get('supervisorId') || null : null
+        }),
+      `${role === 'SUPERVISOR' ? 'Supervisor' : 'Agente'} "${name}" creado correctamente.`
+    );
+    if (created) form.reset();
   }
 
-  function connectChannel(channelId) {
-    setChannels((current) =>
-      current.map((channel) =>
-        channel.id === channelId ? { ...channel, status: 'connected' } : channel
-      )
+  const handleCreateContact = (payload) =>
+    runMutation(() => createContact(payload), `Contacto "${payload.name}" creado.`);
+
+  const handleUpdateContact = (contactId, payload) =>
+    runMutation(() => updateContact(contactId, payload), 'Contacto actualizado.');
+
+  const handleAddNote = (contactId, text) =>
+    runMutation(() => addContactNote(contactId, text), 'Nota agregada.');
+
+  async function handleDeleteContact(contactId) {
+    if (!window.confirm('Eliminar este contacto de forma permanente?')) return false;
+    return runMutation(() => deleteContact(contactId), 'Contacto eliminado.');
+  }
+
+  if (loading) {
+    return (
+      <PageShell
+        eyebrow="Tenant empresa"
+        title="Dashboard de empresa"
+        description="Cargando usuarios, contactos y actividad real..."
+      >
+        <Card className="p-8 text-center text-sm text-slate-500">
+          Cargando datos desde la API...
+        </Card>
+      </PageShell>
     );
-    setNotice('Canal marcado como conectado en la demo.');
   }
 
   return (
     <PageShell
       eyebrow="Tenant empresa"
-      title="Dashboard de empresa"
-      description="Administracion interna de Nova Seguros: usuarios, canales y plan contratado dentro de su propio espacio."
+      title={company?.name ? `Dashboard de ${company.name}` : 'Dashboard de empresa'}
+      description="Gestion real de usuarios, contactos, asignaciones y actividad dentro del tenant."
     >
       {notice ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
           {notice}
         </div>
       ) : null}
+      {error ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+          {error}
+        </div>
+      ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Usuarios internos" value={users.length} helper="Supervisores y agentes" icon={UsersRound} tone="cyan" />
-        <MetricCard label="Contactos" value="8.4k" helper="63% con seguimiento" icon={ContactRound} tone="emerald" />
-        <MetricCard label="Canales" value="3" helper="1 conectado, 2 borradores" icon={RadioTower} tone="amber" />
-        <MetricCard label="Plan actual" value="Growth" helper="25 usuarios disponibles" icon={CreditCard} tone="rose" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Usuarios" value={users.length} helper="Equipo del tenant" icon={UsersRound} tone="cyan" />
+        <MetricCard label="Supervisores" value={supervisors.length} helper="Roles de supervision" icon={UserCog} tone="emerald" />
+        <MetricCard label="Agentes" value={agents.length} helper="Call center activos e inactivos" icon={Headphones} tone="amber" />
+        <MetricCard label="Contactos" value={contacts.length} helper={`${contacts.filter((item) => item.status === 'seguimiento').length} en seguimiento`} icon={ContactRound} tone="rose" />
+        <MetricCard label="Cerrados" value={contacts.filter((item) => item.status === 'cerrado').length} helper="Contactos finalizados" icon={Activity} tone="slate" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_0.78fr]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_0.72fr]">
         <Card id="usuarios">
           <CardHeader
-            title="Gestion de usuarios internos"
-            description="Supervisores y agentes call center creados por la empresa."
-            action={
-              <Button onClick={() => scrollTo('crear-usuario')}>
-                <Plus className="h-4 w-4" />
-                Nuevo usuario
-              </Button>
-            }
+            title="Usuarios internos"
+            description="Supervisores y agentes persistidos en esta empresa."
           />
           <Table
-            data={users}
+            data={users.map((user) => ({ ...user, id: user._id }))}
+            emptyText="No hay usuarios internos"
             columns={[
               { key: 'name', header: 'Nombre' },
               { key: 'email', header: 'Email' },
               { key: 'role', header: 'Rol' },
-              { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+              {
+                key: 'supervisorId',
+                header: 'Supervisor',
+                render: (row) => row.supervisorId?.name || '-'
+              },
+              {
+                key: 'status',
+                header: 'Estado',
+                render: (row) => <Badge tone={row.status}>{row.status}</Badge>
+              }
             ]}
           />
         </Card>
 
         <Card>
-          <CardHeader title="Crear supervisor o agente" description="Alta rapida visual para roles operativos." />
-          <form id="crear-usuario" className="space-y-4 p-5" onSubmit={handleCreateUser}>
-            <input name="name" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Nombre completo" />
-            <input name="email" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Email corporativo" />
+          <CardHeader
+            title="Crear supervisor o agente"
+            description="El backend fuerza empresa, distribuidor y rol permitido."
+          />
+          <form className="space-y-4 p-5" onSubmit={handleCreateUser}>
+            <input required name="name" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Nombre completo" />
+            <input required type="email" name="email" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Email corporativo" />
+            <input required minLength="8" type="password" name="password" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Password (minimo 8 caracteres)" />
             <select name="role" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
-              <option value="SUPERVISOR">Supervisor Call Center</option>
-              <option value="CALLCENTER">Call Center</option>
+              <option value="SUPERVISOR">Supervisor</option>
+              <option value="CALLCENTER">Call center</option>
             </select>
-            <select className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
-              <option>Asignar a Bruno Supervisor</option>
-              <option>Sin supervisor</option>
+            <select name="supervisorId" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" defaultValue="">
+              <option value="">Sin supervisor</option>
+              {supervisors.map((supervisor) => (
+                <option key={supervisor._id} value={supervisor._id}>{supervisor.name}</option>
+              ))}
             </select>
-            <Button className="w-full" type="submit">
-              <Headphones className="h-4 w-4" />
-              Crear usuario demo
+            <Button className="w-full" type="submit" disabled={busy}>
+              <Plus className="h-4 w-4" />
+              {busy ? 'Creando...' : 'Crear usuario'}
             </Button>
           </form>
         </Card>
       </div>
 
-      <Card id="canales">
-        <CardHeader title="Configuracion de canales" description="Pantallas visuales para futuras integraciones sin conectar APIs reales." />
-        <div className="grid gap-4 p-5 lg:grid-cols-3">
-          {channels.map((channel) => (
-            <div key={channel.id} className="rounded-lg border border-slate-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-slate-950">{channel.name}</p>
-                  <p className="mt-1 text-sm text-slate-500">{channel.type}</p>
-                </div>
-                <Badge tone={channel.status}>{channel.status}</Badge>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">App ID</span>
-                  <input className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" value={channel.appId} readOnly />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">Phone Number ID</span>
-                  <input className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" value={channel.phoneNumberId} readOnly />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">Page ID</span>
-                  <input className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm" value={channel.pageId} readOnly />
-                </label>
-              </div>
-              <Button
-                className="mt-4 w-full"
-                variant={channel.status === 'connected' ? 'secondary' : 'primary'}
-                onClick={() => connectChannel(channel.id)}
-              >
-                {channel.status === 'connected' ? 'Reconectar demo' : 'Conectar demo'}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <ContactManager
+        contacts={contacts}
+        agents={agents.filter((agent) => agent.status === 'active')}
+        busy={busy}
+        canCreate
+        canDelete
+        canEditDetails
+        canAssign
+        onCreate={handleCreateContact}
+        onUpdate={handleUpdateContact}
+        onDelete={handleDeleteContact}
+        onAddNote={handleAddNote}
+        title="Contactos de la empresa"
+        description="Crear, editar, asignar, filtrar y eliminar contactos reales."
+      />
 
-      <Card id="plan">
-        <CardHeader title="Plan contratado" description="Resumen simulado de la suscripcion activa." />
-        <div className="grid gap-4 p-5 md:grid-cols-4">
-          {[
-            ['Plan', 'Growth Omnicanal'],
-            ['Usuarios', '18 / 25'],
-            ['Contactos', '8.4k / 15k'],
-            ['Canales', '3 / 3']
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-slate-200 p-4">
-              <p className="text-sm text-slate-500">{label}</p>
-              <p className="mt-2 text-lg font-semibold text-slate-950">{value}</p>
+      <div className="grid gap-6 xl:grid-cols-[1fr_0.65fr]">
+        <Card id="actividad">
+          <CardHeader title="Actividad reciente" description="Eventos registrados automaticamente por la API." />
+          <Table
+            data={activities.map((item) => ({
+              ...item,
+              id: item._id,
+              dateLabel: formatDate(item.createdAt),
+              userLabel: item.userId?.name || 'Usuario del sistema'
+            }))}
+            emptyText="No hay actividad registrada"
+            columns={[
+              { key: 'dateLabel', header: 'Fecha' },
+              { key: 'userLabel', header: 'Usuario' },
+              { key: 'type', header: 'Tipo' },
+              { key: 'summary', header: 'Resumen' }
+            ]}
+          />
+        </Card>
+
+        <Card id="plan">
+          <CardHeader title="Suscripcion actual" description="Plan real asociado a la empresa." />
+          <div className="space-y-4 p-5">
+            {subscription ? (
+              <>
+                <div className="rounded-lg border border-slate-200 p-4">
+                  <p className="text-sm text-slate-500">Plan</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-950">{subscription.planId?.name}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 p-4">
+                    <p className="text-sm text-slate-500">Estado</p>
+                    <Badge tone={subscription.status}>{subscription.status}</Badge>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-4">
+                    <p className="text-sm text-slate-500">Precio</p>
+                    <p className="mt-1 font-semibold text-slate-950">${subscription.planId?.price ?? 0}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">La empresa no tiene una suscripcion visible.</p>
+            )}
+            <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+              {Object.entries(
+                contacts.reduce((counts, contact) => {
+                  counts[contact.status] = (counts[contact.status] || 0) + 1;
+                  return counts;
+                }, {})
+              ).map(([status, count]) => (
+                <div key={status} className="flex justify-between py-1">
+                  <span>{contactStatusLabel(status)}</span>
+                  <span className="font-semibold">{count}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </Card>
+          </div>
+        </Card>
+      </div>
     </PageShell>
   );
 }
