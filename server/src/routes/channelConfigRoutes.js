@@ -10,6 +10,7 @@ import {
 } from '../models/ChannelConfig.js';
 import { recordActivity } from '../utils/activity.js';
 import { cleanString } from '../utils/validation.js';
+import { getChannelAdapter } from '../modules/conversations/adapters/index.js';
 
 const router = Router();
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
@@ -27,10 +28,11 @@ function safe(config) {
 }
 
 function validateConnected(config) {
+  const credentials = config.getDecryptedCredentials();
   if (
     config.channel === 'whatsapp_cloud' &&
     config.status === 'connected' &&
-    (!config.phoneNumberId || !config.credentials?.accessToken || !config.verifyToken)
+    (!config.phoneNumberId || !credentials.accessToken || !config.getDecryptedVerifyToken())
   ) {
     throw badRequest(
       'WhatsApp conectado requiere phoneNumberId, accessToken y verifyToken'
@@ -68,15 +70,12 @@ router.post('/', async (req, res, next) => {
       distributorId: req.user.distributorId || null,
       channel,
       displayName,
-      credentials: {
-        accessToken: cleanString(req.body.accessToken),
-        appId: cleanString(req.body.appId)
-      },
+      credentials: {},
       settings: {
         apiVersion: cleanString(req.body.apiVersion)
       },
-      webhookSecret: cleanString(req.body.webhookSecret),
-      verifyToken: cleanString(req.body.verifyToken),
+      webhookSecret: '',
+      verifyToken: '',
       phoneNumberId: cleanString(req.body.phoneNumberId),
       externalBusinessId: cleanString(req.body.externalBusinessId),
       externalAccountId: cleanString(req.body.externalAccountId),
@@ -84,6 +83,15 @@ router.post('/', async (req, res, next) => {
       lastConnectedAt: status === 'connected' ? new Date() : null,
       createdBy: req.user._id,
       metadata: {}
+    });
+    config.setSecrets({
+      credentials: {
+        accessToken: cleanString(req.body.accessToken),
+        appId: cleanString(req.body.appId)
+      },
+      appSecret: cleanString(req.body.appSecret),
+      webhookSecret: cleanString(req.body.webhookSecret),
+      verifyToken: cleanString(req.body.verifyToken)
     });
     validateConnected(config);
     await config.save();
@@ -132,17 +140,18 @@ router.patch('/:id', async (req, res, next) => {
       throw badRequest('status invalido');
     }
     if ('verifyToken' in req.body && req.body.verifyToken) {
-      config.verifyToken = cleanString(req.body.verifyToken);
+      config.setSecrets({ verifyToken: cleanString(req.body.verifyToken) });
     }
     if ('webhookSecret' in req.body && req.body.webhookSecret) {
-      config.webhookSecret = cleanString(req.body.webhookSecret);
+      config.setSecrets({ webhookSecret: cleanString(req.body.webhookSecret) });
+    }
+    if ('appSecret' in req.body && req.body.appSecret) {
+      config.setSecrets({ appSecret: cleanString(req.body.appSecret) });
     }
     if ('accessToken' in req.body && req.body.accessToken) {
-      config.credentials = {
-        ...(config.credentials || {}),
-        accessToken: cleanString(req.body.accessToken)
-      };
-      config.markModified('credentials');
+      config.setSecrets({
+        credentials: { accessToken: cleanString(req.body.accessToken) }
+      });
     }
     if ('apiVersion' in req.body) {
       config.settings = {
@@ -197,17 +206,36 @@ router.patch('/:id/test', async (req, res, next) => {
     if (!config) return res.status(404).json({ message: 'Canal no encontrado' });
     const checks = {
       phoneNumberId: Boolean(config.phoneNumberId),
-      accessToken: Boolean(config.credentials?.accessToken),
-      verifyToken: Boolean(config.verifyToken),
-      apiVersion: Boolean(config.settings?.apiVersion || process.env.WHATSAPP_GRAPH_VERSION)
+      accessToken: Boolean(config.getDecryptedCredentials().accessToken),
+      verifyToken: Boolean(config.getDecryptedVerifyToken()),
+      appSecret: Boolean(config.getDecryptedAppSecret()),
+      apiVersion: Boolean(
+        config.settings?.apiVersion ||
+          process.env.WHATSAPP_GRAPH_API_VERSION ||
+          process.env.WHATSAPP_GRAPH_VERSION
+      )
     };
-    const valid = config.channel !== 'whatsapp_cloud' || Object.values(checks).every(Boolean);
+    const requiredChecks = [checks.phoneNumberId, checks.accessToken, checks.verifyToken, checks.apiVersion];
+    const valid = config.channel !== 'whatsapp_cloud' || requiredChecks.every(Boolean);
+    const live = req.body.live === true;
+    const liveResult =
+      live && valid && config.channel === 'whatsapp_cloud'
+        ? await getChannelAdapter('whatsapp_cloud', {
+            channelConfig: config
+          }).testConnection()
+        : null;
     res.json({
-      valid,
+      valid: liveResult ? liveResult.success : valid,
       checks,
-      message: valid
-        ? 'Configuracion minima completa. No se realizo una llamada externa.'
-        : 'Configuracion incompleta. No se realizo una llamada externa.'
+      live,
+      liveResult,
+      message: live
+        ? liveResult?.success
+          ? 'Conexion real con Meta validada.'
+          : liveResult?.error || 'No se pudo validar la conexion con Meta.'
+        : valid
+          ? 'Configuracion minima completa. No se realizo una llamada externa.'
+          : 'Configuracion incompleta. No se realizo una llamada externa.'
     });
   } catch (error) {
     next(error);

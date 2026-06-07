@@ -28,6 +28,8 @@ import { TasksPage } from '../pages/crm/TasksPage.jsx';
 import { InboxPage } from '../pages/inbox/InboxPage.jsx';
 import { ChannelSettingsPage } from '../pages/inbox/ChannelSettingsPage.jsx';
 import { MessageTemplatesPage } from '../pages/inbox/MessageTemplatesPage.jsx';
+import { NotificationsPage } from '../pages/inbox/NotificationsPage.jsx';
+import { RoutingRulesPage } from '../pages/inbox/RoutingRulesPage.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -93,7 +95,8 @@ export const router = createBrowserRouter([
               { path: '/crm/pipeline', element: <PipelineKanbanPage /> },
               { path: '/crm/tasks', element: <TasksPage /> },
               { path: '/crm/segments', element: <SegmentsPage /> },
-              { path: '/inbox', element: <InboxPage /> }
+              { path: '/inbox', element: <InboxPage /> },
+              { path: '/notifications', element: <NotificationsPage /> }
             ]
           },
           {
@@ -104,7 +107,8 @@ export const router = createBrowserRouter([
               { path: '/crm/import', element: <ImportContactsPage /> },
               { path: '/crm/pipelines', element: <PipelinesPage /> },
               { path: '/inbox/channels', element: <ChannelSettingsPage /> },
-              { path: '/inbox/templates', element: <MessageTemplatesPage /> }
+              { path: '/inbox/templates', element: <MessageTemplatesPage /> },
+              { path: '/inbox/routing', element: <RoutingRulesPage /> }
             ]
           }
         ]

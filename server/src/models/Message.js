@@ -18,9 +18,19 @@ const mediaSchema = new mongoose.Schema(
   {
     url: { type: String, default: '' },
     mimeType: { type: String, default: '' },
+    filename: { type: String, default: '' },
     fileName: { type: String, default: '' },
+    size: { type: Number, min: 0, default: 0 },
+    providerMediaId: { type: String, default: '' },
     caption: { type: String, default: '' },
-    externalMediaId: { type: String, default: '' }
+    externalMediaId: { type: String, default: '' },
+    storageKey: { type: String, default: '' },
+    status: {
+      type: String,
+      enum: ['none', 'pending', 'available', 'failed', 'unavailable'],
+      default: 'none'
+    },
+    error: { type: String, default: '' }
   },
   { _id: false }
 );
@@ -48,6 +58,8 @@ const messageSchema = new mongoose.Schema(
     deliveredAt: { type: Date, default: null },
     readAt: { type: Date, default: null },
     failedAt: { type: Date, default: null },
+    attempts: { type: Number, min: 0, default: 0 },
+    lastAttemptAt: { type: Date, default: null },
     error: { type: String, default: '' },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },

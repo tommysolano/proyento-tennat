@@ -1,6 +1,8 @@
 import { loadEnv, validateEnv } from './config/env.js';
 import { connectDB } from './config/db.js';
 import { seedDemoData } from './data/demoData.js';
+import { startJobWorker } from './modules/jobs/JobWorker.js';
+import { logger } from './utils/logger.js';
 
 loadEnv();
 
@@ -13,13 +15,22 @@ try {
 
   if (process.env.DEMO_SEED === 'true') {
     const result = await seedDemoData();
-    console.log('Datos demo listos:', result);
+    logger.info('demo.seed_ready', { result });
   }
 
-  app.listen(port, () => {
-    console.log(`API lista en http://localhost:${port}`);
+  const worker = startJobWorker();
+  const server = app.listen(port, () => {
+    logger.info('server.started', { port });
   });
+  async function shutdown(signal) {
+    logger.info('server.shutdown', { signal });
+    server.close();
+    await worker?.stop?.();
+    process.exit(0);
+  }
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
 } catch (error) {
-  console.error('No se pudo iniciar el servidor:', error.message);
+  logger.error('server.start_failed', error);
   process.exit(1);
 }

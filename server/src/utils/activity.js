@@ -1,4 +1,5 @@
 import { ActivityLog } from '../models/ActivityLog.js';
+import { sanitize } from './sanitize.js';
 
 export async function recordActivity({
   user,
@@ -13,7 +14,7 @@ export async function recordActivity({
     distributorId: distributorId || user.distributorId || null,
     userId: user._id,
     type,
-    summary,
-    metadata
+    summary: sanitize(summary),
+    metadata: sanitize(metadata)
   });
 }

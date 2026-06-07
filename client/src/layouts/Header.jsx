@@ -1,5 +1,7 @@
 import { Bell, Menu, RotateCcw, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { getNotifications } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { roleHome } from '../routes/roleHome.js';
 
@@ -14,6 +16,25 @@ const roleLabels = {
 export function Header({ onMenuClick }) {
   const navigate = useNavigate();
   const { user, tenant, impersonator, returnToOriginalSession } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const canReceiveNotifications = ['ADMIN', 'SUPERVISOR', 'CALLCENTER'].includes(user?.role);
+
+  const loadUnread = useCallback(() => {
+    if (!canReceiveNotifications) return;
+    getNotifications({ unread: true, limit: 1 })
+      .then((data) => setUnreadCount(data.unreadCount || 0))
+      .catch(() => null);
+  }, [canReceiveNotifications]);
+
+  useEffect(() => {
+    loadUnread();
+    const interval = setInterval(loadUnread, 30000);
+    window.addEventListener('tenantdesk:notifications-changed', loadUnread);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tenantdesk:notifications-changed', loadUnread);
+    };
+  }, [loadUnread]);
 
   async function handleReturn() {
     const originalUser = await returnToOriginalSession();
@@ -57,13 +78,16 @@ export function Header({ onMenuClick }) {
             Volver a {roleLabels[impersonator.role] || impersonator.role}
           </button>
         ) : null}
-        <button
-          type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600"
-          aria-label="Notificaciones"
-        >
-          <Bell className="h-4 w-4" />
-        </button>
+        {canReceiveNotifications ? (
+          <Link
+            to="/notifications"
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600"
+            aria-label="Notificaciones"
+          >
+            <Bell className="h-4 w-4" />
+            {unreadCount ? <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-5 text-white">{Math.min(unreadCount, 99)}</span> : null}
+          </Link>
+        ) : null}
         <div
           className="flex h-10 w-10 items-center justify-center rounded-md text-sm font-bold text-white"
           style={{ backgroundColor: 'var(--tenant-secondary)' }}

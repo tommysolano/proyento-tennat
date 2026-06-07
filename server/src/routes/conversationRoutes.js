@@ -13,6 +13,7 @@ import {
 import { CRM_PRIORITIES } from '../models/Contact.js';
 import { Message } from '../models/Message.js';
 import { MessageTemplate } from '../models/MessageTemplate.js';
+import { User } from '../models/User.js';
 import { ConversationService } from '../modules/conversations/ConversationService.js';
 import {
   conversationScope,
@@ -65,8 +66,21 @@ router.get('/metrics', async (req, res, next) => {
   try {
     const scope = await conversationScope(req.user);
     const conversations = await Conversation.find({ ...scope, archivedAt: null })
-      .select('status assignedTo unreadCount lastInboundAt lastOutboundAt lastMessageAt')
+      .select('channel status assignedTo unreadCount lastInboundAt lastOutboundAt lastMessageAt')
       .lean();
+    const conversationIds = conversations.map((item) => item._id);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const messages = conversationIds.length
+      ? await Message.find({
+          companyId: req.user.companyId,
+          conversationId: { $in: conversationIds }
+        })
+          .select('conversationId direction status sentBy createdAt')
+          .sort({ createdAt: 1 })
+          .limit(50000)
+          .lean()
+      : [];
     const connectedChannels = req.user.role === 'ADMIN'
       ? await import('../models/ChannelConfig.js').then(({ ChannelConfig }) =>
           ChannelConfig.countDocuments({
@@ -85,6 +99,80 @@ router.get('/metrics', async (req, res, next) => {
         .sort({ lastMessageAt: -1, updatedAt: -1 })
         .limit(5)
     );
+    const channelCounts = {};
+    const responseState = new Map();
+    const agentStats = new Map();
+    for (const conversation of conversations) {
+      channelCounts[conversation.channel] = (channelCounts[conversation.channel] || 0) + 1;
+      if (conversation.assignedTo) {
+        const key = String(conversation.assignedTo);
+        agentStats.set(key, {
+          userId: conversation.assignedTo,
+          openAssigned: 0,
+          messagesResponded: 0,
+          pendingWithoutResponse: 0,
+          failed: 0
+        });
+        if (conversation.status === 'open') agentStats.get(key).openAssigned += 1;
+        if (
+          conversation.lastInboundAt &&
+          (!conversation.lastOutboundAt ||
+            new Date(conversation.lastInboundAt) > new Date(conversation.lastOutboundAt))
+        ) {
+          agentStats.get(key).pendingWithoutResponse += 1;
+        }
+      }
+    }
+    for (const message of messages) {
+      const conversationKey = String(message.conversationId);
+      const state = responseState.get(conversationKey) || {
+        firstInboundAt: null,
+        firstResponseAt: null
+      };
+      if (message.direction === 'inbound' && !state.firstInboundAt) {
+        state.firstInboundAt = message.createdAt;
+      }
+      if (
+        message.direction === 'outbound' &&
+        state.firstInboundAt &&
+        !state.firstResponseAt &&
+        new Date(message.createdAt) >= new Date(state.firstInboundAt)
+      ) {
+        state.firstResponseAt = message.createdAt;
+      }
+      responseState.set(conversationKey, state);
+      if (message.sentBy) {
+        const key = String(message.sentBy);
+        const stats = agentStats.get(key) || {
+          userId: message.sentBy,
+          openAssigned: 0,
+          messagesResponded: 0,
+          pendingWithoutResponse: 0,
+          failed: 0
+        };
+        if (
+          message.direction === 'outbound' &&
+          new Date(message.createdAt) >= startOfToday
+        ) {
+          stats.messagesResponded += 1;
+        }
+        if (message.status === 'failed') stats.failed += 1;
+        agentStats.set(key, stats);
+      }
+    }
+    const responseTimes = [...responseState.values()]
+      .filter((item) => item.firstInboundAt && item.firstResponseAt)
+      .map(
+        (item) =>
+          new Date(item.firstResponseAt).getTime() -
+          new Date(item.firstInboundAt).getTime()
+      )
+      .filter((value) => value >= 0);
+    const agentIds = [...agentStats.keys()];
+    const agentUsers = await User.find({ _id: { $in: agentIds } })
+      .select('name email role')
+      .lean();
+    const agentById = new Map(agentUsers.map((item) => [String(item._id), item]));
     res.json({
       open: conversations.filter((item) => item.status === 'open').length,
       pending: conversations.filter((item) => item.status === 'pending').length,
@@ -92,6 +180,23 @@ router.get('/metrics', async (req, res, next) => {
       unreadMessages: conversations.reduce((sum, item) => sum + item.unreadCount, 0),
       unanswered,
       connectedChannels,
+      byChannel: channelCounts,
+      averageFirstResponseMs: responseTimes.length
+        ? Math.round(responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length)
+        : null,
+      failedMessages: messages.filter((item) => item.status === 'failed').length,
+      inboundToday: messages.filter(
+        (item) =>
+          item.direction === 'inbound' && new Date(item.createdAt) >= startOfToday
+      ).length,
+      outboundToday: messages.filter(
+        (item) =>
+          item.direction === 'outbound' && new Date(item.createdAt) >= startOfToday
+      ).length,
+      agents: [...agentStats.entries()].map(([id, stats]) => ({
+        ...stats,
+        user: agentById.get(id) || null
+      })),
       oldestLastMessageAt: conversations
         .map((item) => item.lastMessageAt)
         .filter(Boolean)

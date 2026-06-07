@@ -62,6 +62,7 @@ export function ChannelSettingsPage() {
       phoneNumberId: data.get('phoneNumberId'),
       verifyToken: data.get('verifyToken'),
       accessToken: data.get('accessToken'),
+      appSecret: data.get('appSecret'),
       apiVersion: data.get('apiVersion'),
       status: data.get('status')
     }), 'Configuracion creada.');
@@ -82,6 +83,7 @@ export function ChannelSettingsPage() {
     };
     if (data.get('verifyToken')) payload.verifyToken = data.get('verifyToken');
     if (data.get('accessToken')) payload.accessToken = data.get('accessToken');
+    if (data.get('appSecret')) payload.appSecret = data.get('appSecret');
     await mutate(() => updateChannelConfig(selected._id, payload), 'Canal actualizado.');
   }
 
@@ -107,6 +109,7 @@ export function ChannelSettingsPage() {
                 <label className="text-xs font-semibold">Estado<select name="status" defaultValue={selected.status} className={inputClass}>{['not_configured', 'pending', 'connected', 'error', 'disabled'].map((value) => <option key={value}>{value}</option>)}</select></label>
                 <label className="text-xs font-semibold">Nuevo verify token<input name="verifyToken" placeholder={selected.verifyTokenConfigured ? 'Configurado; deja vacio para conservar' : 'Verify token'} className={inputClass} /></label>
                 <label className="text-xs font-semibold">Nuevo access token<input type="password" name="accessToken" placeholder={selected.accessTokenConfigured ? 'Configurado; deja vacio para conservar' : 'Access token'} className={inputClass} /></label>
+                <label className="text-xs font-semibold">Nuevo app secret<input type="password" name="appSecret" placeholder={selected.appSecretConfigured ? 'Configurado; deja vacio para conservar' : 'App secret de Meta'} className={inputClass} /></label>
                 <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-bold uppercase text-slate-500">URL de webhook</p>
                   <div className="mt-2 flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-sm">{webhookUrl(selected._id)}</code><Button variant="secondary" onClick={() => navigator.clipboard?.writeText(webhookUrl(selected._id))}><Copy className="h-4 w-4" /></Button></div>
@@ -115,19 +118,21 @@ export function ChannelSettingsPage() {
                 <div className="md:col-span-2 flex flex-wrap gap-3">
                   <Button type="submit" disabled={busy}><CheckCircle2 className="h-4 w-4" />Guardar</Button>
                   <Button variant="secondary" disabled={busy} onClick={() => mutate(() => testChannelConfig(selected._id))}><TestTube2 className="h-4 w-4" />Validar configuracion</Button>
+                  <Button variant="secondary" disabled={busy} onClick={() => mutate(() => testChannelConfig(selected._id, true))}><TestTube2 className="h-4 w-4" />Probar con Meta</Button>
                   <Button variant="danger" disabled={busy} onClick={() => mutate(() => disableChannelConfig(selected._id), 'Canal desactivado.')}><Power className="h-4 w-4" />Desactivar</Button>
                 </div>
               </form>
             </Card> : null}
           </div>
           <Card>
-            <CardHeader title="Preparar WhatsApp Cloud" description="No se llama a Meta al guardar ni al probar. Connected exige todos los campos minimos." />
+            <CardHeader title="Preparar WhatsApp Cloud" description="Guardar y validar son locales. Probar con Meta hace una llamada real y nunca simula exito." />
             <form onSubmit={create} className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
               <input required name="displayName" className={inputClass} placeholder="WhatsApp Comercial" />
               <input name="phoneNumberId" className={inputClass} placeholder="Phone Number ID" />
               <input name="apiVersion" className={inputClass} placeholder="Version de Graph API" />
               <input type="password" name="verifyToken" className={inputClass} placeholder="Verify token propio" />
               <input type="password" name="accessToken" className={inputClass} placeholder="Access token de Meta" />
+              <input type="password" name="appSecret" className={inputClass} placeholder="App secret para validar firmas" />
               <select name="status" defaultValue="pending" className={inputClass}><option value="pending">pending</option><option value="connected">connected</option><option value="not_configured">not_configured</option></select>
               <Button type="submit" disabled={busy}><Plus className="h-4 w-4" />Crear canal</Button>
             </form>

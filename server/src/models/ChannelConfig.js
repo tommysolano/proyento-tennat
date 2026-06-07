@@ -1,4 +1,10 @@
 import mongoose from 'mongoose';
+import {
+  decryptSecret,
+  decryptSecretMap,
+  encryptSecret,
+  encryptSecretMap
+} from '../utils/credentialCrypto.js';
 
 export const CHANNEL_CONFIG_CHANNELS = [
   'whatsapp_cloud',
@@ -33,8 +39,8 @@ const channelConfigSchema = new mongoose.Schema(
       select: false
     },
     settings: { type: mongoose.Schema.Types.Mixed, default: {} },
-    webhookSecret: { type: String, default: '', select: false },
-    verifyToken: { type: String, default: '', select: false },
+    webhookSecret: { type: mongoose.Schema.Types.Mixed, default: '', select: false },
+    verifyToken: { type: mongoose.Schema.Types.Mixed, default: '', select: false },
     phoneNumberId: { type: String, trim: true, default: '' },
     externalBusinessId: { type: String, trim: true, default: '' },
     externalAccountId: { type: String, trim: true, default: '' },
@@ -61,6 +67,21 @@ const channelConfigSchema = new mongoose.Schema(
 channelConfigSchema.index({ companyId: 1, channel: 1, displayName: 1 });
 channelConfigSchema.index({ companyId: 1, phoneNumberId: 1 });
 
+channelConfigSchema.pre('save', function encryptStoredSecrets(next) {
+  try {
+    const credentials = this.credentials || {};
+    this.credentials = Object.fromEntries(
+      Object.entries(credentials).map(([key, value]) => [key, encryptSecret(value)])
+    );
+    if (this.verifyToken) this.verifyToken = encryptSecret(this.verifyToken);
+    if (this.webhookSecret) this.webhookSecret = encryptSecret(this.webhookSecret);
+    if (Object.keys(credentials).length) this.markModified('credentials');
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 channelConfigSchema.methods.toSafeObject = function toSafeObject() {
   const value = this.toObject();
   const credentials = this.credentials || {};
@@ -70,7 +91,45 @@ channelConfigSchema.methods.toSafeObject = function toSafeObject() {
   value.accessTokenConfigured = Boolean(credentials.accessToken);
   value.verifyTokenConfigured = Boolean(this.verifyToken);
   value.webhookSecretConfigured = Boolean(this.webhookSecret);
+  value.appSecretConfigured = Boolean(credentials.appSecret || this.webhookSecret);
   return value;
 };
+
+channelConfigSchema.methods.setSecrets = function setSecrets(values = {}) {
+  const credentials = { ...(this.credentials || {}) };
+  for (const [key, value] of Object.entries(values.credentials || {})) {
+    if (value !== undefined && value !== null && value !== '') {
+      credentials[key] = encryptSecret(value);
+    }
+  }
+  this.credentials = credentials;
+  this.markModified('credentials');
+
+  if (values.verifyToken) this.verifyToken = encryptSecret(values.verifyToken);
+  if (values.webhookSecret) this.webhookSecret = encryptSecret(values.webhookSecret);
+  if (values.appSecret) {
+    this.credentials = {
+      ...(this.credentials || {}),
+      appSecret: encryptSecret(values.appSecret)
+    };
+    this.markModified('credentials');
+  }
+  return this;
+};
+
+channelConfigSchema.methods.getDecryptedCredentials = function getDecryptedCredentials() {
+  return decryptSecretMap(this.credentials || {});
+};
+
+channelConfigSchema.methods.getDecryptedVerifyToken = function getDecryptedVerifyToken() {
+  return decryptSecret(this.verifyToken);
+};
+
+channelConfigSchema.methods.getDecryptedAppSecret = function getDecryptedAppSecret() {
+  const credentials = decryptSecretMap(this.credentials || {});
+  return credentials.appSecret || decryptSecret(this.webhookSecret);
+};
+
+channelConfigSchema.statics.encryptCredentials = encryptSecretMap;
 
 export const ChannelConfig = mongoose.model('ChannelConfig', channelConfigSchema);

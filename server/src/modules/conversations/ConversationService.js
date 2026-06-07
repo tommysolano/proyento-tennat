@@ -5,6 +5,11 @@ import { Conversation } from '../../models/Conversation.js';
 import { Message } from '../../models/Message.js';
 import { User } from '../../models/User.js';
 import { validateCrmAssignee } from '../../utils/crmScope.js';
+import { sanitize } from '../../utils/sanitize.js';
+import { JobService } from '../jobs/JobService.js';
+import { NotificationService } from '../notifications/NotificationService.js';
+import { RealtimeService } from '../realtime/RealtimeService.js';
+import { RoutingService } from '../routing/RoutingService.js';
 import { getChannelAdapter, canonicalChannel } from './adapters/index.js';
 
 function safePreview(text, fallback = '') {
@@ -28,7 +33,20 @@ async function activity({
     userId,
     type,
     summary,
-    metadata
+    metadata: sanitize(metadata)
+  });
+}
+
+function realtimeConversation(type, conversation, data = {}) {
+  RealtimeService.publish(type, {
+    companyId: conversation.companyId,
+    assignedTo: conversation.assignedTo,
+    data: {
+      conversationId: conversation._id,
+      assignedTo: conversation.assignedTo,
+      status: conversation.status,
+      ...data
+    }
   });
 }
 
@@ -92,6 +110,14 @@ export class ConversationService {
 
     const contact = await Contact.findOne({ _id: contactId, companyId }).select('assignedTo');
     if (!contact) throw Object.assign(new Error('Contacto no pertenece a la empresa'), { status: 400 });
+    const resolvedAssignee =
+      assignedTo !== undefined && assignedTo !== null
+        ? assignedTo
+        : await RoutingService.resolve({
+            companyId,
+            channel: canonical,
+            contact
+          });
     conversation = await Conversation.create({
       companyId,
       distributorId: distributorId || null,
@@ -99,7 +125,7 @@ export class ConversationService {
       channel: canonical,
       channelConfigId,
       externalConversationId,
-      assignedTo: assignedTo || contact.assignedTo || null,
+      assignedTo: resolvedAssignee || null,
       createdBy,
       updatedBy: createdBy,
       lastMessageAt: new Date()
@@ -112,6 +138,19 @@ export class ConversationService {
       summary: `Conversacion creada por ${canonical}`,
       metadata: { conversationId: conversation._id, contactId, channel: canonical }
     });
+    realtimeConversation('conversation.created', conversation);
+    if (conversation.assignedTo) {
+      await NotificationService.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        userId: conversation.assignedTo,
+        type: 'conversation_assigned',
+        title: 'Conversacion asignada',
+        body: 'Se te asigno una nueva conversacion.',
+        relatedType: 'conversation',
+        relatedId: conversation._id
+      });
+    }
     return { conversation, created: true };
   }
 
@@ -154,6 +193,31 @@ export class ConversationService {
       conversation.closedBy = null;
     }
     await conversation.save();
+    realtimeConversation('message.created', conversation, {
+      message: message.toJSON()
+    });
+    if (message.media?.providerMediaId || message.media?.externalMediaId) {
+      await JobService.enqueue({
+        type: 'media.whatsapp.download',
+        payload: { messageId: message._id },
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metadata: { conversationId: conversation._id, messageId: message._id }
+      });
+    }
+    if (conversation.assignedTo) {
+      await NotificationService.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        userId: conversation.assignedTo,
+        type: 'new_message',
+        title: 'Nuevo mensaje',
+        body: safePreview(message.text, `[${message.type}]`),
+        relatedType: 'conversation',
+        relatedId: conversation._id,
+        metadata: { messageId: message._id }
+      });
+    }
     await activity({
       actorId,
       companyId: conversation.companyId,
@@ -195,7 +259,12 @@ export class ConversationService {
       status: 'pending',
       provider: canonical,
       sentBy: user._id,
-      metadata: template ? { templateName: template.name || template } : {}
+      metadata: template
+        ? {
+            templateName: template.name || template,
+            providerTemplate: sanitize(template)
+          }
+        : {}
     });
     await activity({
       user,
@@ -210,39 +279,93 @@ export class ConversationService {
       }
     });
 
-    const [contact, channelConfig] = await Promise.all([
-      Contact.findOne({ _id: conversation.contactId, companyId: conversation.companyId }),
-      conversation.channelConfigId
-        ? ChannelConfig.findOne({
-            _id: conversation.channelConfigId,
-            companyId: conversation.companyId
-          }).select('+credentials +verifyToken +webhookSecret')
-        : null
+    const now = new Date();
+    this.updateLastMessage(conversation, message, now);
+    conversation.updatedBy = user._id;
+    await conversation.save();
+    realtimeConversation('message.created', conversation, { message: message.toJSON() });
+
+    if (canonical === 'whatsapp_cloud') {
+      await JobService.enqueue({
+        type: 'message.whatsapp.send',
+        payload: {
+          messageId: message._id,
+          template
+        },
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metadata: {
+          conversationId: conversation._id,
+          messageId: message._id
+        }
+      });
+      return message;
+    }
+
+    return this.processOutboundMessage({ messageId: message._id, template });
+  }
+
+  static async processOutboundMessage({ messageId, template = null, job = null }) {
+    const message = await Message.findById(messageId).select('+providerPayload');
+    if (!message) {
+      throw Object.assign(new Error('Mensaje outbound no encontrado'), { retryable: false });
+    }
+    if (message.status === 'sent' && message.externalMessageId) return message;
+
+    const [conversation, contact] = await Promise.all([
+      Conversation.findOne({
+        _id: message.conversationId,
+        companyId: message.companyId,
+        archivedAt: null
+      }),
+      Contact.findOne({ _id: message.contactId, companyId: message.companyId })
     ]);
+    if (!conversation || !contact) {
+      throw Object.assign(new Error('Conversacion o contacto no disponible para envio'), {
+        retryable: false
+      });
+    }
+    const channelConfig = conversation.channelConfigId
+      ? await ChannelConfig.findOne({
+          _id: conversation.channelConfigId,
+          companyId: conversation.companyId
+        }).select('+credentials +verifyToken +webhookSecret')
+      : null;
+    const canonical = canonicalChannel(conversation.channel);
     const adapter = getChannelAdapter(canonical, { channelConfig });
+    message.attempts += 1;
+    message.lastAttemptAt = new Date();
     const result = await adapter.sendMessage({
       companyId: conversation.companyId,
       conversationId: conversation._id,
       contact,
       text: message.text,
+      type: message.type,
       template,
-      media,
-      userId: user._id
+      media: message.media || {},
+      userId: message.sentBy
     });
 
-    message.status = result.status || (result.success ? 'sent' : 'failed');
-    message.externalMessageId = result.externalMessageId || '';
-    message.providerPayload = result.providerPayload || {};
-    message.error = result.error || '';
-    if (!result.success) message.failedAt = new Date();
+    message.providerPayload = sanitize(result.providerPayload || {});
+    message.externalMessageId = result.externalMessageId || message.externalMessageId || '';
+    message.error = sanitize(result.error || '');
+    if (result.success) {
+      message.status = result.status || 'sent';
+      message.failedAt = null;
+    } else if (result.retryable && (!job || job.attempts < job.maxAttempts)) {
+      message.status = 'pending';
+      message.failedAt = null;
+    } else {
+      message.status = 'failed';
+      message.failedAt = new Date();
+    }
     await message.save();
+    realtimeConversation('message.status_updated', conversation, {
+      message: message.toJSON()
+    });
 
-    const now = new Date();
-    this.updateLastMessage(conversation, message, now);
-    conversation.updatedBy = user._id;
-    await conversation.save();
     await activity({
-      user,
+      actorId: message.sentBy,
       companyId: conversation.companyId,
       distributorId: conversation.distributorId,
       type: result.success ? 'message_outbound_sent' : 'message_outbound_failed',
@@ -253,9 +376,29 @@ export class ConversationService {
         conversationId: conversation._id,
         contactId: conversation.contactId,
         messageId: message._id,
-        status: message.status
+        status: message.status,
+        retryable: Boolean(result.retryable)
       }
     });
+
+    if (!result.success) {
+      if (message.status === 'failed' && message.sentBy) {
+        await NotificationService.create({
+          companyId: conversation.companyId,
+          distributorId: conversation.distributorId,
+          userId: message.sentBy,
+          type: 'message_failed',
+          title: 'Mensaje no enviado',
+          body: message.error,
+          relatedType: 'conversation',
+          relatedId: conversation._id,
+          metadata: { messageId: message._id }
+        });
+      }
+      throw Object.assign(new Error(message.error || 'El proveedor rechazo el mensaje'), {
+        retryable: Boolean(result.retryable)
+      });
+    }
     return message;
   }
 
@@ -288,6 +431,25 @@ export class ConversationService {
         messageId: message._id
       }
     });
+    realtimeConversation('internal_note.created', conversation, {
+      message: message.toJSON()
+    });
+    if (
+      conversation.assignedTo &&
+      String(conversation.assignedTo) !== String(user._id)
+    ) {
+      await NotificationService.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        userId: conversation.assignedTo,
+        type: 'internal_note',
+        title: 'Nueva nota interna',
+        body: safePreview(message.text),
+        relatedType: 'conversation',
+        relatedId: conversation._id,
+        metadata: { messageId: message._id }
+      });
+    }
     return message;
   }
 
@@ -309,6 +471,30 @@ export class ConversationService {
         to: conversation.assignedTo
       }
     });
+    realtimeConversation('conversation.assigned', conversation, { previousAssignedTo: previous });
+    if (previous && previous !== String(conversation.assignedTo || '')) {
+      RealtimeService.publish('conversation.assigned', {
+        userId: previous,
+        companyId: conversation.companyId,
+        data: {
+          conversationId: conversation._id,
+          assignedTo: conversation.assignedTo,
+          previousAssignedTo: previous
+        }
+      });
+    }
+    if (conversation.assignedTo && String(conversation.assignedTo) !== previous) {
+      await NotificationService.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        userId: conversation.assignedTo,
+        type: 'conversation_assigned',
+        title: 'Conversacion asignada',
+        body: 'Se te asigno una conversacion.',
+        relatedType: 'conversation',
+        relatedId: conversation._id
+      });
+    }
     return conversation;
   }
 
@@ -338,6 +524,25 @@ export class ConversationService {
       summary: `Conversacion ${status}`,
       metadata: { conversationId: conversation._id, contactId: conversation.contactId, from: previous, to: status }
     });
+    realtimeConversation(
+      ['closed', 'resolved'].includes(status)
+        ? 'conversation.closed'
+        : 'conversation.updated',
+      conversation,
+      { previousStatus: previous }
+    );
+    if (['closed', 'resolved'].includes(status) && conversation.assignedTo) {
+      await NotificationService.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        userId: conversation.assignedTo,
+        type: 'conversation_closed',
+        title: 'Conversacion cerrada',
+        body: `La conversacion cambio a ${status}.`,
+        relatedType: 'conversation',
+        relatedId: conversation._id
+      });
+    }
     return conversation;
   }
 
@@ -374,6 +579,7 @@ export class ConversationService {
       summary: 'Conversacion marcada como leida',
       metadata: { conversationId: conversation._id, contactId: conversation.contactId }
     });
+    realtimeConversation('conversation.updated', conversation, { unreadCount: 0 });
     return conversation;
   }
 

@@ -3,8 +3,9 @@
 Base SaaS multi-tenant con React, Vite, Tailwind, Node.js, Express, MongoDB,
 Mongoose y JWT. Incluye gobierno de plataforma, capa comercial del distribuidor
 y CRM operativo avanzado para las empresas.
-La Fase 4 agrega inbox omnicanal, mensajes, notas internas, plantillas,
-configuracion de canales y webhooks preparados para WhatsApp Cloud API.
+La Fase 4 agrega inbox omnicanal y WhatsApp Cloud. La Fase 5 endurece esa
+base con cifrado AES-256-GCM, firma de webhooks, cola durable MongoDB,
+reintentos, media, SSE, notificaciones, routing y observabilidad.
 
 ## Requisitos
 
@@ -59,6 +60,7 @@ npm run build
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:4000/api`
 - Health: `http://localhost:4000/health`
+- Health API: `http://localhost:4000/api/health`
 
 ## Jerarquia
 
@@ -102,6 +104,8 @@ Frontend:
 - `/inbox`
 - `/inbox/channels`
 - `/inbox/templates`
+- `/inbox/routing`
+- `/notifications`
 
 API de plataforma:
 
@@ -159,6 +163,25 @@ API de conversaciones:
 - `/api/channel-configs`
 - `/api/message-templates`
 - `/api/webhooks/whatsapp/:channelConfigId`
+- `/api/realtime/events`
+- `/api/notifications`
+- `/api/routing-rules`
+- `/api/ops/jobs`
+- `/api/health`
+
+## Variables de Fase 5
+
+Antes de guardar credenciales configure `CREDENTIALS_ENCRYPTION_KEY`. En
+produccion es obligatoria y debe tener al menos 32 caracteres. Tambien estan
+disponibles `REQUIRE_WEBHOOK_SIGNATURE`, `JOB_WORKER_ENABLED`,
+`JOB_WORKER_CONCURRENCY`, `JOB_MAX_ATTEMPTS`, `REALTIME_ENABLED`,
+`WHATSAPP_GRAPH_API_VERSION` y `WHATSAPP_GRAPH_API_BASE_URL`.
+
+Genere la clave fuera del repositorio:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 
 ## Limites
 
@@ -178,12 +201,15 @@ datos existentes. Una suscripcion `suspended` o `cancelled` bloquea siempre.
 - [CRM.md](CRM.md)
 - [CONVERSATIONS.md](CONVERSATIONS.md)
 - [WHATSAPP.md](WHATSAPP.md)
+- [SECURITY_WHATSAPP.md](SECURITY_WHATSAPP.md)
+- [JOBS.md](JOBS.md)
+- [REALTIME.md](REALTIME.md)
 
 ## Alcance
 
 WhatsApp Cloud queda preparado para envio real solo cuando una empresa aporta
-credenciales validas y configura una version de Graph API. El seed no contiene
-tokens y nunca simula un envio exitoso. Facebook, Instagram, Messenger, SMS y
-email siguen como adaptadores placeholder. Tampoco existen pasarelas de pago,
-DNS, certificados, funnels, automatizaciones visuales, landing pages o
-calendario real.
+credenciales validas. `Probar con Meta` realiza una consulta real y no simula
+exito. La media inbound conserva metadata y queda pendiente hasta configurar
+almacenamiento. Facebook, Instagram, Messenger, SMS y email siguen como
+adaptadores placeholder. Tampoco existen pasarelas de pago, funnels,
+automatizaciones visuales, landing pages o calendario real.

@@ -7,7 +7,9 @@ export const ROLE_PERMISSIONS = {
     'platform_billing:manage',
     'modules:manage',
     'impersonation:manage',
-    'audit:read_all'
+    'audit:read_all',
+    'ops:read_all',
+    'jobs:read_all'
   ],
   DISTRIBUTOR: [
     'companies:manage',
@@ -47,7 +49,11 @@ export const ROLE_PERMISSIONS = {
     'activity:read',
     'company_billing:read',
     'company_settings:read',
-    'company_onboarding:update'
+    'company_onboarding:update',
+    'notifications:read',
+    'routing_rules:manage',
+    'ops:read_company',
+    'jobs:read_company'
   ],
   SUPERVISOR: [
     'crm:read_team',
@@ -65,7 +71,9 @@ export const ROLE_PERMISSIONS = {
     'conversations:send_team',
     'conversations:close_team',
     'message_templates:read',
-    'activity:read_team'
+    'activity:read_team',
+    'notifications:read',
+    'routing_rules:read'
   ],
   CALLCENTER: [
     'contacts:read_assigned',
@@ -81,7 +89,8 @@ export const ROLE_PERMISSIONS = {
     'conversations:read_assigned',
     'conversations:send_assigned',
     'conversations:internal_notes',
-    'message_templates:use'
+    'message_templates:use',
+    'notifications:read'
   ]
 };
 

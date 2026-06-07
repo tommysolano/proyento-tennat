@@ -2,10 +2,9 @@
 
 ## Estado de la integracion
 
-La Fase 4 prepara verificacion de webhook, mensajes inbound, actualizaciones
-de estado y envio de texto/template mediante Graph API. El seed crea un canal
-`pending` sin credenciales. Si la configuracion no permite un envio real, el
-mensaje queda `failed` con un error explicito.
+La Fase 5 agrega cifrado, firma HMAC, cola durable, reintentos y media a la
+integracion preparada en Fase 4. El seed crea un canal `pending` sin
+credenciales y nunca simula un envio exitoso.
 
 ## Configuracion
 
@@ -14,6 +13,7 @@ En `/inbox/channels`, ADMIN debe registrar:
 - `phoneNumberId`
 - `verifyToken` propio
 - `accessToken` de Meta
+- `appSecret` de la aplicacion Meta
 - version de Graph API en `apiVersion` o `WHATSAPP_GRAPH_VERSION`
 - estado `connected` cuando la configuracion sea valida
 
@@ -24,40 +24,35 @@ La URL mostrada tiene la forma:
 En Meta se configura esa URL y el mismo verify token. La aplicacion responde
 al challenge solo cuando `hub.mode=subscribe` y el token coincide.
 
+`Validar configuracion` revisa campos localmente. `Probar con Meta` consulta
+el Phone Number ID real y devuelve el error real del proveedor si falla.
+
 ## Flujo inbound
 
-1. El POST responde HTTP 200 inmediatamente.
-2. El proceso carga `ChannelConfig`; el payload publico no decide el tenant.
-3. El adaptador normaliza mensajes y estados.
-4. `WebhookEvent` reserva el evento con indice unico.
-5. Se busca el contacto por WhatsApp ID o telefono dentro de la empresa.
-6. Si falta, se crea como lead `nuevo` con source `whatsapp_cloud`.
-7. Se busca o crea conversacion conservando `contact.assignedTo`.
-8. Se crea `Message`, se incrementan no leidos y se registra actividad.
+1. Express conserva el raw body.
+2. Se carga `ChannelConfig` y se valida `x-hub-signature-256`.
+3. El POST crea un `Job` durable y responde HTTP 200.
+4. El worker normaliza mensajes y estados.
+5. `WebhookEvent` reserva el evento con indice unico.
+6. Se busca o crea contacto y conversacion dentro de la empresa.
+7. Se aplica routing, se crea `Message` y se emiten SSE/notificaciones.
 
 Para mensajes se usa `message.id`. Para estados se usa
 `status.id + status + timestamp`. Sin ID se usa SHA-256 del payload.
 
 ## Seguridad
 
-`credentials`, `verifyToken` y `webhookSecret` no se seleccionan por defecto.
-Las respuestas nunca devuelven el access token; solo indican si esta
-configurado. `providerPayload` tampoco se devuelve en consultas normales. Los
-logs de webhook registran hashes y errores sanitizados, no tokens.
+`accessToken`, `appSecret`, `verifyToken` y secretos legados se cifran con
+AES-256-GCM. No se seleccionan por defecto ni se devuelven. `providerPayload`
+tampoco se devuelve. Logs, errores, jobs ops y ActivityLog pasan por redaccion.
 
-Pendiente antes de produccion:
-
-- cifrar credenciales en reposo;
-- usar un secret manager;
-- rotar y revocar tokens;
-- validar firma del webhook con `webhookSecret`;
-- fijar una version soportada de Graph API;
-- agregar colas/reintentos y observabilidad;
-- revisar ventanas de conversacion y aprobacion real de templates.
+En produccion use un secret manager, rote tokens, fije una version soportada
+de Graph API y active `REQUIRE_WEBHOOK_SIGNATURE=true`.
 
 ## Limites
 
-No se aprovisionan cuentas de Meta, numeros, permisos ni templates. No se
-probo un envio contra una cuenta real porque el proyecto no incluye
-credenciales. Facebook Messenger, Instagram, email y SMS siguen sin
-integracion real.
+No se aprovisionan cuentas, numeros, permisos ni templates. La media inbound
+consulta metadata real, pero no descarga binarios porque no existe S3/R2/local
+configurado. La UI la muestra `pending`. Quedan pendientes antivirus,
+expiracion de URLs y limites por plan. Facebook Messenger, Instagram, email y
+SMS siguen sin integracion real.

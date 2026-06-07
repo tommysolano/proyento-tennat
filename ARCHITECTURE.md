@@ -134,3 +134,21 @@ El scope se calcula siempre en backend:
 Los payloads del proveedor se guardan con `select: false`. Las credenciales y
 tokens del canal tampoco se seleccionan por defecto y las respuestas usan una
 representacion redactada.
+
+## Endurecimiento Fase 5
+
+`ChannelConfig` guarda secretos como envelopes AES-256-GCM con IV y auth tag
+por valor. El descifrado solo se realiza en adaptadores o validacion del
+webhook. Los documentos legados en texto plano se cifran al siguiente `save`.
+
+El POST de WhatsApp valida `x-hub-signature-256` sobre `req.rawBody`. Express
+captura los bytes mediante el callback `verify` de `express.json` solo para
+`/api/webhooks/whatsapp/*`.
+
+`Job` implementa la cola MongoDB durable. El worker usa claim atomico, lock,
+recuperacion de locks vencidos, backoff y estado `dead`. `RealtimeService`
+mantiene SSE autenticado; `Notification` persiste avisos por usuario y
+`RoutingRule` aplica `unassigned`, `contact_owner` o `round_robin`.
+
+La cola MongoDB es apropiada para una beta controlada. Alta escala debe migrar
+el transporte a Redis/BullMQ sin cambiar los handlers de dominio.

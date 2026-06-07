@@ -1,12 +1,16 @@
 import {
   Archive,
   CheckCircle2,
+  FileText,
+  Image as ImageIcon,
   MessageSquare,
   RefreshCw,
   Search,
   Send,
   StickyNote,
-  UserRoundCheck
+  UserRoundCheck,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -14,6 +18,7 @@ import {
   archiveConversation,
   assignConversation,
   closeConversation,
+  connectRealtime,
   createConversation,
   createConversationInternalNote,
   getContacts,
@@ -45,6 +50,44 @@ const channelLabel = {
   messenger: 'Messenger'
 };
 
+function MessageMedia({ message }) {
+  const media = message.media || {};
+  const filename = media.filename || media.fileName || 'Adjunto';
+  const status = media.status || (media.url ? 'available' : 'none');
+  if (status === 'none' && !media.url && !media.providerMediaId && !media.externalMediaId) {
+    return null;
+  }
+  if (status === 'pending') {
+    return <p className="mt-2 rounded-md bg-slate-900/10 px-3 py-2 text-xs">Adjunto pendiente de almacenamiento.</p>;
+  }
+  if (status === 'failed') {
+    return <p className="mt-2 rounded-md bg-rose-900/20 px-3 py-2 text-xs">No se pudo preparar el adjunto: {media.error || 'error de descarga'}</p>;
+  }
+  if (message.type === 'image' && media.url) {
+    return <img src={media.url} alt={filename} className="mt-2 max-h-72 rounded-lg object-contain" />;
+  }
+  if (message.type === 'audio' && media.url) {
+    return <audio controls src={media.url} className="mt-2 max-w-full" />;
+  }
+  if (message.type === 'video' && media.url) {
+    return <video controls src={media.url} className="mt-2 max-h-72 max-w-full rounded-lg" />;
+  }
+  if (media.url) {
+    return (
+      <a href={media.url} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-2 rounded-md bg-slate-900/10 px-3 py-2 font-semibold underline">
+        <FileText className="h-4 w-4" />
+        {filename}
+      </a>
+    );
+  }
+  return (
+    <p className="mt-2 flex items-center gap-2 rounded-md bg-slate-900/10 px-3 py-2 text-xs">
+      <ImageIcon className="h-4 w-4" />
+      {filename} ({media.mimeType || message.type})
+    </p>
+  );
+}
+
 export function InboxPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -68,6 +111,7 @@ export function InboxPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [realtimeStatus, setRealtimeStatus] = useState('connecting');
   const selected = conversations.find((item) => item._id === selectedId) || null;
   const canAssign = user.role !== 'CALLCENTER';
   const canClose = user.role !== 'CALLCENTER';
@@ -128,6 +172,31 @@ export function InboxPage() {
         .catch(() => null);
     }
   }, [selectedId, loadMessages]);
+  useEffect(() => {
+    const disconnect = connectRealtime(
+      (realtimeEvent) => {
+        if (realtimeEvent.event === 'notification.created') {
+          window.dispatchEvent(new CustomEvent('tenantdesk:notifications-changed'));
+        }
+        if (
+          [
+            'conversation.created',
+            'conversation.updated',
+            'conversation.assigned',
+            'conversation.closed',
+            'message.created',
+            'message.status_updated',
+            'internal_note.created'
+          ].includes(realtimeEvent.event)
+        ) {
+          loadConversations(false);
+          if (realtimeEvent.data?.conversationId === selectedId) loadMessages();
+        }
+      },
+      setRealtimeStatus
+    );
+    return disconnect;
+  }, [loadConversations, loadMessages, selectedId]);
 
   async function mutate(action, success) {
     setBusy(true); setError(''); setNotice('');
@@ -149,10 +218,14 @@ export function InboxPage() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const templateId = data.get('templateId');
+    const type = data.get('type') || 'text';
+    const mediaUrl = String(data.get('mediaUrl') || '').trim();
     const sent = await mutate(
       () => sendMessage(selectedId, {
         text: data.get('text'),
-        templateId: templateId || undefined
+        type,
+        templateId: templateId || undefined,
+        media: mediaUrl ? { url: mediaUrl, status: 'available' } : undefined
       }),
       'Mensaje procesado.'
     );
@@ -205,6 +278,16 @@ export function InboxPage() {
       description="Mensajes, asignaciones y notas internas con alcance por rol."
     >
       <CrmNotice notice={notice} error={error} />
+      <div className="mb-3 flex justify-end">
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+          realtimeStatus === 'connected'
+            ? 'bg-emerald-50 text-emerald-700'
+            : 'bg-amber-50 text-amber-700'
+        }`}>
+          {realtimeStatus === 'connected' ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+          {realtimeStatus === 'connected' ? 'Tiempo real conectado' : 'Tiempo real no disponible; usa Actualizar'}
+        </span>
+      </div>
       <Card>
         <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-7">
           <label className="relative">
@@ -288,6 +371,7 @@ export function InboxPage() {
                     <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm shadow-sm ${message.direction === 'outbound' ? 'bg-cyan-700 text-white' : message.direction === 'internal' ? 'border border-amber-200 bg-amber-50 text-amber-900' : 'border border-slate-200 bg-white text-slate-800'}`}>
                       {message.direction === 'internal' ? <p className="mb-1 text-xs font-bold uppercase">Nota interna</p> : null}
                       <p className="whitespace-pre-wrap">{message.text || `[${message.type}]`}</p>
+                      <MessageMedia message={message} />
                       <div className={`mt-2 flex items-center gap-2 text-[11px] ${message.direction === 'outbound' ? 'text-cyan-100' : 'text-slate-500'}`}>
                         <span>{message.sentBy?.name || (message.direction === 'inbound' ? selected.contactId?.name : 'Sistema')}</span>
                         <span>{localDate(message.createdAt)}</span>
@@ -303,6 +387,14 @@ export function InboxPage() {
               <div className="grid gap-3 border-t border-slate-100 p-4 lg:grid-cols-2">
                 <form className="space-y-2" onSubmit={submitMessage}>
                   <select name="templateId" className={inputClass} defaultValue=""><option value="">Sin plantilla</option>{applicableTemplates.map((template) => <option key={template._id} value={template._id}>{template.name}</option>)}</select>
+                  <select name="type" className={inputClass} defaultValue="text">
+                    <option value="text">Texto</option>
+                    <option value="image">Imagen por URL publica</option>
+                    <option value="document">Documento por URL publica</option>
+                    <option value="audio">Audio por URL publica</option>
+                    <option value="video">Video por URL publica</option>
+                  </select>
+                  <input name="mediaUrl" type="url" className={inputClass} placeholder="URL publica del adjunto (opcional)" />
                   <textarea name="text" className={`${inputClass} min-h-20`} placeholder="Escribe una respuesta. Una plantilla puede completar el contenido." />
                   <Button type="submit" disabled={busy}><Send className="h-4 w-4" />Enviar</Button>
                 </form>

@@ -1,4 +1,5 @@
 import { BaseAdapter } from './BaseAdapter.js';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 function textFromMessage(message) {
   if (message.type === 'text') return message.text?.body || '';
@@ -18,11 +19,57 @@ function mediaFromMessage(message) {
   if (!supported.includes(message.type)) return {};
   const value = message[message.type] || {};
   return {
-    externalMediaId: value.id || '',
+    providerMediaId: value.id || '',
     mimeType: value.mime_type || '',
-    fileName: value.filename || '',
-    caption: value.caption || ''
+    filename: value.filename || '',
+    caption: value.caption || '',
+    status: value.id ? 'pending' : 'unavailable'
   };
+}
+
+function retryableProviderError(status, providerError = {}) {
+  const code = Number(providerError.code || 0);
+  return (
+    status === 408 ||
+    status === 429 ||
+    status >= 500 ||
+    [1, 2, 4, 17, 32, 613, 130429, 131000, 131016].includes(code)
+  );
+}
+
+function publicMediaBody(type, media) {
+  const supported = ['image', 'audio', 'video', 'document'];
+  if (!supported.includes(type)) return null;
+  let publicUrl = '';
+  if (media?.url) {
+    try {
+      const parsed = new URL(media.url);
+      const hostname = parsed.hostname.toLowerCase();
+      const privateHost =
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+      if (['http:', 'https:'].includes(parsed.protocol) && !privateHost) {
+        publicUrl = parsed.toString();
+      }
+    } catch {
+      publicUrl = '';
+    }
+  }
+  const source = media?.providerMediaId
+    ? { id: media.providerMediaId }
+    : publicUrl
+      ? { link: publicUrl }
+      : null;
+  if (!source) return null;
+  if (media.caption && ['image', 'video', 'document'].includes(type)) {
+    source.caption = media.caption;
+  }
+  if (media.filename && type === 'document') source.filename = media.filename;
+  return { type, [type]: source };
 }
 
 export class WhatsAppCloudAdapter extends BaseAdapter {
@@ -31,8 +78,27 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
     const token = query['hub.verify_token'];
     const challenge = query['hub.challenge'];
     return {
-      verified: mode === 'subscribe' && Boolean(token) && token === this.channelConfig?.verifyToken,
+      verified:
+        mode === 'subscribe' &&
+        Boolean(token) &&
+        token === this.channelConfig?.getDecryptedVerifyToken(),
       challenge
+    };
+  }
+
+  verifySignature(rawBody, signatureHeader) {
+    const appSecret = this.channelConfig?.getDecryptedAppSecret();
+    if (!appSecret) return { configured: false, valid: false };
+    const supplied = String(signatureHeader || '');
+    if (!supplied.startsWith('sha256=')) return { configured: true, valid: false };
+    const expected = `sha256=${createHmac('sha256', appSecret).update(rawBody).digest('hex')}`;
+    const suppliedBuffer = Buffer.from(supplied);
+    const expectedBuffer = Buffer.from(expected);
+    return {
+      configured: true,
+      valid:
+        suppliedBuffer.length === expectedBuffer.length &&
+        timingSafeEqual(suppliedBuffer, expectedBuffer)
     };
   }
 
@@ -96,11 +162,17 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
     return normalized;
   }
 
-  async sendMessage({ contact, text, template }) {
+  async sendMessage({ contact, text, type = 'text', template, media = {} }) {
     const config = this.channelConfig;
-    const accessToken = config?.credentials?.accessToken;
-    const phoneNumberId = config?.phoneNumberId || config?.credentials?.phoneNumberId;
-    const apiVersion = config?.settings?.apiVersion || process.env.WHATSAPP_GRAPH_VERSION;
+    const credentials = config?.getDecryptedCredentials?.() || {};
+    const accessToken = credentials.accessToken;
+    const phoneNumberId = config?.phoneNumberId || credentials.phoneNumberId;
+    const apiVersion =
+      config?.settings?.apiVersion ||
+      process.env.WHATSAPP_GRAPH_API_VERSION ||
+      process.env.WHATSAPP_GRAPH_VERSION;
+    const baseUrl =
+      process.env.WHATSAPP_GRAPH_API_BASE_URL || 'https://graph.facebook.com';
     const recipient = String(contact?.phone || '').replace(/[^\d]/g, '');
 
     if (config?.status !== 'connected') {
@@ -121,6 +193,16 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
       };
     }
 
+    const mediaBody = publicMediaBody(type, media);
+    if (type !== 'text' && !template && !mediaBody) {
+      return {
+        success: false,
+        status: 'failed',
+        retryable: false,
+        error: 'WhatsApp media requiere una URL publica o providerMediaId'
+      };
+    }
+
     const body = template
       ? {
           messaging_product: 'whatsapp',
@@ -128,7 +210,14 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
           type: 'template',
           template
         }
-      : {
+      : mediaBody
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: recipient,
+            ...mediaBody
+          }
+        : {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
           to: recipient,
@@ -138,7 +227,7 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
 
     try {
       const response = await fetch(
-        `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
+        `${baseUrl.replace(/\/$/, '')}/${apiVersion}/${phoneNumberId}/messages`,
         {
           method: 'POST',
           headers: {
@@ -150,11 +239,20 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
       );
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
+        const providerError = result.error || {};
         return {
           success: false,
           status: 'failed',
-          error: result.error?.message || `WhatsApp respondio HTTP ${response.status}`,
-          providerPayload: { error: result.error || { status: response.status } }
+          retryable: retryableProviderError(response.status, providerError),
+          error: providerError.message || `WhatsApp respondio HTTP ${response.status}`,
+          providerPayload: {
+            error: {
+              code: providerError.code,
+              type: providerError.type,
+              subcode: providerError.error_subcode,
+              status: response.status
+            }
+          }
         };
       }
       return {
@@ -171,8 +269,85 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
       return {
         success: false,
         status: 'failed',
+        retryable: true,
         error: `No se pudo conectar con WhatsApp: ${error.message}`
       };
+    }
+  }
+
+  async getMediaMetadata(providerMediaId) {
+    const config = this.channelConfig;
+    const accessToken = config?.getDecryptedCredentials?.().accessToken;
+    const apiVersion =
+      config?.settings?.apiVersion ||
+      process.env.WHATSAPP_GRAPH_API_VERSION ||
+      process.env.WHATSAPP_GRAPH_VERSION;
+    const baseUrl =
+      process.env.WHATSAPP_GRAPH_API_BASE_URL || 'https://graph.facebook.com';
+    if (!accessToken || !apiVersion || !providerMediaId) {
+      throw Object.assign(new Error('No hay credenciales suficientes para consultar media'), {
+        retryable: false
+      });
+    }
+    const response = await fetch(
+      `${baseUrl.replace(/\/$/, '')}/${apiVersion}/${providerMediaId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(result.error?.message || `WhatsApp media respondio HTTP ${response.status}`),
+        { retryable: retryableProviderError(response.status, result.error) }
+      );
+    }
+    return {
+      mimeType: result.mime_type || '',
+      size: Number(result.file_size || 0),
+      providerMediaId: result.id || providerMediaId,
+      providerUrlAvailable: Boolean(result.url)
+    };
+  }
+
+  async testConnection() {
+    const config = this.channelConfig;
+    const credentials = config?.getDecryptedCredentials?.() || {};
+    const accessToken = credentials.accessToken;
+    const phoneNumberId = config?.phoneNumberId;
+    const apiVersion =
+      config?.settings?.apiVersion ||
+      process.env.WHATSAPP_GRAPH_API_VERSION ||
+      process.env.WHATSAPP_GRAPH_VERSION;
+    const baseUrl =
+      process.env.WHATSAPP_GRAPH_API_BASE_URL || 'https://graph.facebook.com';
+    if (!accessToken || !phoneNumberId || !apiVersion) {
+      return {
+        success: false,
+        error: 'Faltan accessToken, phoneNumberId o version de Graph API'
+      };
+    }
+    try {
+      const response = await fetch(
+        `${baseUrl.replace(/\/$/, '')}/${apiVersion}/${phoneNumberId}?fields=id,display_phone_number,verified_name`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error?.message || `Meta respondio HTTP ${response.status}`,
+          code: result.error?.code || null
+        };
+      }
+      return {
+        success: true,
+        account: {
+          id: result.id || phoneNumberId,
+          displayPhoneNumber: result.display_phone_number || '',
+          verifiedName: result.verified_name || ''
+        }
+      };
+    } catch (error) {
+      return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
     }
   }
 }

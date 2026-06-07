@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { sanitize } from '../utils/sanitize.js';
 
 const activityLogSchema = new mongoose.Schema(
   {
@@ -107,7 +108,10 @@ const activityLogSchema = new mongoose.Schema(
         'message_template_created',
         'message_template_updated',
         'message_template_disabled',
-        'contact_created_from_inbound'
+        'contact_created_from_inbound',
+        'routing_rule_created',
+        'routing_rule_updated',
+        'routing_rule_toggled'
       ],
       required: true
     },
@@ -122,5 +126,11 @@ const activityLogSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+activityLogSchema.pre('validate', function sanitizeMetadata(next) {
+  this.summary = sanitize(this.summary);
+  this.metadata = sanitize(this.metadata || {});
+  next();
+});
 
 export const ActivityLog = mongoose.model('ActivityLog', activityLogSchema);

@@ -56,6 +56,10 @@ La matriz vive en
 - `company_billing:read`
 - `company_settings:read`
 - `company_onboarding:update`
+- `notifications:read`
+- `routing_rules:manage`
+- `ops:read_company`
+- `jobs:read_company`
 
 ## SUPERVISOR
 
@@ -75,6 +79,8 @@ La matriz vive en
 - `conversations:send_team`
 - `conversations:close_team`
 - `message_templates:read`
+- `notifications:read`
+- `routing_rules:read`
 
 ## CALLCENTER
 
@@ -92,6 +98,12 @@ La matriz vive en
 - `conversations:send_assigned`
 - `conversations:internal_notes`
 - `message_templates:use`
+- `notifications:read`
+
+## SUPERADMIN Fase 5
+
+- `ops:read_all`
+- `jobs:read_all`
 
 ## Criterio de migracion
 

@@ -17,6 +17,8 @@ import {
   ReceiptText,
   Settings,
   Radio,
+  Bell,
+  Route,
   UsersRound
 } from 'lucide-react';
 
@@ -49,6 +51,8 @@ export const sidebarItemsByRole = {
     { label: 'Inbox', icon: MessageSquare, to: '/inbox' },
     { label: 'Canales', icon: Radio, to: '/inbox/channels' },
     { label: 'Plantillas', icon: FileText, to: '/inbox/templates' },
+    { label: 'Routing', icon: Route, to: '/inbox/routing' },
+    { label: 'Notificaciones', icon: Bell, to: '/notifications' },
     { label: 'CRM', icon: Activity, to: '/crm' },
     { label: 'Contactos', icon: ContactRound, to: '/crm/contacts' },
     { label: 'Oportunidades', icon: CreditCard, to: '/crm/opportunities' },
@@ -70,6 +74,7 @@ export const sidebarItemsByRole = {
   SUPERVISOR: [
     { label: 'Supervision', icon: Gauge, to: '/supervisor/dashboard' },
     { label: 'Inbox del equipo', icon: MessageSquare, to: '/inbox' },
+    { label: 'Notificaciones', icon: Bell, to: '/notifications' },
     { label: 'CRM del equipo', icon: Activity, to: '/crm' },
     { label: 'Contactos del equipo', icon: ContactRound, to: '/crm/contacts' },
     { label: 'Pipeline del equipo', icon: KanbanSquare, to: '/crm/pipeline' },
@@ -84,6 +89,7 @@ export const sidebarItemsByRole = {
   CALLCENTER: [
     { label: 'Mi dashboard', icon: Gauge, to: '/callcenter/dashboard' },
     { label: 'Mi inbox', icon: MessageSquare, to: '/inbox' },
+    { label: 'Notificaciones', icon: Bell, to: '/notifications' },
     { label: 'Mi CRM', icon: Activity, to: '/crm' },
     { label: 'Mis contactos', icon: ContactRound, to: '/crm/contacts' },
     { label: 'Mis oportunidades', icon: CreditCard, to: '/crm/opportunities' },

@@ -25,6 +25,13 @@ import taskRoutes from './routes/taskRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import messageTemplateRoutes from './routes/messageTemplateRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
+import healthRoutes from './routes/healthRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import opsRoutes from './routes/opsRoutes.js';
+import realtimeRoutes from './routes/realtimeRoutes.js';
+import routingRuleRoutes from './routes/routingRuleRoutes.js';
+import { logger } from './utils/logger.js';
+import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
 
 export const app = express();
 
@@ -35,16 +42,21 @@ app.use(
     credentials: true
   })
 );
-app.use(express.json());
-app.use(morgan('dev'));
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, res, buffer) => {
+      if (req.originalUrl.startsWith('/api/webhooks/whatsapp/')) {
+        req.rawBody = Buffer.from(buffer);
+      }
+    }
+  })
+);
+morgan.token('safe-url', (req) => sanitizeUrl(req.originalUrl));
+app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]'));
 
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    service: 'multi-tenant-mern-server',
-    timestamp: new Date().toISOString()
-  });
-});
+app.use('/health', healthRoutes);
+app.use('/api/health', healthRoutes);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superAdminRoutes);
@@ -69,18 +81,33 @@ app.use('/api/message-templates', messageTemplateRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/channel-configs', channelConfigRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/realtime', realtimeRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/routing-rules', routingRuleRoutes);
+app.use('/api/ops', opsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
 });
 
 app.use((error, req, res, next) => {
-  console.error(error);
+  logger.error('http.request_failed', error, {
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?._id,
+    companyId: req.user?.companyId
+  });
   const status =
     error.status ||
     (error.code === 11000 ? 409 : error.name === 'ValidationError' || error.name === 'CastError' ? 400 : 500);
   const duplicateField = error.code === 11000 ? Object.keys(error.keyPattern || {})[0] : null;
+  const safeError = sanitizeError(error);
   res.status(status).json({
-    message: duplicateField ? `${duplicateField} ya esta registrado` : error.message || 'Error interno del servidor'
+    message:
+      duplicateField
+        ? `${duplicateField} ya esta registrado`
+        : status >= 500 && process.env.NODE_ENV === 'production'
+          ? 'Error interno del servidor'
+          : safeError.message || 'Error interno del servidor'
   });
 });

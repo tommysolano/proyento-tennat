@@ -34,6 +34,51 @@ export async function apiRequest(path, options = {}) {
   return data;
 }
 
+export function connectRealtime(onEvent, onStatus = () => {}) {
+  const controller = new AbortController();
+  const token = localStorage.getItem('tenantdesk_token');
+
+  async function connect() {
+    onStatus('connecting');
+    try {
+      const response = await fetch(`${API_URL}/realtime/events`, {
+        headers: {
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        signal: controller.signal
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`Realtime respondio HTTP ${response.status}`);
+      }
+      onStatus('connected');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!controller.signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() || '';
+        for (const frame of frames) {
+          if (!frame || frame.startsWith(':')) continue;
+          const event = frame.match(/^event:\s*(.+)$/m)?.[1] || 'message';
+          const rawData = frame.match(/^data:\s*(.+)$/m)?.[1];
+          if (!rawData) continue;
+          onEvent({ event, ...JSON.parse(rawData) });
+        }
+      }
+      if (!controller.signal.aborted) onStatus('disconnected');
+    } catch (error) {
+      if (!controller.signal.aborted) onStatus('error', error);
+    }
+  }
+
+  connect();
+  return () => controller.abort();
+}
+
 export const getCompanies = () => apiRequest('/companies');
 export const createCompany = (company) =>
   apiRequest('/companies', {
@@ -201,6 +246,9 @@ export const createConversationInternalNote = (id, text) =>
   });
 export const retryMessage = (id) =>
   apiRequest(`/messages/${id}/retry`, { method: 'POST', body: '{}' });
+export const getMessageMedia = (id) => apiRequest(`/messages/${id}/media`);
+export const retryMessageMedia = (id) =>
+  apiRequest(`/messages/${id}/media/retry-download`, { method: 'POST', body: '{}' });
 export const getInboxMetrics = () => apiRequest('/conversations/metrics');
 
 export const getChannelConfigs = () => apiRequest('/channel-configs');
@@ -214,8 +262,29 @@ export const updateChannelConfig = (id, payload) =>
   });
 export const disableChannelConfig = (id) =>
   apiRequest(`/channel-configs/${id}/disable`, { method: 'PATCH', body: '{}' });
-export const testChannelConfig = (id) =>
-  apiRequest(`/channel-configs/${id}/test`, { method: 'PATCH', body: '{}' });
+export const testChannelConfig = (id, live = false) =>
+  apiRequest(`/channel-configs/${id}/test`, {
+    method: 'PATCH',
+    body: JSON.stringify({ live })
+  });
+
+export const getNotifications = (filters = {}) =>
+  apiRequest(`/notifications${queryString(filters)}`);
+export const markNotificationRead = (id) =>
+  apiRequest(`/notifications/${id}/read`, { method: 'PATCH', body: '{}' });
+export const markAllNotificationsRead = () =>
+  apiRequest('/notifications/read-all', { method: 'PATCH', body: '{}' });
+
+export const getRoutingRules = () => apiRequest('/routing-rules');
+export const createRoutingRule = (payload) =>
+  apiRequest('/routing-rules', { method: 'POST', body: JSON.stringify(payload) });
+export const updateRoutingRule = (id, payload) =>
+  apiRequest(`/routing-rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const toggleRoutingRule = (id) =>
+  apiRequest(`/routing-rules/${id}/toggle`, { method: 'PATCH', body: '{}' });
 
 export const getMessageTemplates = (filters = {}) =>
   apiRequest(`/message-templates${queryString(filters)}`);

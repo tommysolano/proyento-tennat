@@ -12,6 +12,8 @@
 - `conversations`
 - `inbox`
 - `whatsapp`
+- `realtime`
+- `notifications`
 - `calendar`
 - `billing`
 - `reporting`
@@ -52,6 +54,9 @@ modulos estan activos y `enabledByDefault` para el MVP; un entitlement
 explicito en plan, distribuidor, empresa o suscripcion puede bloquearlos.
 Los webhooks publicos resuelven el mismo entitlement `whatsapp` desde el
 tenant del `ChannelConfig`; ademas ignoran configuraciones desactivadas.
+
+SSE requiere `realtime`; las APIs de avisos requieren `notifications`. Ambos
+estan activos y `enabledByDefault` para conservar tenants existentes.
 
 Branding, configuracion y onboarding no dependen del modulo billing, lo que
 permite recuperar o configurar el tenant aun si billing esta desactivado.

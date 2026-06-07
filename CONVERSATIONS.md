@@ -1,4 +1,4 @@
-# Conversaciones Fase 4
+# Conversaciones Fase 5
 
 ## Modelo omnicanal
 
@@ -59,8 +59,14 @@ plantillas, notas internas, asignacion, cierre, reapertura, archivado y
 refresh. `/inbox/channels` y `/inbox/templates` son exclusivas de ADMIN.
 Los dashboards consumen metricas con el mismo scope del inbox.
 
+El inbox usa SSE autenticado mediante `fetch`, muestra estado de conexion,
+mensajes pending/sent/failed, retry y adjuntos. Si SSE falla conserva refresh
+manual. Las metricas incluyen canal, primera respuesta, mensajes fallidos,
+inbound/outbound de hoy y datos por agente.
+
 ## Limites
 
-No hay WebSocket, polling automatico, round-robin, routing avanzado,
-automatizaciones ni adjuntos binarios. El refresh es manual. Los conectores
-placeholder no realizan llamadas externas.
+No hay routing por horarios, skills ni condiciones avanzadas. Round-robin es
+basico. No hay almacenamiento de binarios: media con URL publica es utilizable
+y media inbound queda pendiente. Los conectores placeholder no realizan
+llamadas externas.

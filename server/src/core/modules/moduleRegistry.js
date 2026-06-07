@@ -80,6 +80,26 @@ export const MODULE_REGISTRY = [
     status: 'active'
   },
   {
+    key: 'realtime',
+    name: 'Tiempo real',
+    description: 'Eventos SSE con alcance por empresa, equipo y asignacion.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'notifications',
+    name: 'Notificaciones',
+    description: 'Notificaciones internas por usuario y eventos del inbox.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: ['notifications:read'],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
     key: 'calendar',
     name: 'Calendario',
     description: 'Reservas y agenda; integracion real pendiente.',
