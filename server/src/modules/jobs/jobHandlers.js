@@ -10,6 +10,8 @@ import { getStorageProvider } from '../storage/index.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 import { logger } from '../../utils/logger.js';
 import { sanitize } from '../../utils/sanitize.js';
+import { AppointmentReminderService } from '../calendar/AppointmentReminderService.js';
+import { WorkflowService } from '../workflows/WorkflowService.js';
 
 async function processMedia(job) {
   const message = await Message.findById(job.payload.messageId);
@@ -156,6 +158,10 @@ export async function handleJob(job) {
       return processMedia(job);
     case 'notification.dispatch':
       return NotificationService.create(job.payload);
+    case 'appointment.reminder':
+      return AppointmentReminderService.process(job);
+    case 'workflow.run':
+      return WorkflowService.executeWorkflowRun(job.payload.runId);
     default:
       throw Object.assign(new Error(`No existe handler para ${job.type}`), {
         retryable: false
@@ -164,6 +170,9 @@ export async function handleJob(job) {
 }
 
 export async function handleTerminalJobFailure(job, error) {
+  if (job.type === 'workflow.run') {
+    await WorkflowService.markTerminalFailure(job.payload.runId, error);
+  }
   if (job.type === 'message.whatsapp.send') {
     const message = await Message.findById(job.payload.messageId);
     if (!message || message.status === 'failed') return;

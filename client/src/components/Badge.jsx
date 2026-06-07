@@ -34,7 +34,11 @@ const styles = {
   acknowledged: 'bg-violet-50 text-violet-700 ring-violet-200',
   completed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   processing: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
-  dead: 'bg-rose-100 text-rose-800 ring-rose-300'
+  dead: 'bg-rose-100 text-rose-800 ring-rose-300',
+  scheduled: 'bg-sky-50 text-sky-700 ring-sky-200',
+  confirmed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  no_show: 'bg-rose-50 text-rose-700 ring-rose-200',
+  rescheduled: 'bg-violet-50 text-violet-700 ring-violet-200'
 };
 
 export function Badge({ children, tone = 'draft' }) {

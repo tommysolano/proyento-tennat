@@ -11,6 +11,8 @@ Tipos iniciales:
 - `message.whatsapp.send`
 - `media.whatsapp.download`
 - `notification.dispatch`
+- `appointment.reminder`
+- `workflow.run`
 
 El backend inicia el worker salvo `JOB_WORKER_ENABLED=false`. Cada runner
 reclama atomicamente un job ejecutable. Los locks vencidos se recuperan. Un
@@ -39,3 +41,13 @@ sanitizado y boton Replay cuando corresponde.
 MongoDB es suficiente para una beta controlada. Para alto volumen, scheduling
 avanzado o multiples regiones se recomienda Redis/BullMQ conservando los
 handlers de dominio.
+
+`appointment.reminder` se agenda en `startAt - reminderMinutesBefore`. El
+handler comprueba estado, `reminderJobId` y `reminderSentAt`, crea una
+notificacion interna y registra `appointment_reminder_sent`. Reprogramar crea
+un job nuevo; jobs anteriores quedan inofensivos por la comprobacion de ID.
+
+`workflow.run` recibe solo `runId`. El handler carga definicion y evento desde
+MongoDB, ejecuta desde `metadata.cursor` y completa el job. Un delay crea otro
+job con `runAt` y deja el run `waiting`. Los fallos terminales crean alerta y
+emiten `job.dead`; el payload nunca se expone por la API ops.

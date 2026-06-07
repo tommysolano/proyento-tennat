@@ -1,5 +1,6 @@
 import {
   Archive,
+  CalendarDays,
   CheckCircle2,
   FileText,
   Image as ImageIcon,
@@ -22,6 +23,7 @@ import {
   createConversation,
   createConversationInternalNote,
   getContacts,
+  getAppointments,
   getConversationMessages,
   getConversations,
   getMediaContentObjectUrl,
@@ -137,6 +139,7 @@ export function InboxPage() {
   const [templates, setTemplates] = useState([]);
   const [users, setUsers] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [selectedId, setSelectedId] = useState(searchParams.get('conversationId') || '');
   const [filters, setFilters] = useState(() => ({
     contactId: searchParams.get('contactId') || '',
@@ -213,6 +216,20 @@ export function InboxPage() {
         .catch(() => null);
     }
   }, [selectedId, loadMessages]);
+  useEffect(() => {
+    const contactId = selected?.contactId?._id;
+    if (!contactId) {
+      setAppointments([]);
+      return;
+    }
+    getAppointments({
+      contactId,
+      from: new Date().toISOString(),
+      limit: 10
+    })
+      .then((items) => setAppointments(items.filter((item) => ['scheduled', 'confirmed'].includes(item.status)).slice(0, 5)))
+      .catch(() => setAppointments([]));
+  }, [selected?.contactId?._id]);
   useEffect(() => {
     const disconnect = connectRealtime(
       (realtimeEvent) => {
@@ -403,12 +420,14 @@ export function InboxPage() {
                   <p className="text-xs text-slate-500">{selected.contactId?.phone || selected.contactId?.email} - {channelLabel[selected.channel] || selected.channel}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button as={Link} to={`/calendar?contactId=${selected.contactId?._id}&source=inbox`} variant="secondary"><CalendarDays className="h-4 w-4" />Agendar</Button>
                   {canAssign ? <select disabled={busy} className="rounded-md border border-slate-200 px-2 text-sm" value={selected.assignedTo?._id || ''} onChange={(event) => mutate(() => assignConversation(selected._id, event.target.value), 'Conversacion asignada.')}><option value="">Sin asignar</option>{users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select> : null}
                   {canClose && ['closed', 'resolved'].includes(selected.status) ? <Button variant="secondary" disabled={busy} onClick={() => mutate(() => reopenConversation(selected._id), 'Conversacion reabierta.')}><RefreshCw className="h-4 w-4" />Reabrir</Button> : null}
                   {canClose && !['closed', 'resolved'].includes(selected.status) ? <Button variant="secondary" disabled={busy} onClick={() => mutate(() => closeConversation(selected._id), 'Conversacion cerrada.')}><CheckCircle2 className="h-4 w-4" />Cerrar</Button> : null}
                   {user.role === 'ADMIN' ? <Button variant="danger" disabled={busy} onClick={() => mutate(() => archiveConversation(selected._id), 'Conversacion archivada.')}><Archive className="h-4 w-4" /></Button> : null}
                 </div>
               </div>
+              {appointments.length ? <div className="border-b border-cyan-100 bg-cyan-50 px-4 py-3"><p className="text-xs font-bold uppercase text-cyan-800">Proximas citas</p><div className="mt-2 flex flex-wrap gap-2">{appointments.map((appointment) => <Link key={appointment._id} to="/calendar" className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm">{new Date(appointment.startAt).toLocaleString()} - {appointment.title}</Link>)}</div></div> : null}
               <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-5">
                 {messagesLoading ? <CrmLoading label="Cargando mensajes..." /> : messages.map((message) => (
                   <div key={message._id} className={`flex ${message.direction === 'outbound' ? 'justify-end' : message.direction === 'internal' ? 'justify-center' : 'justify-start'}`}>

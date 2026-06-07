@@ -35,7 +35,13 @@ const LIMIT_FIELDS = [
   'whatsappMessages',
   'mediaStorageMb',
   'mediaFiles',
-  'conversations'
+  'conversations',
+  'calendars',
+  'appointments',
+  'bookingLinks',
+  'workflows',
+  'workflowRunsPerMonth',
+  'workflowActionsPerMonth'
 ];
 
 function numberValue(value, field, { integer = false, min = 0 } = {}) {

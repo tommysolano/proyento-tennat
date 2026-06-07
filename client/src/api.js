@@ -355,6 +355,107 @@ export function webhookUrl(channelConfigId) {
 
 export const getActivityLogs = () => apiRequest('/activity-logs');
 
+export const getCalendars = (filters = {}) =>
+  apiRequest(`/calendars${queryString(filters)}`);
+export const getCalendar = (id) => apiRequest(`/calendars/${id}`);
+export const createCalendar = (payload) =>
+  apiRequest('/calendars', { method: 'POST', body: JSON.stringify(payload) });
+export const updateCalendar = (id, payload) =>
+  apiRequest(`/calendars/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const archiveCalendar = (id) =>
+  apiRequest(`/calendars/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getCalendarAvailability = (id, filters = {}) =>
+  apiRequest(`/calendars/${id}/availability${queryString(filters)}`);
+export const getAvailabilityRules = (id) =>
+  apiRequest(`/calendars/${id}/availability-rules`);
+export const createAvailabilityRule = (id, payload) =>
+  apiRequest(`/calendars/${id}/availability-rules`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updateAvailabilityRule = (id, payload) =>
+  apiRequest(`/availability-rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const deleteAvailabilityRule = (id) =>
+  apiRequest(`/availability-rules/${id}`, { method: 'DELETE' });
+export const getAvailabilityExceptions = (id) =>
+  apiRequest(`/calendars/${id}/exceptions`);
+export const createAvailabilityException = (id, payload) =>
+  apiRequest(`/calendars/${id}/exceptions`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const updateAvailabilityException = (id, payload) =>
+  apiRequest(`/availability-exceptions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const deleteAvailabilityException = (id) =>
+  apiRequest(`/availability-exceptions/${id}`, { method: 'DELETE' });
+
+export const getAppointments = (filters = {}) =>
+  apiRequest(`/appointments${queryString(filters)}`);
+export const getAppointmentMetrics = () => apiRequest('/appointments/metrics');
+export const createAppointment = (payload) =>
+  apiRequest('/appointments', { method: 'POST', body: JSON.stringify(payload) });
+export const updateAppointment = (id, payload) =>
+  apiRequest(`/appointments/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const updateAppointmentStatus = (id, status, reason = '') =>
+  apiRequest(`/appointments/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, reason })
+  });
+export const rescheduleAppointment = (id, payload) =>
+  apiRequest(`/appointments/${id}/reschedule`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const cancelAppointment = (id, reason = '') =>
+  apiRequest(`/appointments/${id}/cancel`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason })
+  });
+export const completeAppointment = (id) =>
+  apiRequest(`/appointments/${id}/complete`, { method: 'PATCH', body: '{}' });
+export const markNoShowAppointment = (id) =>
+  apiRequest(`/appointments/${id}/no-show`, { method: 'PATCH', body: '{}' });
+
+export const getBookingLinks = (filters = {}) =>
+  apiRequest(`/booking-links${queryString(filters)}`);
+export const createBookingLink = (payload) =>
+  apiRequest('/booking-links', { method: 'POST', body: JSON.stringify(payload) });
+export const updateBookingLink = (id, payload) =>
+  apiRequest(`/booking-links/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const archiveBookingLink = (id) =>
+  apiRequest(`/booking-links/${id}/archive`, { method: 'PATCH', body: '{}' });
+
+export const getPublicBookingLink = (slug) =>
+  apiRequest(`/public/bookings/${encodeURIComponent(slug)}`);
+export const getPublicBookingAvailability = (slug, filters = {}) =>
+  apiRequest(
+    `/public/bookings/${encodeURIComponent(slug)}/availability${queryString(filters)}`
+  );
+export const createPublicAppointment = (slug, payload) =>
+  apiRequest(`/public/bookings/${encodeURIComponent(slug)}/appointments`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const getAvailability = getCalendarAvailability;
+export const getPublicBooking = getPublicBookingLink;
+export const getPublicAvailability = getPublicBookingAvailability;
+
 export const getSuperAdminOverview = () => apiRequest('/superadmin/overview');
 export const getDistributors = () => apiRequest('/superadmin/distributors');
 export const createDistributor = (payload) =>
@@ -494,3 +595,29 @@ export const updateCompanyOnboarding = (payload) =>
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
+
+export const getWorkflowCatalog = () => apiRequest('/workflows/catalog');
+export const getWorkflows = (filters = {}) =>
+  apiRequest(`/workflows${queryString(filters)}`);
+export const getWorkflow = (id) => apiRequest(`/workflows/${id}`);
+export const createWorkflow = (payload) =>
+  apiRequest('/workflows', { method: 'POST', body: JSON.stringify(payload) });
+export const updateWorkflow = (id, payload) =>
+  apiRequest(`/workflows/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const activateWorkflow = (id) =>
+  apiRequest(`/workflows/${id}/activate`, { method: 'PATCH', body: '{}' });
+export const pauseWorkflow = (id) =>
+  apiRequest(`/workflows/${id}/pause`, { method: 'PATCH', body: '{}' });
+export const archiveWorkflow = (id) =>
+  apiRequest(`/workflows/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const testWorkflow = (id, payload) =>
+  apiRequest(`/workflows/${id}/test`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const getWorkflowRuns = (filters = {}) =>
+  apiRequest(`/workflow-runs${queryString(filters)}`);
+export const getWorkflowRun = (id) => apiRequest(`/workflow-runs/${id}`);

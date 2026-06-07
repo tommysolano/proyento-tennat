@@ -8,7 +8,13 @@ const METRIC_LIMITS = {
   media_storage_mb: ['mediaStorageMb', 'storageMb'],
   media_files: ['mediaFiles'],
   conversations: ['conversations'],
-  contacts: ['contacts']
+  contacts: ['contacts'],
+  calendars: ['calendars'],
+  appointments: ['appointments'],
+  booking_links: ['bookingLinks'],
+  workflows: ['workflows'],
+  workflow_runs: ['workflowRunsPerMonth'],
+  workflow_actions: ['workflowActionsPerMonth']
 };
 
 export function usagePeriod(date = new Date()) {
@@ -164,7 +170,13 @@ export async function usageSnapshot(companyId) {
     'whatsapp_messages',
     'media_storage_mb',
     'media_files',
-    'conversations'
+    'conversations',
+    'calendars',
+    'appointments',
+    'booking_links',
+    'workflows',
+    'workflow_runs',
+    'workflow_actions'
   ];
   const subscription = await companySubscription(companyId);
   const rows = await Promise.all(

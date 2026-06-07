@@ -17,6 +17,12 @@ const usageRecordSchema = new mongoose.Schema(
         'media_storage_mb',
         'media_files',
         'conversations',
+        'calendars',
+        'appointments',
+        'booking_links',
+        'workflows',
+        'workflow_runs',
+        'workflow_actions',
         'ai_tokens'
       ],
       required: true

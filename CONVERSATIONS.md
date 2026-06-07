@@ -73,3 +73,10 @@ basico. La media local funciona para inbox/internal; para enviarla a WhatsApp
 real hace falta una URL publica o una futura subida del binario a Graph API.
 No hay antivirus ni inspeccion profunda por magic bytes. Los conectores
 placeholder no realizan llamadas externas.
+
+## Workflows
+
+Conversaciones y mensajes inbound/fallidos emiten eventos desde el servicio de
+dominio. Las acciones permiten asignar, cerrar y crear una nota interna. No
+existe accion de envio real: WhatsApp, email, SMS y webhook externo se
+mantienen planned.

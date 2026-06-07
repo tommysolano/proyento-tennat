@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, MessageSquare, Save, StickyNote } from 'lucide-react';
+import { Archive, ArrowLeft, CalendarDays, MessageSquare, Save, StickyNote } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -8,6 +8,7 @@ import {
   getContact,
   getContactTimeline,
   getConversations,
+  getAppointments,
   getCustomFields,
   getTags,
   getUsers,
@@ -37,6 +38,7 @@ function timelineText(entry) {
   if (entry.kind === 'message') {
     return `${entry.item.direction === 'internal' ? 'Nota interna' : 'Mensaje'}: ${entry.item.text || `[${entry.item.type}]`}`;
   }
+  if (entry.kind === 'appointment') return `Cita: ${entry.item.title} (${entry.item.status})`;
   return entry.kind;
 }
 
@@ -50,6 +52,7 @@ export function ContactDetailPage() {
   const [fields, setFields] = useState([]);
   const [users, setUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -59,14 +62,16 @@ export function ContactDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [contactData, timelineData, tagData, fieldData, userData, conversationData] = await Promise.all([
+      const [contactData, timelineData, tagData, fieldData, userData, conversationData, appointmentData] = await Promise.all([
         getContact(id), getContactTimeline(id), getTags(), getCustomFields('contact'),
         user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
-        getConversations({ contactId: id })
+        getConversations({ contactId: id }),
+        getAppointments({ contactId: id })
       ]);
       setContact(contactData); setTimeline(timelineData); setTags(tagData);
       setFields(fieldData.filter((field) => field.status === 'active')); setUsers(userData);
       setConversations(conversationData);
+      setAppointments(appointmentData);
     } catch (requestError) { setError(requestError.message); }
     finally { setLoading(false); }
   }, [id, user.role]);
@@ -170,6 +175,17 @@ export function ContactDetailPage() {
               {conversations.slice(0, 5).map((conversation) => <Link key={conversation._id} to={`/inbox?conversationId=${conversation._id}`} className="block rounded-lg border border-slate-200 p-3 hover:bg-slate-50"><div className="flex items-center justify-between"><span className="font-semibold text-slate-800">{conversation.channel}</span><Badge tone={conversation.status}>{conversation.status}</Badge></div><p className="mt-1 truncate text-sm text-slate-500">{conversation.lastMessage || 'Sin mensajes'}</p></Link>)}
               {!conversations.length ? <p className="text-sm text-slate-500">No hay conversaciones asociadas.</p> : null}
               {user.role !== 'CALLCENTER' ? <Button variant="secondary" disabled={busy} onClick={openInternalConversation}><MessageSquare className="h-4 w-4" />Abrir conversacion interna</Button> : null}
+            </div>
+          </Card>
+          <Card>
+            <CardHeader
+              title="Citas"
+              description={`${appointments.length} citas vinculadas`}
+              action={<Button as={Link} to={`/calendar?contactId=${id}&source=crm`}><CalendarDays className="h-4 w-4" />Nueva cita</Button>}
+            />
+            <div className="space-y-3 p-5">
+              {appointments.slice(0, 5).map((appointment) => <div key={appointment._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between gap-2"><span className="font-semibold">{appointment.title}</span><Badge tone={appointment.status}>{appointment.status}</Badge></div><p className="mt-1 text-xs text-slate-500">{localDate(appointment.startAt)} - {appointment.assignedTo?.name}</p></div>)}
+              {!appointments.length ? <p className="text-sm text-slate-500">No hay citas asociadas.</p> : null}
             </div>
           </Card>
           <Card>

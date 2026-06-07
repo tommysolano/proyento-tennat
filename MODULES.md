@@ -16,9 +16,11 @@
 - `notifications`
 - `media`
 - `calendar`
+- `bookings`
 - `billing`
 - `reporting`
 - `automations`
+- `workflows`
 - `funnels`
 - `reputation`
 - `integrations`
@@ -67,15 +69,21 @@ entitlement explicito puede bloquearlo con HTTP 403.
 Branding, configuracion y onboarding no dependen del modulo billing, lo que
 permite recuperar o configurar el tenant aun si billing esta desactivado.
 
-## Agregar calendar
+## Calendar y bookings
 
-1. Cambiar `calendar` a `active` cuando exista una implementacion real.
-2. Crear sus modelos, servicios y rutas dentro de un modulo delimitado.
-3. Proteger rutas con `requireModule('calendar')`.
-4. Agregar permisos especificos en `permissions.js`.
-5. Incluir `calendar` en planes o crear un `ModuleEntitlement`.
-6. Agregar rutas y navegacion frontend condicionadas por acceso.
-7. Probar acceso permitido, acceso 403 y aislamiento tenant.
+`calendar` y `bookings` estan activos en version `1.0.0`. El primero protege
+calendarios, disponibilidad, citas y metricas. El segundo protege la
+administracion y resolucion publica de enlaces. Ambos pueden desactivarse con
+`ModuleEntitlement`.
 
-No se debe interpretar una entrada del registro como una integracion
-implementada.
+Activar estos modulos no implica integraciones externas. Google Calendar,
+Outlook, Zoom y Meet no forman parte del registro ni del runtime actual.
+
+## Automations y workflows
+
+Ambos modulos estan activos en version `1.0.0` y habilitados por defecto para
+el MVP. Las rutas privadas exigen los dos modulos. Pueden bloquearse por plan,
+suscripcion, distribuidor o empresa con `ModuleEntitlement`.
+
+La activacion no habilita canales externos: email, SMS, WhatsApp, webhooks,
+IA y funnels permanecen planned.

@@ -67,6 +67,14 @@ La matriz vive en
 - `media:upload`
 - `channel_diagnostics:read`
 - `channel_secrets:rotate`
+- `calendars:manage`
+- `appointments:manage`
+- `booking_links:manage`
+- `availability:manage`
+- `workflows:manage`
+- `workflows:read`
+- `workflows:test`
+- `workflow_runs:read`
 
 ## SUPERVISOR
 
@@ -90,6 +98,13 @@ La matriz vive en
 - `routing_rules:read`
 - `media:read_team`
 - `media:upload_team`
+- `calendars:read_team`
+- `appointments:manage_team`
+- `appointments:read_team`
+- `appointments:update_team`
+- `availability:read_team`
+- `workflows:read_team`
+- `workflow_runs:read_team`
 
 ## CALLCENTER
 
@@ -110,6 +125,10 @@ La matriz vive en
 - `notifications:read`
 - `media:read_assigned`
 - `media:upload_assigned`
+- `calendars:read_assigned`
+- `appointments:manage_assigned`
+- `appointments:read_assigned`
+- `appointments:update_assigned`
 
 ## SUPERADMIN Fase 5
 
@@ -144,3 +163,13 @@ mantienen el alcance de plataforma.
 Los endpoints de media vuelven a comprobar el scope de la conversacion aunque
 el usuario tenga permiso. Replay y alertas aplican `companyId` para ADMIN;
 CALLCENTER y SUPERVISOR no acceden a `/api/ops`.
+
+Las APIs de calendario siguen la misma regla: ADMIN configura; SUPERVISOR
+consulta calendarios compartidos con su equipo y gestiona citas de su alcance;
+CALLCENTER solo ve calendarios donde participa y citas asignadas a si mismo.
+Los enlaces publicos solo los administra ADMIN.
+
+Las APIs de workflows permiten gestion solo a ADMIN. SUPERVISOR tiene lectura
+de definiciones y runs de su empresa; CALLCENTER y DISTRIBUTOR no entran.
+SUPERADMIN dispone de `workflows:read_all`, `workflows:manage_all` y
+`workflow_runs:read_all`; una escritura global exige empresa valida.

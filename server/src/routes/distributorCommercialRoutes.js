@@ -638,6 +638,7 @@ router.post(
       });
       if (!invoice) return res.status(404).json({ message: 'Factura no encontrada' });
       await ownedCompany(req.user.distributorId, invoice.customerId);
+      const invoiceWasPaid = invoice.status === 'paid';
       const status = req.body.status || 'succeeded';
       if (!PAYMENT_STATUSES.includes(status)) {
         return res.status(400).json({ message: 'status de pago invalido' });
@@ -688,7 +689,8 @@ router.post(
           paymentId: payment._id,
           invoiceId: invoice._id,
           amount: payment.amount,
-          status: payment.status
+          status: payment.status,
+          invoiceBecamePaid: !invoiceWasPaid && invoice.status === 'paid'
         }
       });
       res.status(201).json(await payment.populate('invoiceId', 'number total status customerId'));

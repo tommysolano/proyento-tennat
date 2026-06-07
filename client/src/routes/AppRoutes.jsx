@@ -31,6 +31,14 @@ import { MessageTemplatesPage } from '../pages/inbox/MessageTemplatesPage.jsx';
 import { NotificationsPage } from '../pages/inbox/NotificationsPage.jsx';
 import { RoutingRulesPage } from '../pages/inbox/RoutingRulesPage.jsx';
 import { OpsPage } from '../pages/ops/OpsPage.jsx';
+import { CalendarPage } from '../pages/calendar/CalendarPage.jsx';
+import { CalendarSettingsPage } from '../pages/calendar/CalendarSettingsPage.jsx';
+import { PublicBookingPage } from '../pages/calendar/PublicBookingPage.jsx';
+import {
+  WorkflowBuilderPage,
+  WorkflowRunsPage,
+  WorkflowsPage
+} from '../pages/workflows/WorkflowsPage.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +48,10 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />
+  },
+  {
+    path: '/book/:slug',
+    element: <PublicBookingPage />
   },
   {
     element: <ProtectedRoute />,
@@ -79,7 +91,11 @@ export const router = createBrowserRouter([
           },
           {
             element: <RoleBasedRoute allowedRoles={['ADMIN']} />,
-            children: [{ path: '/admin/dashboard', element: <AdminDashboard /> }]
+            children: [
+              { path: '/admin/dashboard', element: <AdminDashboard /> },
+              { path: '/workflows/new', element: <WorkflowBuilderPage /> },
+              { path: '/workflows/:id', element: <WorkflowBuilderPage /> }
+            ]
           },
           {
             element: <RoleBasedRoute allowedRoles={['SUPERVISOR']} />,
@@ -101,7 +117,15 @@ export const router = createBrowserRouter([
               { path: '/crm/tasks', element: <TasksPage /> },
               { path: '/crm/segments', element: <SegmentsPage /> },
               { path: '/inbox', element: <InboxPage /> },
-              { path: '/notifications', element: <NotificationsPage /> }
+              { path: '/notifications', element: <NotificationsPage /> },
+              { path: '/calendar', element: <CalendarPage /> }
+            ]
+          },
+          {
+            element: <RoleBasedRoute allowedRoles={['ADMIN', 'SUPERVISOR']} />,
+            children: [
+              { path: '/workflows', element: <WorkflowsPage /> },
+              { path: '/workflow-runs', element: <WorkflowRunsPage /> }
             ]
           },
           {
@@ -113,7 +137,8 @@ export const router = createBrowserRouter([
               { path: '/crm/pipelines', element: <PipelinesPage /> },
               { path: '/inbox/channels', element: <ChannelSettingsPage /> },
               { path: '/inbox/templates', element: <MessageTemplatesPage /> },
-              { path: '/inbox/routing', element: <RoutingRulesPage /> }
+              { path: '/inbox/routing', element: <RoutingRulesPage /> },
+              { path: '/calendar/settings', element: <CalendarSettingsPage /> }
             ]
           }
         ]

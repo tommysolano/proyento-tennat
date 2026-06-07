@@ -1,8 +1,9 @@
-import { ArrowLeft, MessageSquare, Save, StickyNote, ThumbsDown, Trophy } from 'lucide-react';
+import { ArrowLeft, CalendarDays, MessageSquare, Save, StickyNote, ThumbsDown, Trophy } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   createNote,
+  getAppointments,
   getCustomFields,
   getOpportunity,
   getOpportunityTimeline,
@@ -32,6 +33,7 @@ function eventText(entry) {
   if (entry.kind === 'activity') return entry.item.summary;
   if (entry.kind === 'note') return `Nota: ${entry.item.text}`;
   if (entry.kind === 'task') return `Tarea: ${entry.item.title} (${entry.item.status})`;
+  if (entry.kind === 'appointment') return `Cita: ${entry.item.title} (${entry.item.status})`;
   return entry.kind;
 }
 
@@ -43,6 +45,7 @@ export function OpportunityDetailPage() {
   const [pipelines, setPipelines] = useState([]);
   const [users, setUsers] = useState([]);
   const [fields, setFields] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -52,13 +55,15 @@ export function OpportunityDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [opportunity, timelineData, pipelineData, userData, fieldData] = await Promise.all([
+      const [opportunity, timelineData, pipelineData, userData, fieldData, appointmentData] = await Promise.all([
         getOpportunity(id), getOpportunityTimeline(id), getPipelines(),
         user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
-        getCustomFields('opportunity')
+        getCustomFields('opportunity'),
+        getAppointments({ opportunityId: id })
       ]);
       setItem(opportunity); setTimeline(timelineData); setPipelines(pipelineData);
       setUsers(userData); setFields(fieldData.filter((field) => field.status === 'active'));
+      setAppointments(appointmentData);
     } catch (requestError) { setError(requestError.message); }
     finally { setLoading(false); }
   }, [id, user.role]);
@@ -103,6 +108,7 @@ export function OpportunityDetailPage() {
     <PageShell eyebrow="CRM" title={item?.title || 'Oportunidad'} description={item ? `${item.contactId?.name} - ${money(item.value, item.currency)}` : ''}>
       <div><Button as={Link} to="/crm/opportunities" variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button></div>
       {item?.contactId?._id ? <div><Button as={Link} to={`/inbox?contactId=${item.contactId._id}`} variant="secondary"><MessageSquare className="h-4 w-4" />Conversaciones del contacto</Button></div> : null}
+      <div><Button as={Link} to={`/calendar?contactId=${item?.contactId?._id || ''}&opportunityId=${id}&source=crm`}><CalendarDays className="h-4 w-4" />Agendar cita</Button></div>
       <CrmNotice notice={notice} error={error} />
       {item ? <div className="grid gap-6 xl:grid-cols-[1fr_0.8fr]">
         <Card>
@@ -129,6 +135,7 @@ export function OpportunityDetailPage() {
           </form>
         </Card>
         <div className="space-y-6">
+          <Card><CardHeader title="Citas vinculadas" /><div className="space-y-3 p-5">{appointments.slice(0, 5).map((appointment) => <div key={appointment._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="font-semibold">{appointment.title}</span><Badge tone={appointment.status}>{appointment.status}</Badge></div><p className="mt-1 text-xs text-slate-500">{localDate(appointment.startAt)} - {appointment.assignedTo?.name}</p></div>)}{!appointments.length ? <p className="text-sm text-slate-500">Sin citas asociadas.</p> : null}</div></Card>
           <Card><CardHeader title="Nueva nota" /><form onSubmit={addNote} className="space-y-3 p-5"><textarea required name="text" className={`${inputClass} min-h-28`} /><Button type="submit" disabled={busy}><StickyNote className="h-4 w-4" />Agregar nota</Button></form></Card>
           <Card><CardHeader title="Timeline de oportunidad" /><div className="max-h-[600px] space-y-3 overflow-y-auto p-5">{timeline.map((entry, index) => <div key={`${entry.kind}-${entry.item._id}-${index}`} className="border-l-2 border-cyan-200 pl-4"><p className="text-sm font-medium">{eventText(entry)}</p><p className="text-xs text-slate-500">{localDate(entry.date)} - {entry.item.createdBy?.name || entry.item.userId?.name || 'Sistema'}</p></div>)}</div></Card>
         </div>

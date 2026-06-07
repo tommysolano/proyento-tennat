@@ -18,6 +18,12 @@ const LIMIT_FIELDS = [
   'mediaStorageMb',
   'mediaFiles',
   'conversations',
+  'calendars',
+  'appointments',
+  'bookingLinks',
+  'workflows',
+  'workflowRunsPerMonth',
+  'workflowActionsPerMonth',
   'modules'
 ];
 

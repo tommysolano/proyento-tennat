@@ -173,3 +173,31 @@ trabajo fallido, conserva `replayedFrom` y aplica scope global o de empresa.
 Los limites comerciales usan `UsageRecord` mensual y los campos de `Plan`.
 Las comprobaciones se realizan en backend antes de conversaciones, mensajes y
 media; el frontend solo presenta el resultado.
+
+## Calendario y reservas Fase 7
+
+`server/src/modules/calendar` concentra conversion de zonas IANA,
+disponibilidad, buffers, solapamientos, estados y recordatorios. Los modelos
+`Calendar`, `AvailabilityRule`, `AvailabilityException`, `Appointment` y
+`BookingLink` permanecen separados para conservar historial y permitir reglas
+por usuario.
+
+Las rutas privadas combinan rol, permiso, `calendar`/`bookings` y filtros de
+empresa/equipo/asignacion. La API publica deriva el tenant del slug persistido,
+aplica rate limit y vuelve a validar el slot al crear. Fechas se almacenan en
+UTC; la zona IANA se conserva para presentar y reconstruir horas locales.
+
+Las citas reutilizan Contact, Opportunity, ActivityLog, Notification, Job y
+RealtimeService. No hay dependencia con calendarios o videollamadas externas.
+
+## Automatizaciones Fase 8
+
+`WorkflowEventEmitter` convierte actividad y eventos terminales en
+`WorkflowEvent`. `WorkflowService` busca definiciones activas del mismo
+tenant, aplica idempotencia, cooldown, run-once y profundidad, crea
+`WorkflowRun` y encola `workflow.run`.
+
+`WorkflowActionExecutor` solo modifica modelos internos con filtro tenant. Los
+delays guardan un cursor y usan `Job.runAt`. El payload durable esta
+sanitizado, oculto por defecto y excluido del JSON. Las acciones externas
+estan registradas como planned, no implementadas.

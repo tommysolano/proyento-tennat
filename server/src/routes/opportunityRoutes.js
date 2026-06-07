@@ -10,6 +10,7 @@ import { Opportunity, OPPORTUNITY_STATUSES } from '../models/Opportunity.js';
 import { Pipeline } from '../models/Pipeline.js';
 import { PipelineStage } from '../models/PipelineStage.js';
 import { Task } from '../models/Task.js';
+import { Appointment } from '../models/Appointment.js';
 import { recordActivity } from '../utils/activity.js';
 import { assignedResourceScope, tenantFields, validateCrmAssignee } from '../utils/crmScope.js';
 import { validateCustomFieldValues } from '../utils/customFields.js';
@@ -158,15 +159,21 @@ router.get('/:id/timeline', async (req, res, next) => {
   try {
     const item = await Opportunity.findOne({ _id: req.params.id, ...(await assignedResourceScope(req.user)) });
     if (!item) return res.status(404).json({ message: 'Oportunidad no encontrada' });
-    const [notes, activities, tasks] = await Promise.all([
+    const appointmentScope = await assignedResourceScope(req.user);
+    const [notes, activities, tasks, appointments] = await Promise.all([
       Note.find({ companyId: req.user.companyId, relatedType: 'opportunity', relatedId: item._id }).populate('createdBy', 'name role').lean(),
       ActivityLog.find({ companyId: req.user.companyId, 'metadata.opportunityId': item._id }).populate('userId', 'name role').lean(),
-      Task.find({ companyId: req.user.companyId, relatedType: 'opportunity', relatedId: item._id }).populate('createdBy assignedTo', 'name role').lean()
+      Task.find({ companyId: req.user.companyId, relatedType: 'opportunity', relatedId: item._id }).populate('createdBy assignedTo', 'name role').lean(),
+      Appointment.find({ ...appointmentScope, opportunityId: item._id })
+        .populate('calendarId', 'name color')
+        .populate('assignedTo createdBy', 'name role')
+        .lean()
     ]);
     res.json([
       ...notes.map((entry) => ({ kind: 'note', date: entry.createdAt, item: entry })),
       ...activities.map((entry) => ({ kind: 'activity', date: entry.createdAt, item: entry })),
-      ...tasks.map((entry) => ({ kind: 'task', date: entry.createdAt, item: entry }))
+      ...tasks.map((entry) => ({ kind: 'task', date: entry.createdAt, item: entry })),
+      ...appointments.map((entry) => ({ kind: 'appointment', date: entry.startAt, item: entry }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date)));
   } catch (error) { next(error); }
 });

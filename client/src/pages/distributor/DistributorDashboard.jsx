@@ -195,6 +195,12 @@ export function DistributorDashboard() {
             mediaStorageMb: Number(data.get('mediaStorageMb')),
             mediaFiles: Number(data.get('mediaFiles')),
             conversations: Number(data.get('conversations')),
+            calendars: Number(data.get('calendars')),
+            appointments: Number(data.get('appointments')),
+            bookingLinks: Number(data.get('bookingLinks')),
+            workflows: Number(data.get('workflows')),
+            workflowRunsPerMonth: Number(data.get('workflowRunsPerMonth')),
+            workflowActionsPerMonth: Number(data.get('workflowActionsPerMonth')),
             modules: Number(data.get('modules'))
           },
           code: data.get('code'),
@@ -399,11 +405,17 @@ export function DistributorDashboard() {
               <input required min="0" type="number" name="mediaStorageMb" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Media MB/mes" />
               <input required min="0" type="number" name="mediaFiles" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Archivos media/mes" />
               <input required min="0" type="number" name="conversations" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Conversaciones/mes" />
+              <input required min="0" type="number" name="calendars" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Calendarios" />
+              <input required min="0" type="number" name="appointments" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Citas/mes" />
+              <input required min="0" type="number" name="bookingLinks" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Enlaces de reserva" />
+              <input required min="0" type="number" name="workflows" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Workflows" />
+              <input required min="0" type="number" name="workflowRunsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Runs workflow/mes" />
+              <input required min="0" type="number" name="workflowActionsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Acciones workflow/mes" />
               <input required min="0" type="number" name="modules" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos" />
             </div>
             <p className="text-xs text-slate-500">En limites operativos, 0 significa sin limite configurado.</p>
             <textarea name="description" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Descripcion" />
-            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime" />
+            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime,calendar,bookings,automations,workflows" />
             <input name="features" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funciones separadas por coma" />
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activo</option>

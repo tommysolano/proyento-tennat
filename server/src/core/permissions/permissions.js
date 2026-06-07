@@ -12,7 +12,10 @@ export const ROLE_PERMISSIONS = {
     'jobs:read_all',
     'jobs:replay_all',
     'alerts:read_all',
-    'alerts:ack_all'
+    'alerts:ack_all',
+    'workflows:read_all',
+    'workflows:manage_all',
+    'workflow_runs:read_all'
   ],
   DISTRIBUTOR: [
     'companies:manage',
@@ -63,7 +66,15 @@ export const ROLE_PERMISSIONS = {
     'media:read',
     'media:upload',
     'channel_diagnostics:read',
-    'channel_secrets:rotate'
+    'channel_secrets:rotate',
+    'calendars:manage',
+    'appointments:manage',
+    'booking_links:manage',
+    'availability:manage',
+    'workflows:read',
+    'workflows:manage',
+    'workflows:test',
+    'workflow_runs:read'
   ],
   SUPERVISOR: [
     'crm:read_team',
@@ -85,7 +96,14 @@ export const ROLE_PERMISSIONS = {
     'notifications:read',
     'routing_rules:read',
     'media:read_team',
-    'media:upload_team'
+    'media:upload_team',
+    'calendars:read_team',
+    'appointments:manage_team',
+    'appointments:read_team',
+    'appointments:update_team',
+    'availability:read_team',
+    'workflows:read_team',
+    'workflow_runs:read_team'
   ],
   CALLCENTER: [
     'contacts:read_assigned',
@@ -104,7 +122,11 @@ export const ROLE_PERMISSIONS = {
     'message_templates:use',
     'notifications:read',
     'media:read_assigned',
-    'media:upload_assigned'
+    'media:upload_assigned',
+    'calendars:read_assigned',
+    'appointments:manage_assigned',
+    'appointments:read_assigned',
+    'appointments:update_assigned'
   ]
 };
 

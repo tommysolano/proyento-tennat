@@ -11,7 +11,13 @@ const platformLimitsSchema = new mongoose.Schema(
     whatsappMessages: { type: Number, default: 0, min: 0 },
     mediaStorageMb: { type: Number, default: 0, min: 0 },
     mediaFiles: { type: Number, default: 0, min: 0 },
-    conversations: { type: Number, default: 0, min: 0 }
+    conversations: { type: Number, default: 0, min: 0 },
+    calendars: { type: Number, default: 0, min: 0 },
+    appointments: { type: Number, default: 0, min: 0 },
+    bookingLinks: { type: Number, default: 0, min: 0 },
+    workflows: { type: Number, default: 0, min: 0 },
+    workflowRunsPerMonth: { type: Number, default: 0, min: 0 },
+    workflowActionsPerMonth: { type: Number, default: 0, min: 0 }
   },
   { _id: false }
 );

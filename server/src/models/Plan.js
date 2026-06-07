@@ -48,6 +48,12 @@ const planSchema = new mongoose.Schema(
       mediaStorageMb: { type: Number, default: 0, min: 0 },
       mediaFiles: { type: Number, default: 0, min: 0 },
       conversations: { type: Number, default: 0, min: 0 },
+      calendars: { type: Number, default: 0, min: 0 },
+      appointments: { type: Number, default: 0, min: 0 },
+      bookingLinks: { type: Number, default: 0, min: 0 },
+      workflows: { type: Number, default: 0, min: 0 },
+      workflowRunsPerMonth: { type: Number, default: 0, min: 0 },
+      workflowActionsPerMonth: { type: Number, default: 0, min: 0 },
       modules: { type: Number, default: 3, min: 0 }
     },
     includedModules: { type: [String], default: ['core', 'crm', 'contacts'] },

@@ -11,8 +11,8 @@ La Fase 3 incorpora un CRM operativo por empresa:
 - tareas, notas, seguimientos, timelines y metricas por rol.
 
 La Fase 4 integra el CRM con un inbox omnicanal y deja WhatsApp Cloud
-preparado. Calendario, automatizaciones visuales, funnels, landing pages y
-pagos reales siguen fuera del alcance.
+preparado. La Fase 7 agrega citas y reservas. Automatizaciones visuales,
+funnels, landing pages y pagos reales siguen fuera del alcance.
 
 ## Modelos
 
@@ -25,6 +25,7 @@ pagos reales siguen fuera del alcance.
 - `Opportunity`: deal vinculado a contacto, pipeline, etapa y responsable.
 - `Task`: tarea vinculada a contacto, oportunidad o empresa.
 - `Note`: nota evolucionada para contactos y oportunidades.
+- `Appointment`: cita vinculada opcionalmente a contacto y oportunidad.
 
 ## Seguridad
 
@@ -56,9 +57,8 @@ La exportacion genera CSV en backend y aplica filtros y permisos.
 ## Evolucion
 
 Los futuros canales deben producir actividad mediante estos contratos sin
-aceptar tenants desde payloads externos. Calendario podra materializar tareas
-y seguimientos; automatizaciones podra reaccionar a cambios de etapa y
-`ActivityLog`.
+aceptar tenants desde payloads externos. Automatizaciones podra reaccionar a
+cambios de etapa, citas y eventos de `ActivityLog`.
 
 ## Integracion con conversaciones
 
@@ -66,3 +66,14 @@ La ficha de contacto consulta conversaciones por `contactId`, abre el inbox y
 puede crear una conversacion interna. Su timeline incluye mensajes y notas
 internas sin exponer `providerPayload`. La ficha de oportunidad enlaza al inbox
 filtrado por el contacto relacionado.
+
+Ambas fichas consultan citas de su alcance, permiten abrir el calendario con
+la relacion preseleccionada y agregan eventos `appointment` al timeline. El
+inbox muestra proximas citas del contacto seleccionado.
+
+## Workflows
+
+ActivityLog emite eventos de contacto, oportunidad y tarea al motor. Las
+acciones repiten el scope tenant antes de actualizar status, lifecycle,
+prioridad, asignacion, tags, notas, etapas o tareas. El metadata de origen
+evita que el mismo workflow se dispare indefinidamente.

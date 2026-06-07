@@ -15,6 +15,7 @@ import { ActivityLog } from '../models/ActivityLog.js';
 import { Task } from '../models/Task.js';
 import { Opportunity } from '../models/Opportunity.js';
 import { Message } from '../models/Message.js';
+import { Appointment } from '../models/Appointment.js';
 import { User } from '../models/User.js';
 import { recordActivity } from '../utils/activity.js';
 import { checkPlatformLimit } from '../utils/platformLimits.js';
@@ -303,7 +304,8 @@ router.get('/:id/timeline', async (req, res, next) => {
   try {
     const contact = await Contact.findOne({ _id: req.params.id, ...(await assignedResourceScope(req.user)) });
     if (!contact) return res.status(404).json({ message: 'Contacto no encontrado' });
-    const [notes, activities, tasks, opportunities, messages] = await Promise.all([
+    const appointmentScope = await assignedResourceScope(req.user);
+    const [notes, activities, tasks, opportunities, messages, appointments] = await Promise.all([
       Note.find({ companyId: req.user.companyId, relatedType: 'contact', relatedId: contact._id })
         .populate('createdBy', 'name role').lean(),
       ActivityLog.find({ companyId: req.user.companyId, 'metadata.contactId': contact._id })
@@ -316,6 +318,10 @@ router.get('/:id/timeline', async (req, res, next) => {
         .populate('sentBy', 'name role')
         .sort({ createdAt: -1 })
         .limit(100)
+        .lean(),
+      Appointment.find({ ...appointmentScope, contactId: contact._id })
+        .populate('calendarId', 'name color')
+        .populate('assignedTo createdBy', 'name role')
         .lean()
     ]);
     const timeline = [
@@ -323,7 +329,8 @@ router.get('/:id/timeline', async (req, res, next) => {
       ...activities.map((item) => ({ kind: 'activity', date: item.createdAt, item })),
       ...tasks.map((item) => ({ kind: 'task', date: item.createdAt, item })),
       ...opportunities.map((item) => ({ kind: 'opportunity', date: item.createdAt, item })),
-      ...messages.map((item) => ({ kind: 'message', date: item.createdAt, item }))
+      ...messages.map((item) => ({ kind: 'message', date: item.createdAt, item })),
+      ...appointments.map((item) => ({ kind: 'appointment', date: item.startAt, item }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
     res.json(timeline);
   } catch (error) {

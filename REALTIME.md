@@ -16,6 +16,10 @@ Eventos:
 - `internal_note.created`
 - `notification.created`
 - `operational_alert.created`
+- `appointment.created`
+- `appointment.updated`
+- `appointment.status_updated`
+- `appointment.reminder`
 
 ADMIN recibe su empresa. SUPERVISOR recibe conversaciones asignadas a si mismo
 o sus agentes. CALLCENTER solo recibe asignaciones propias. Las notificaciones
@@ -30,3 +34,12 @@ Las descargas de media y los webhooks de estado reutilizan
 `message.status_updated`, por lo que el inbox vuelve a cargar el mensaje y su
 adjunto seguro. El badge operativo se refresca por polling para seguir
 funcionando aunque SSE no este disponible.
+
+Los eventos de cita usan `companyId` y `assignedTo`, por lo que reutilizan el
+mismo filtro ADMIN/equipo/asignacion del broker. El frontend puede recargar la
+agenda ante estos eventos; las notificaciones de cita tambien llegan como
+`notification.created`.
+
+Fase 8 publica `workflow.run_queued`, `workflow.run_completed` y
+`workflow.run_failed` con `companyId`, `workflowId` y `runId`, sin incluir el
+payload del evento. MongoDB continua siendo la fuente durable.

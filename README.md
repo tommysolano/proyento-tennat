@@ -9,6 +9,10 @@ reintentos, media, SSE, notificaciones, routing y observabilidad.
 La Fase 6 prepara una beta controlada con storage desacoplado, descarga y
 upload seguro de media, limites comerciales, diagnostico de canal, replay de
 jobs, alertas operativas y rotacion manual de secretos.
+La Fase 7 incorpora calendarios multiusuario, disponibilidad con zonas
+horarias, citas CRM, recordatorios internos y reservas publicas.
+La Fase 8 agrega workflows internos por empresa con eventos durables,
+condiciones seguras, acciones auditables, delays sobre jobs e historial.
 
 ## Requisitos
 
@@ -112,6 +116,9 @@ Frontend:
 - `/inbox/routing`
 - `/notifications`
 - `/ops`
+- `/workflows`
+- `/workflows/new`
+- `/workflow-runs`
 
 API de plataforma:
 
@@ -180,6 +187,13 @@ API de conversaciones:
 - `/api/ops/jobs`
 - `/api/ops/alerts`
 - `/api/health`
+- `/api/calendars`
+- `/api/appointments`
+- `/api/booking-links`
+- `/api/public/bookings/:slug`
+- `/api/workflows`
+- `/api/workflows/catalog`
+- `/api/workflow-runs`
 
 ## Variables de Fase 5 y 6
 
@@ -208,9 +222,12 @@ operacion. En desarrollo se permite con warning para facilitar migraciones de
 datos existentes. Una suscripcion `suspended` o `cancelled` bloquea siempre.
 
 `checkUsageLimit()` y `trackUsage()` controlan por empresa
-`whatsapp_messages`, `media_storage_mb`, `media_files`, `conversations` y
-contactos inbound. En produccion, una empresa sin suscripcion comercial activa
-no puede consumir estas operaciones.
+`whatsapp_messages`, `media_storage_mb`, `media_files`, `conversations`,
+`calendars`, `appointments` y `booking_links`. En produccion, una empresa sin
+suscripcion comercial activa no puede consumir estas operaciones.
+Fase 8 agrega `workflows`, `workflow_runs` y `workflow_actions`, asociados a
+los limites `workflows`, `workflowRunsPerMonth` y
+`workflowActionsPerMonth`.
 
 ## Documentacion
 
@@ -228,6 +245,10 @@ no puede consumir estas operaciones.
 - [REALTIME.md](REALTIME.md)
 - [MEDIA.md](MEDIA.md)
 - [OPS.md](OPS.md)
+- [CALENDAR.md](CALENDAR.md)
+- [BOOKINGS.md](BOOKINGS.md)
+- [WORKFLOWS.md](WORKFLOWS.md)
+- [AUTOMATIONS.md](AUTOMATIONS.md)
 - [WHATSAPP_PRODUCTION_CHECKLIST.md](WHATSAPP_PRODUCTION_CHECKLIST.md)
 
 ## Alcance
@@ -239,4 +260,8 @@ si faltan credenciales. El provider local sirve contenido solo por endpoint
 autenticado. Para enviar media local a WhatsApp aun se requiere una URL
 publica o subir primero el archivo a Graph API. Facebook, Instagram,
 Messenger, SMS y email siguen como placeholders. Tampoco existen pasarelas de
-pago, funnels, automatizaciones visuales, landing pages o calendario real.
+pago, funnels, automatizaciones visuales o landing pages. El calendario y las
+reservas son internos: no sincronizan Google Calendar/Outlook ni crean enlaces
+de Zoom, Meet u otros proveedores.
+Los workflows no envian WhatsApp, email o SMS, no llaman webhooks externos y
+no ejecutan IA; esos tipos permanecen `planned`.

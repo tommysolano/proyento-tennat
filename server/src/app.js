@@ -30,6 +30,13 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import opsRoutes from './routes/opsRoutes.js';
 import realtimeRoutes from './routes/realtimeRoutes.js';
 import routingRuleRoutes from './routes/routingRuleRoutes.js';
+import calendarRoutes from './routes/calendarRoutes.js';
+import availabilityRoutes from './routes/availabilityRoutes.js';
+import appointmentRoutes from './routes/appointmentRoutes.js';
+import bookingLinkRoutes from './routes/bookingLinkRoutes.js';
+import publicBookingRoutes from './routes/publicBookingRoutes.js';
+import workflowRoutes from './routes/workflowRoutes.js';
+import workflowRunRoutes from './routes/workflowRunRoutes.js';
 import { logger } from './utils/logger.js';
 import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
 
@@ -85,6 +92,14 @@ app.use('/api/realtime', realtimeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/routing-rules', routingRuleRoutes);
 app.use('/api/ops', opsRoutes);
+app.use('/api/calendars', calendarRoutes);
+app.use('/api', availabilityRoutes);
+app.use('/api/appointments', appointmentRoutes);
+app.use('/api/booking-links', bookingLinkRoutes);
+app.use('/api/public/booking', publicBookingRoutes);
+app.use('/api/public/bookings', publicBookingRoutes);
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/workflow-runs', workflowRunRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });

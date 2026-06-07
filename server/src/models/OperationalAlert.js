@@ -8,7 +8,9 @@ export const ALERT_TYPES = [
   'channel_error',
   'message_failures',
   'usage_limit_reached',
-  'credentials_error'
+  'credentials_error',
+  'workflow_failure',
+  'workflow_action'
 ];
 
 const operationalAlertSchema = new mongoose.Schema(

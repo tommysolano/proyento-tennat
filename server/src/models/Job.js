@@ -5,7 +5,9 @@ export const JOB_TYPES = [
   'webhook.whatsapp.status',
   'message.whatsapp.send',
   'media.whatsapp.download',
-  'notification.dispatch'
+  'notification.dispatch',
+  'appointment.reminder',
+  'workflow.run'
 ];
 export const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed', 'dead'];
 

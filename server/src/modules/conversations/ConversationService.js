@@ -29,7 +29,7 @@ async function activity({
 }) {
   const userId = user?._id || actorId;
   if (!userId) return null;
-  return ActivityLog.create({
+  const item = await ActivityLog.create({
     companyId,
     distributorId: distributorId || null,
     userId,
@@ -37,6 +37,11 @@ async function activity({
     summary,
     metadata: sanitize(metadata)
   });
+  const { WorkflowEventEmitter } = await import(
+    '../workflows/WorkflowEventEmitter.js'
+  );
+  await WorkflowEventEmitter.emitFromActivity(item).catch(() => {});
+  return item;
 }
 
 function realtimeConversation(type, conversation, data = {}) {

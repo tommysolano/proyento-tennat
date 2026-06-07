@@ -106,6 +106,29 @@ export class JobService {
         relatedId: job._id,
         metadata: { jobType: job.type, attempts: job.attempts }
       }).catch(() => {});
+      if (job.companyId) {
+        const { WorkflowEventEmitter } = await import(
+          '../workflows/WorkflowEventEmitter.js'
+        );
+        await WorkflowEventEmitter.safelyEmit({
+          companyId: job.companyId,
+          distributorId: job.distributorId,
+          eventType: 'job.dead',
+          sourceModule: 'jobs',
+          entityType: 'job',
+          entityId: job._id,
+          idempotencyKey: `job:${job._id}:dead`,
+          payload: {
+            jobType: job.type,
+            attempts: job.attempts,
+            error: sanitizeError(error)
+          },
+          metadata: {
+            sourceWorkflowRunId: job.metadata?.runId || null,
+            sourceWorkflowId: job.metadata?.workflowId || null
+          }
+        });
+      }
     }
     return { terminal };
   }

@@ -112,12 +112,22 @@ export const MODULE_REGISTRY = [
   {
     key: 'calendar',
     name: 'Calendario',
-    description: 'Reservas y agenda; integracion real pendiente.',
-    version: '0.1.0',
-    enabledByDefault: false,
+    description: 'Agenda multiusuario, disponibilidad y citas vinculadas al CRM.',
+    version: '1.0.0',
+    enabledByDefault: true,
     requiredPermissions: [],
-    requiredPlanFeatures: ['calendar'],
-    status: 'planned'
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'bookings',
+    name: 'Reservas',
+    description: 'Enlaces publicos de reserva sobre calendarios internos.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
   },
   {
     key: 'billing',
@@ -142,12 +152,22 @@ export const MODULE_REGISTRY = [
   {
     key: 'automations',
     name: 'Automatizaciones',
-    description: 'Motor de workflows futuro.',
-    version: '0.1.0',
-    enabledByDefault: false,
+    description: 'Motor interno de eventos, condiciones y acciones.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: ['workflows:read'],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'workflows',
+    name: 'Workflows',
+    description: 'Constructor, ejecuciones, auditoria y pruebas de workflows.',
+    version: '1.0.0',
+    enabledByDefault: true,
     requiredPermissions: [],
-    requiredPlanFeatures: ['automations'],
-    status: 'planned'
+    requiredPlanFeatures: [],
+    status: 'active'
   },
   {
     key: 'funnels',

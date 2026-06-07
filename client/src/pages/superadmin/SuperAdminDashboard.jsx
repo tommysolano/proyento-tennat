@@ -38,7 +38,7 @@ import { Table } from '../../components/Table.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const inputClass = 'w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm';
-const PLATFORM_MODULES = ['core', 'crm', 'contacts', 'billing', 'reporting'];
+const PLATFORM_MODULES = ['core', 'crm', 'contacts', 'calendar', 'bookings', 'automations', 'workflows', 'billing', 'reporting'];
 
 function money(value, currency = 'USD') {
   return new Intl.NumberFormat('en-US', {
@@ -224,7 +224,13 @@ export function SuperAdminDashboard({ section = 'all' }) {
             whatsappMessages: Number(data.get('whatsappMessages')),
             mediaStorageMb: Number(data.get('mediaStorageMb')),
             mediaFiles: Number(data.get('mediaFiles')),
-            conversations: Number(data.get('conversations'))
+            conversations: Number(data.get('conversations')),
+            calendars: Number(data.get('calendars')),
+            appointments: Number(data.get('appointments')),
+            bookingLinks: Number(data.get('bookingLinks')),
+            workflows: Number(data.get('workflows')),
+            workflowRunsPerMonth: Number(data.get('workflowRunsPerMonth')),
+            workflowActionsPerMonth: Number(data.get('workflowActionsPerMonth'))
           },
           includedModules: PLATFORM_MODULES,
           status: 'active'
@@ -527,6 +533,12 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <input required min="0" type="number" name="mediaStorageMb" className={inputClass} placeholder="Media MB" />
                 <input required min="0" type="number" name="mediaFiles" className={inputClass} placeholder="Archivos media" />
                 <input required min="0" type="number" name="conversations" className={inputClass} placeholder="Conversaciones" />
+                <input required min="0" type="number" name="calendars" className={inputClass} placeholder="Calendarios" />
+                <input required min="0" type="number" name="appointments" className={inputClass} placeholder="Citas/mes" />
+                <input required min="0" type="number" name="bookingLinks" className={inputClass} placeholder="Enlaces de reserva" />
+                <input required min="0" type="number" name="workflows" className={inputClass} placeholder="Workflows" />
+                <input required min="0" type="number" name="workflowRunsPerMonth" className={inputClass} placeholder="Runs workflow/mes" />
+                <input required min="0" type="number" name="workflowActionsPerMonth" className={inputClass} placeholder="Acciones workflow/mes" />
               </div>
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
             </form>

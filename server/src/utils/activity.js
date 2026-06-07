@@ -9,7 +9,7 @@ export async function recordActivity({
   distributorId = null,
   metadata = {}
 }) {
-  return ActivityLog.create({
+  const activity = await ActivityLog.create({
     companyId: companyId || user.companyId || null,
     distributorId: distributorId || user.distributorId || null,
     userId: user._id,
@@ -17,4 +17,9 @@ export async function recordActivity({
     summary: sanitize(summary),
     metadata: sanitize(metadata)
   });
+  const { WorkflowEventEmitter } = await import(
+    '../modules/workflows/WorkflowEventEmitter.js'
+  );
+  await WorkflowEventEmitter.emitFromActivity(activity).catch(() => {});
+  return activity;
 }

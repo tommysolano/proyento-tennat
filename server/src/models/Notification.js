@@ -5,7 +5,15 @@ export const NOTIFICATION_TYPES = [
   'new_message',
   'internal_note',
   'conversation_closed',
-  'message_failed'
+  'message_failed',
+  'appointment_assigned',
+  'appointment_upcoming',
+  'appointment_cancelled',
+  'appointment_rescheduled',
+  'appointment_no_show',
+  'workflow_notification',
+  'workflow_completed',
+  'workflow_failed'
 ];
 
 const notificationSchema = new mongoose.Schema(
