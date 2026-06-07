@@ -25,7 +25,16 @@ const styles = {
   contactado: 'bg-blue-50 text-blue-700 ring-blue-200',
   seguimiento: 'bg-violet-50 text-violet-700 ring-violet-200',
   cerrado: 'bg-slate-100 text-slate-700 ring-slate-300',
-  pendiente: 'bg-amber-50 text-amber-700 ring-amber-200'
+  pendiente: 'bg-amber-50 text-amber-700 ring-amber-200',
+  ok: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
+  error: 'bg-rose-50 text-rose-700 ring-rose-200',
+  critical: 'bg-rose-100 text-rose-800 ring-rose-300',
+  info: 'bg-sky-50 text-sky-700 ring-sky-200',
+  acknowledged: 'bg-violet-50 text-violet-700 ring-violet-200',
+  completed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  processing: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
+  dead: 'bg-rose-100 text-rose-800 ring-rose-300'
 };
 
 export function Badge({ children, tone = 'draft' }) {

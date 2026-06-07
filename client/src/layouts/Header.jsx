@@ -1,7 +1,7 @@
-import { Bell, Menu, RotateCcw, Search } from 'lucide-react';
+import { AlertTriangle, Bell, Menu, RotateCcw, Search } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
-import { getNotifications } from '../api.js';
+import { getNotifications, getOpsAlerts } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { roleHome } from '../routes/roleHome.js';
 
@@ -17,7 +17,9 @@ export function Header({ onMenuClick }) {
   const navigate = useNavigate();
   const { user, tenant, impersonator, returnToOriginalSession } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [criticalAlertCount, setCriticalAlertCount] = useState(0);
   const canReceiveNotifications = ['ADMIN', 'SUPERVISOR', 'CALLCENTER'].includes(user?.role);
+  const canReadOpsAlerts = ['SUPERADMIN', 'ADMIN'].includes(user?.role);
 
   const loadUnread = useCallback(() => {
     if (!canReceiveNotifications) return;
@@ -25,6 +27,13 @@ export function Header({ onMenuClick }) {
       .then((data) => setUnreadCount(data.unreadCount || 0))
       .catch(() => null);
   }, [canReceiveNotifications]);
+
+  const loadCriticalAlerts = useCallback(() => {
+    if (!canReadOpsAlerts) return;
+    getOpsAlerts({ status: 'open', severity: 'critical' })
+      .then((data) => setCriticalAlertCount(data.length))
+      .catch(() => null);
+  }, [canReadOpsAlerts]);
 
   useEffect(() => {
     loadUnread();
@@ -35,6 +44,12 @@ export function Header({ onMenuClick }) {
       window.removeEventListener('tenantdesk:notifications-changed', loadUnread);
     };
   }, [loadUnread]);
+
+  useEffect(() => {
+    loadCriticalAlerts();
+    const interval = setInterval(loadCriticalAlerts, 30000);
+    return () => clearInterval(interval);
+  }, [loadCriticalAlerts]);
 
   async function handleReturn() {
     const originalUser = await returnToOriginalSession();
@@ -86,6 +101,16 @@ export function Header({ onMenuClick }) {
           >
             <Bell className="h-4 w-4" />
             {unreadCount ? <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-5 text-white">{Math.min(unreadCount, 99)}</span> : null}
+          </Link>
+        ) : null}
+        {canReadOpsAlerts ? (
+          <Link
+            to="/ops"
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600"
+            aria-label="Alertas operativas"
+          >
+            <AlertTriangle className="h-4 w-4" />
+            {criticalAlertCount ? <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-5 text-white">{Math.min(criticalAlertCount, 99)}</span> : null}
           </Link>
         ) : null}
         <div

@@ -24,12 +24,15 @@ import {
   getContacts,
   getConversationMessages,
   getConversations,
+  getMediaContentObjectUrl,
   getMessageTemplates,
   getUsers,
   markConversationRead,
   reopenConversation,
+  retryMessageMedia,
   retryMessage,
-  sendMessage
+  sendMessage,
+  uploadConversationMedia
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
@@ -50,10 +53,36 @@ const channelLabel = {
   messenger: 'Messenger'
 };
 
-function MessageMedia({ message }) {
+function MessageMedia({ message, busy, onRetry }) {
   const media = message.media || {};
   const filename = media.filename || media.fileName || 'Adjunto';
   const status = media.status || (media.url ? 'available' : 'none');
+  const [storedUrl, setStoredUrl] = useState('');
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    if (status !== 'available' || !media.storageKeyConfigured) {
+      setStoredUrl('');
+      setLoadError('');
+      return undefined;
+    }
+    getMediaContentObjectUrl(message._id)
+      .then((url) => {
+        objectUrl = url;
+        if (active) setStoredUrl(url);
+        else URL.revokeObjectURL(url);
+      })
+      .catch((requestError) => {
+        if (active) setLoadError(requestError.message);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [message._id, media.storageKeyConfigured, status]);
+
   if (status === 'none' && !media.url && !media.providerMediaId && !media.externalMediaId) {
     return null;
   }
@@ -61,20 +90,32 @@ function MessageMedia({ message }) {
     return <p className="mt-2 rounded-md bg-slate-900/10 px-3 py-2 text-xs">Adjunto pendiente de almacenamiento.</p>;
   }
   if (status === 'failed') {
-    return <p className="mt-2 rounded-md bg-rose-900/20 px-3 py-2 text-xs">No se pudo preparar el adjunto: {media.error || 'error de descarga'}</p>;
-  }
-  if (message.type === 'image' && media.url) {
-    return <img src={media.url} alt={filename} className="mt-2 max-h-72 rounded-lg object-contain" />;
-  }
-  if (message.type === 'audio' && media.url) {
-    return <audio controls src={media.url} className="mt-2 max-w-full" />;
-  }
-  if (message.type === 'video' && media.url) {
-    return <video controls src={media.url} className="mt-2 max-h-72 max-w-full rounded-lg" />;
-  }
-  if (media.url) {
     return (
-      <a href={media.url} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-2 rounded-md bg-slate-900/10 px-3 py-2 font-semibold underline">
+      <div className="mt-2 rounded-md bg-rose-900/20 px-3 py-2 text-xs">
+        <p>No se pudo preparar el adjunto: {media.error || 'error de descarga'}</p>
+        {media.providerMediaIdConfigured ? <button type="button" disabled={busy} className="mt-2 font-bold underline" onClick={onRetry}>Reintentar descarga</button> : null}
+      </div>
+    );
+  }
+  if (loadError) {
+    return <p className="mt-2 rounded-md bg-rose-900/20 px-3 py-2 text-xs">No se pudo abrir el adjunto: {loadError}</p>;
+  }
+  const source = storedUrl || media.url;
+  if (media.storageKeyConfigured && !source) {
+    return <p className="mt-2 rounded-md bg-slate-900/10 px-3 py-2 text-xs">Cargando adjunto seguro...</p>;
+  }
+  if (message.type === 'image' && source) {
+    return <img src={source} alt={filename} className="mt-2 max-h-72 rounded-lg object-contain" />;
+  }
+  if (message.type === 'audio' && source) {
+    return <audio controls src={source} className="mt-2 max-w-full" />;
+  }
+  if (message.type === 'video' && source) {
+    return <video controls src={source} className="mt-2 max-h-72 max-w-full rounded-lg" />;
+  }
+  if (source) {
+    return (
+      <a href={source} target="_blank" rel="noreferrer" download={storedUrl ? filename : undefined} className="mt-2 flex items-center gap-2 rounded-md bg-slate-900/10 px-3 py-2 font-semibold underline">
         <FileText className="h-4 w-4" />
         {filename}
       </a>
@@ -220,13 +261,16 @@ export function InboxPage() {
     const templateId = data.get('templateId');
     const type = data.get('type') || 'text';
     const mediaUrl = String(data.get('mediaUrl') || '').trim();
+    const file = data.get('file');
     const sent = await mutate(
-      () => sendMessage(selectedId, {
-        text: data.get('text'),
-        type,
-        templateId: templateId || undefined,
-        media: mediaUrl ? { url: mediaUrl, status: 'available' } : undefined
-      }),
+      () => file instanceof File && file.size
+        ? uploadConversationMedia(selectedId, file, data.get('text'))
+        : sendMessage(selectedId, {
+            text: data.get('text'),
+            type,
+            templateId: templateId || undefined,
+            media: mediaUrl ? { url: mediaUrl, status: 'available' } : undefined
+          }),
       'Mensaje procesado.'
     );
     if (sent) form.reset();
@@ -371,7 +415,11 @@ export function InboxPage() {
                     <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm shadow-sm ${message.direction === 'outbound' ? 'bg-cyan-700 text-white' : message.direction === 'internal' ? 'border border-amber-200 bg-amber-50 text-amber-900' : 'border border-slate-200 bg-white text-slate-800'}`}>
                       {message.direction === 'internal' ? <p className="mb-1 text-xs font-bold uppercase">Nota interna</p> : null}
                       <p className="whitespace-pre-wrap">{message.text || `[${message.type}]`}</p>
-                      <MessageMedia message={message} />
+                      <MessageMedia
+                        message={message}
+                        busy={busy}
+                        onRetry={() => mutate(() => retryMessageMedia(message._id), 'Descarga reenviada a la cola.')}
+                      />
                       <div className={`mt-2 flex items-center gap-2 text-[11px] ${message.direction === 'outbound' ? 'text-cyan-100' : 'text-slate-500'}`}>
                         <span>{message.sentBy?.name || (message.direction === 'inbound' ? selected.contactId?.name : 'Sistema')}</span>
                         <span>{localDate(message.createdAt)}</span>
@@ -395,6 +443,13 @@ export function InboxPage() {
                     <option value="video">Video por URL publica</option>
                   </select>
                   <input name="mediaUrl" type="url" className={inputClass} placeholder="URL publica del adjunto (opcional)" />
+                  <input
+                    name="file"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,video/mp4,application/pdf"
+                    className={inputClass}
+                  />
+                  <p className="text-xs text-slate-500">Upload seguro: JPG, PNG, WebP, MP3, OGG, MP4 o PDF. En WhatsApp, storage local no es una URL publica y el envio fallara de forma explicita.</p>
                   <textarea name="text" className={`${inputClass} min-h-20`} placeholder="Escribe una respuesta. Una plantilla puede completar el contenido." />
                   <Button type="submit" disabled={busy}><Send className="h-4 w-4" />Enviar</Button>
                 </form>

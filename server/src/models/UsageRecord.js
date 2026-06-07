@@ -14,6 +14,9 @@ const usageRecordSchema = new mongoose.Schema(
         'storage',
         'modules',
         'whatsapp_messages',
+        'media_storage_mb',
+        'media_files',
+        'conversations',
         'ai_tokens'
       ],
       required: true

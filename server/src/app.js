@@ -99,7 +99,15 @@ app.use((error, req, res, next) => {
   });
   const status =
     error.status ||
-    (error.code === 11000 ? 409 : error.name === 'ValidationError' || error.name === 'CastError' ? 400 : 500);
+    (error.code === 11000
+      ? 409
+      : error.code === 'LIMIT_FILE_SIZE'
+        ? 413
+        : error.name === 'MulterError' ||
+            error.name === 'ValidationError' ||
+            error.name === 'CastError'
+          ? 400
+          : 500);
   const duplicateField = error.code === 11000 ? Object.keys(error.keyPattern || {})[0] : null;
   const safeError = sanitizeError(error);
   res.status(status).json({

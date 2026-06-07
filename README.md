@@ -6,6 +6,9 @@ y CRM operativo avanzado para las empresas.
 La Fase 4 agrega inbox omnicanal y WhatsApp Cloud. La Fase 5 endurece esa
 base con cifrado AES-256-GCM, firma de webhooks, cola durable MongoDB,
 reintentos, media, SSE, notificaciones, routing y observabilidad.
+La Fase 6 prepara una beta controlada con storage desacoplado, descarga y
+upload seguro de media, limites comerciales, diagnostico de canal, replay de
+jobs, alertas operativas y rotacion manual de secretos.
 
 ## Requisitos
 
@@ -54,7 +57,9 @@ demo en produccion.
 ```bash
 npm run dev
 npm run seed
+npm test
 npm run build
+npm run rotate-credentials-key --workspace server
 ```
 
 - Frontend: `http://localhost:5173`
@@ -106,6 +111,7 @@ Frontend:
 - `/inbox/templates`
 - `/inbox/routing`
 - `/notifications`
+- `/ops`
 
 API de plataforma:
 
@@ -159,23 +165,34 @@ API de conversaciones:
 
 - `/api/conversations`
 - `/api/conversations/:id/messages`
+- `/api/conversations/:id/messages/media`
 - `/api/messages/:id/retry`
+- `/api/messages/:id/media`
+- `/api/messages/:id/media/content`
 - `/api/channel-configs`
+- `/api/channel-configs/:id/diagnostics`
+- `/api/channel-configs/:id/rotate-secret`
 - `/api/message-templates`
 - `/api/webhooks/whatsapp/:channelConfigId`
 - `/api/realtime/events`
 - `/api/notifications`
 - `/api/routing-rules`
 - `/api/ops/jobs`
+- `/api/ops/alerts`
 - `/api/health`
 
-## Variables de Fase 5
+## Variables de Fase 5 y 6
 
 Antes de guardar credenciales configure `CREDENTIALS_ENCRYPTION_KEY`. En
 produccion es obligatoria y debe tener al menos 32 caracteres. Tambien estan
 disponibles `REQUIRE_WEBHOOK_SIGNATURE`, `JOB_WORKER_ENABLED`,
 `JOB_WORKER_CONCURRENCY`, `JOB_MAX_ATTEMPTS`, `REALTIME_ENABLED`,
 `WHATSAPP_GRAPH_API_VERSION` y `WHATSAPP_GRAPH_API_BASE_URL`.
+
+Media y operacion usan `MEDIA_STORAGE_PROVIDER`, `MEDIA_LOCAL_DIR`,
+`MEDIA_MAX_SIZE_MB`, `MEDIA_SIGNED_URL_TTL_SECONDS`,
+`MEDIA_ALLOWED_MIME_TYPES`, `WHATSAPP_SANDBOX_MODE` y `ALERTS_ENABLED`.
+Consulte `.env.example`; no use valores reales en archivos versionados.
 
 Genere la clave fuera del repositorio:
 
@@ -189,6 +206,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 contactos. En `production`, no tener `PlatformSubscription` bloquea la
 operacion. En desarrollo se permite con warning para facilitar migraciones de
 datos existentes. Una suscripcion `suspended` o `cancelled` bloquea siempre.
+
+`checkUsageLimit()` y `trackUsage()` controlan por empresa
+`whatsapp_messages`, `media_storage_mb`, `media_files`, `conversations` y
+contactos inbound. En produccion, una empresa sin suscripcion comercial activa
+no puede consumir estas operaciones.
 
 ## Documentacion
 
@@ -204,12 +226,17 @@ datos existentes. Una suscripcion `suspended` o `cancelled` bloquea siempre.
 - [SECURITY_WHATSAPP.md](SECURITY_WHATSAPP.md)
 - [JOBS.md](JOBS.md)
 - [REALTIME.md](REALTIME.md)
+- [MEDIA.md](MEDIA.md)
+- [OPS.md](OPS.md)
+- [WHATSAPP_PRODUCTION_CHECKLIST.md](WHATSAPP_PRODUCTION_CHECKLIST.md)
 
 ## Alcance
 
 WhatsApp Cloud queda preparado para envio real solo cuando una empresa aporta
 credenciales validas. `Probar con Meta` realiza una consulta real y no simula
-exito. La media inbound conserva metadata y queda pendiente hasta configurar
-almacenamiento. Facebook, Instagram, Messenger, SMS y email siguen como
-adaptadores placeholder. Tampoco existen pasarelas de pago, funnels,
-automatizaciones visuales, landing pages o calendario real.
+exito. La media inbound se descarga mediante un job real y falla claramente
+si faltan credenciales. El provider local sirve contenido solo por endpoint
+autenticado. Para enviar media local a WhatsApp aun se requiere una URL
+publica o subir primero el archivo a Graph API. Facebook, Instagram,
+Messenger, SMS y email siguen como placeholders. Tampoco existen pasarelas de
+pago, funnels, automatizaciones visuales, landing pages o calendario real.

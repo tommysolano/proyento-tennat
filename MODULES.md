@@ -14,6 +14,7 @@
 - `whatsapp`
 - `realtime`
 - `notifications`
+- `media`
 - `calendar`
 - `billing`
 - `reporting`
@@ -57,6 +58,11 @@ tenant del `ChannelConfig`; ademas ignoran configuraciones desactivadas.
 
 SSE requiere `realtime`; las APIs de avisos requieren `notifications`. Ambos
 estan activos y `enabledByDefault` para conservar tenants existentes.
+
+Lectura, upload y descarga de adjuntos requieren `media`, ademas de
+`conversations` e `inbox`. El diagnostico de WhatsApp requiere `whatsapp`.
+`media` esta activo por defecto para no romper empresas existentes, pero un
+entitlement explicito puede bloquearlo con HTTP 403.
 
 Branding, configuracion y onboarding no dependen del modulo billing, lo que
 permite recuperar o configurar el tenant aun si billing esta desactivado.

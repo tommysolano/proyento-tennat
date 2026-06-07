@@ -9,7 +9,10 @@ export const ROLE_PERMISSIONS = {
     'impersonation:manage',
     'audit:read_all',
     'ops:read_all',
-    'jobs:read_all'
+    'jobs:read_all',
+    'jobs:replay_all',
+    'alerts:read_all',
+    'alerts:ack_all'
   ],
   DISTRIBUTOR: [
     'companies:manage',
@@ -53,7 +56,14 @@ export const ROLE_PERMISSIONS = {
     'notifications:read',
     'routing_rules:manage',
     'ops:read_company',
-    'jobs:read_company'
+    'jobs:read_company',
+    'jobs:replay_company',
+    'alerts:read_company',
+    'alerts:ack_company',
+    'media:read',
+    'media:upload',
+    'channel_diagnostics:read',
+    'channel_secrets:rotate'
   ],
   SUPERVISOR: [
     'crm:read_team',
@@ -73,7 +83,9 @@ export const ROLE_PERMISSIONS = {
     'message_templates:read',
     'activity:read_team',
     'notifications:read',
-    'routing_rules:read'
+    'routing_rules:read',
+    'media:read_team',
+    'media:upload_team'
   ],
   CALLCENTER: [
     'contacts:read_assigned',
@@ -90,7 +102,9 @@ export const ROLE_PERMISSIONS = {
     'conversations:send_assigned',
     'conversations:internal_notes',
     'message_templates:use',
-    'notifications:read'
+    'notifications:read',
+    'media:read_assigned',
+    'media:upload_assigned'
   ]
 };
 

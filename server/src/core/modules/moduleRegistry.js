@@ -100,6 +100,16 @@ export const MODULE_REGISTRY = [
     status: 'active'
   },
   {
+    key: 'media',
+    name: 'Media',
+    description: 'Almacenamiento, descarga y upload seguro de adjuntos.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
     key: 'calendar',
     name: 'Calendario',
     description: 'Reservas y agenda; integracion real pendiente.',

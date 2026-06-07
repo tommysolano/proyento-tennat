@@ -220,7 +220,11 @@ export function SuperAdminDashboard({ section = 'all' }) {
             contacts: Number(data.get('contacts')),
             modules: Number(data.get('modules')),
             storageMb: Number(data.get('storageMb')),
-            messages: Number(data.get('messages'))
+            messages: Number(data.get('messages')),
+            whatsappMessages: Number(data.get('whatsappMessages')),
+            mediaStorageMb: Number(data.get('mediaStorageMb')),
+            mediaFiles: Number(data.get('mediaFiles')),
+            conversations: Number(data.get('conversations'))
           },
           includedModules: PLATFORM_MODULES,
           status: 'active'
@@ -519,6 +523,10 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <input required min="0" type="number" name="modules" className={inputClass} placeholder="Modulos" />
                 <input required min="0" type="number" name="storageMb" className={inputClass} placeholder="Storage MB" />
                 <input required min="0" type="number" name="messages" className={inputClass} placeholder="Mensajes" />
+                <input required min="0" type="number" name="whatsappMessages" className={inputClass} placeholder="Mensajes WhatsApp" />
+                <input required min="0" type="number" name="mediaStorageMb" className={inputClass} placeholder="Media MB" />
+                <input required min="0" type="number" name="mediaFiles" className={inputClass} placeholder="Archivos media" />
+                <input required min="0" type="number" name="conversations" className={inputClass} placeholder="Conversaciones" />
               </div>
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
             </form>

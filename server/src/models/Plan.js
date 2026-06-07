@@ -44,6 +44,10 @@ const planSchema = new mongoose.Schema(
       contacts: { type: Number, default: 1000, min: 0 },
       messages: { type: Number, default: 0, min: 0 },
       storageMb: { type: Number, default: 1024, min: 0 },
+      whatsappMessages: { type: Number, default: 0, min: 0 },
+      mediaStorageMb: { type: Number, default: 0, min: 0 },
+      mediaFiles: { type: Number, default: 0, min: 0 },
+      conversations: { type: Number, default: 0, min: 0 },
       modules: { type: Number, default: 3, min: 0 }
     },
     includedModules: { type: [String], default: ['core', 'crm', 'contacts'] },

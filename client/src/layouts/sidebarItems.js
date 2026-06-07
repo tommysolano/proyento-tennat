@@ -19,6 +19,7 @@ import {
   Radio,
   Bell,
   Route,
+  ServerCog,
   UsersRound
 } from 'lucide-react';
 
@@ -30,6 +31,7 @@ export const sidebarItemsByRole = {
     { label: 'Suscripciones', icon: ReceiptText, to: '/superadmin/subscriptions' },
     { label: 'Billing', icon: FileText, to: '/superadmin/billing' },
     { label: 'Modulos', icon: Boxes, to: '/superadmin/modules' },
+    { label: 'Operaciones', icon: ServerCog, to: '/ops' },
     { label: 'Auditoria', icon: Activity, to: '/superadmin/audit' }
   ],
   DISTRIBUTOR: [
@@ -52,6 +54,7 @@ export const sidebarItemsByRole = {
     { label: 'Canales', icon: Radio, to: '/inbox/channels' },
     { label: 'Plantillas', icon: FileText, to: '/inbox/templates' },
     { label: 'Routing', icon: Route, to: '/inbox/routing' },
+    { label: 'Operaciones', icon: ServerCog, to: '/ops' },
     { label: 'Notificaciones', icon: Bell, to: '/notifications' },
     { label: 'CRM', icon: Activity, to: '/crm' },
     { label: 'Contactos', icon: ContactRound, to: '/crm/contacts' },

@@ -11,6 +11,8 @@ import { NotificationService } from '../notifications/NotificationService.js';
 import { RealtimeService } from '../realtime/RealtimeService.js';
 import { RoutingService } from '../routing/RoutingService.js';
 import { getChannelAdapter, canonicalChannel } from './adapters/index.js';
+import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
+import { OperationalAlertService } from '../ops/OperationalAlertService.js';
 
 function safePreview(text, fallback = '') {
   return String(text || fallback).slice(0, 500);
@@ -110,6 +112,12 @@ export class ConversationService {
 
     const contact = await Contact.findOne({ _id: contactId, companyId }).select('assignedTo');
     if (!contact) throw Object.assign(new Error('Contacto no pertenece a la empresa'), { status: 400 });
+    await checkUsageLimit({
+      companyId,
+      distributorId,
+      metric: 'conversations',
+      quantity: 1
+    });
     const resolvedAssignee =
       assignedTo !== undefined && assignedTo !== null
         ? assignedTo
@@ -151,6 +159,13 @@ export class ConversationService {
         relatedId: conversation._id
       });
     }
+    await trackUsage({
+      companyId,
+      distributorId,
+      metric: 'conversations',
+      quantity: 1,
+      metadata: { conversationId: conversation._id, channel: canonical }
+    });
     return { conversation, created: true };
   }
 
@@ -166,6 +181,14 @@ export class ConversationService {
         externalMessageId: normalized.externalMessageId
       });
       if (duplicate) return { message: duplicate, duplicate: true };
+    }
+    if (canonicalChannel(conversation.channel) === 'whatsapp_cloud') {
+      await checkUsageLimit({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metric: 'whatsapp_messages',
+        quantity: 1
+      });
     }
     const message = await Message.create({
       companyId: conversation.companyId,
@@ -231,6 +254,19 @@ export class ConversationService {
         externalMessageId: message.externalMessageId
       }
     });
+    if (canonicalChannel(conversation.channel) === 'whatsapp_cloud') {
+      await trackUsage({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metric: 'whatsapp_messages',
+        quantity: 1,
+        metadata: {
+          messageId: message._id,
+          direction: 'inbound',
+          sandboxMode: Boolean(normalized.metadata?.sandboxMode)
+        }
+      });
+    }
     return { message, duplicate: false };
   }
 
@@ -246,6 +282,14 @@ export class ConversationService {
       throw Object.assign(new Error('text es requerido para mensajes de texto'), { status: 400 });
     }
     const canonical = canonicalChannel(conversation.channel);
+    if (canonical === 'whatsapp_cloud') {
+      await checkUsageLimit({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metric: 'whatsapp_messages',
+        quantity: 1
+      });
+    }
     const message = await Message.create({
       companyId: conversation.companyId,
       distributorId: conversation.distributorId,
@@ -351,6 +395,7 @@ export class ConversationService {
     message.error = sanitize(result.error || '');
     if (result.success) {
       message.status = result.status || 'sent';
+      message.sentAt = message.sentAt || new Date();
       message.failedAt = null;
     } else if (result.retryable && (!job || job.attempts < job.maxAttempts)) {
       message.status = 'pending';
@@ -360,6 +405,19 @@ export class ConversationService {
       message.failedAt = new Date();
     }
     await message.save();
+    if (result.success && canonical === 'whatsapp_cloud') {
+      await trackUsage({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metric: 'whatsapp_messages',
+        quantity: 1,
+        metadata: {
+          messageId: message._id,
+          direction: 'outbound',
+          sandboxMode: Boolean(channelConfig?.settings?.sandboxMode)
+        }
+      });
+    }
     realtimeConversation('message.status_updated', conversation, {
       message: message.toJSON()
     });
@@ -382,6 +440,31 @@ export class ConversationService {
     });
 
     if (!result.success) {
+      const credentialsFailure = /token|credential|permission|autoriz|access/i.test(
+        message.error
+      );
+      if (channelConfig) {
+        channelConfig.error = sanitize(result.error || 'Error enviando por WhatsApp');
+        if (message.status === 'failed' && credentialsFailure) {
+          channelConfig.status = 'error';
+        }
+        await channelConfig.save().catch(() => {});
+      }
+      if (message.status === 'failed') {
+        await OperationalAlertService.create({
+          companyId: conversation.companyId,
+          distributorId: conversation.distributorId,
+          severity: credentialsFailure ? 'critical' : 'warning',
+          type: credentialsFailure ? 'credentials_error' : 'channel_error',
+          title: credentialsFailure
+            ? 'Credenciales WhatsApp rechazadas'
+            : 'Error de canal WhatsApp',
+          message: message.error,
+          relatedType: 'channel_config',
+          relatedId: channelConfig?._id || null,
+          metadata: { messageId: message._id }
+        }).catch(() => {});
+      }
       if (message.status === 'failed' && message.sentBy) {
         await NotificationService.create({
           companyId: conversation.companyId,

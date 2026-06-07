@@ -152,3 +152,24 @@ mantiene SSE autenticado; `Notification` persiste avisos por usuario y
 
 La cola MongoDB es apropiada para una beta controlada. Alta escala debe migrar
 el transporte a Redis/BullMQ sin cambiar los handlers de dominio.
+
+## Operacion Fase 6
+
+`StorageProvider` separa el dominio de media del backend fisico.
+`LocalStorageProvider` escribe fuera del arbol publico, usa claves UUID por
+tenant y sirve binarios solo despues de validar JWT, permisos, modulo y scope
+de conversacion. S3, R2 y DigitalOcean Spaces conservan el mismo contrato como
+placeholders explicitos.
+
+El inbound de WhatsApp crea `media.whatsapp.download`; el worker consulta
+metadata y descarga con el token cifrado del canal, valida tipo/tamano,
+almacena y actualiza `Message.media`. `storageKey` y IDs internos del proveedor
+se eliminan del JSON publico.
+
+`OperationalAlert` centraliza fallos de jobs, firmas, credenciales, canales y
+limites. `GET /api/ops/*` nunca expone payloads de jobs. El replay clona el
+trabajo fallido, conserva `replayedFrom` y aplica scope global o de empresa.
+
+Los limites comerciales usan `UsageRecord` mensual y los campos de `Plan`.
+Las comprobaciones se realizan en backend antes de conversaciones, mensajes y
+media; el frontend solo presenta el resultado.

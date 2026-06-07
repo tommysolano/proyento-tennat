@@ -60,6 +60,13 @@ La matriz vive en
 - `routing_rules:manage`
 - `ops:read_company`
 - `jobs:read_company`
+- `jobs:replay_company`
+- `alerts:read_company`
+- `alerts:ack_company`
+- `media:read`
+- `media:upload`
+- `channel_diagnostics:read`
+- `channel_secrets:rotate`
 
 ## SUPERVISOR
 
@@ -81,6 +88,8 @@ La matriz vive en
 - `message_templates:read`
 - `notifications:read`
 - `routing_rules:read`
+- `media:read_team`
+- `media:upload_team`
 
 ## CALLCENTER
 
@@ -99,11 +108,16 @@ La matriz vive en
 - `conversations:internal_notes`
 - `message_templates:use`
 - `notifications:read`
+- `media:read_assigned`
+- `media:upload_assigned`
 
 ## SUPERADMIN Fase 5
 
 - `ops:read_all`
 - `jobs:read_all`
+- `jobs:replay_all`
+- `alerts:read_all`
+- `alerts:ack_all`
 
 ## Criterio de migracion
 
@@ -126,3 +140,7 @@ entrar mediante la impersonacion existente.
 `SUPERADMIN` conserva acceso global en sus rutas. La consulta global de
 facturas y pagos requiere `scope=all`; sin ese parametro las vistas existentes
 mantienen el alcance de plataforma.
+
+Los endpoints de media vuelven a comprobar el scope de la conversacion aunque
+el usuario tenga permiso. Replay y alertas aplican `companyId` para ADMIN;
+CALLCENTER y SUPERVISOR no acceden a `/api/ops`.

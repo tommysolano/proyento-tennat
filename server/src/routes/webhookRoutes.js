@@ -5,6 +5,7 @@ import { JobService } from '../modules/jobs/JobService.js';
 import { getChannelAdapter } from '../modules/conversations/adapters/index.js';
 import { WhatsAppWebhookService } from '../modules/conversations/WhatsAppWebhookService.js';
 import { logger } from '../utils/logger.js';
+import { OperationalAlertService } from '../modules/ops/OperationalAlertService.js';
 
 const router = Router();
 
@@ -52,6 +53,17 @@ router.post('/whatsapp/:channelConfigId', async (req, res, next) => {
         companyId: config.companyId,
         signatureConfigured: signature.configured
       });
+      await OperationalAlertService.create({
+        companyId: config.companyId,
+        distributorId: config.distributorId,
+        severity: 'critical',
+        type: 'webhook_signature_failed',
+        title: 'Firma de webhook WhatsApp invalida',
+        message: 'Se rechazo un webhook por firma ausente o invalida',
+        relatedType: 'channel_config',
+        relatedId: config._id,
+        metadata: { signatureConfigured: signature.configured }
+      }).catch(() => {});
       return res.status(403).json({ message: 'Firma de webhook invalida' });
     }
     if (!signature.configured) {

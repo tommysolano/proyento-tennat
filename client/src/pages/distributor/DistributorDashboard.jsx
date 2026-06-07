@@ -32,7 +32,7 @@ const cycleLabels = {
 };
 
 function formatLimits(limits = {}) {
-  return `${limits.users ?? 0} usuarios / ${limits.contacts ?? 0} contactos / ${limits.modules ?? 0} modulos`;
+  return `${limits.users ?? 0} usuarios / ${limits.contacts ?? 0} contactos / ${limits.whatsappMessages ?? 0} WA / ${limits.mediaStorageMb ?? 0} MB media`;
 }
 
 function formatPrice(price) {
@@ -191,6 +191,10 @@ export function DistributorDashboard() {
             contacts: Number(data.get('contacts')),
             messages: Number(data.get('messages')),
             storageMb: Number(data.get('storageMb')),
+            whatsappMessages: Number(data.get('whatsappMessages')),
+            mediaStorageMb: Number(data.get('mediaStorageMb')),
+            mediaFiles: Number(data.get('mediaFiles')),
+            conversations: Number(data.get('conversations')),
             modules: Number(data.get('modules'))
           },
           code: data.get('code'),
@@ -391,10 +395,15 @@ export function DistributorDashboard() {
               <input required min="0" type="number" name="contacts" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contactos" />
               <input required min="0" type="number" name="messages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Mensajes" />
               <input required min="0" type="number" name="storageMb" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Storage MB" />
+              <input required min="0" type="number" name="whatsappMessages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Mensajes WhatsApp/mes" />
+              <input required min="0" type="number" name="mediaStorageMb" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Media MB/mes" />
+              <input required min="0" type="number" name="mediaFiles" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Archivos media/mes" />
+              <input required min="0" type="number" name="conversations" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Conversaciones/mes" />
               <input required min="0" type="number" name="modules" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos" />
             </div>
+            <p className="text-xs text-slate-500">En limites operativos, 0 significa sin limite configurado.</p>
             <textarea name="description" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Descripcion" />
-            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts" />
+            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime" />
             <input name="features" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funciones separadas por coma" />
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activo</option>

@@ -60,13 +60,16 @@ refresh. `/inbox/channels` y `/inbox/templates` son exclusivas de ADMIN.
 Los dashboards consumen metricas con el mismo scope del inbox.
 
 El inbox usa SSE autenticado mediante `fetch`, muestra estado de conexion,
-mensajes pending/sent/failed, retry y adjuntos. Si SSE falla conserva refresh
-manual. Las metricas incluyen canal, primera respuesta, mensajes fallidos,
-inbound/outbound de hoy y datos por agente.
+mensajes pending/sent/delivered/read/failed, retry y adjuntos. La media local
+se obtiene con `fetch` autenticado y un object URL temporal; nunca se incrusta
+un `storageKey` en el DOM. Si SSE falla conserva refresh manual. Las metricas
+incluyen canal, primera respuesta, mensajes fallidos, inbound/outbound de hoy
+y datos por agente.
 
 ## Limites
 
 No hay routing por horarios, skills ni condiciones avanzadas. Round-robin es
-basico. No hay almacenamiento de binarios: media con URL publica es utilizable
-y media inbound queda pendiente. Los conectores placeholder no realizan
-llamadas externas.
+basico. La media local funciona para inbox/internal; para enviarla a WhatsApp
+real hace falta una URL publica o una futura subida del binario a Graph API.
+No hay antivirus ni inspeccion profunda por magic bytes. Los conectores
+placeholder no realizan llamadas externas.

@@ -9,7 +9,17 @@ import { refreshDistributorOnboarding } from '../utils/onboarding.js';
 const router = Router();
 const BILLING_CYCLES = ['monthly', 'yearly'];
 const PLAN_STATUSES = ['active', 'inactive', 'archived'];
-const LIMIT_FIELDS = ['users', 'contacts', 'messages', 'storageMb', 'modules'];
+const LIMIT_FIELDS = [
+  'users',
+  'contacts',
+  'messages',
+  'storageMb',
+  'whatsappMessages',
+  'mediaStorageMb',
+  'mediaFiles',
+  'conversations',
+  'modules'
+];
 
 function planScope(user) {
   if (user.role === 'SUPERADMIN') return {};

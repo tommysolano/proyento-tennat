@@ -6,11 +6,24 @@ import { RealtimeService } from '../realtime/RealtimeService.js';
 import { ConversationService } from '../conversations/ConversationService.js';
 import { WhatsAppWebhookService } from '../conversations/WhatsAppWebhookService.js';
 import { getChannelAdapter } from '../conversations/adapters/index.js';
+import { getStorageProvider } from '../storage/index.js';
+import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
+import { logger } from '../../utils/logger.js';
+import { sanitize } from '../../utils/sanitize.js';
 
 async function processMedia(job) {
   const message = await Message.findById(job.payload.messageId);
   if (!message) {
     throw Object.assign(new Error('Mensaje de media no encontrado'), { retryable: false });
+  }
+  if (message.media?.status === 'available' && message.media?.storageKey) {
+    logger.info('media.download_skipped', {
+      jobId: job._id,
+      messageId: message._id,
+      companyId: message.companyId,
+      reason: 'already_available'
+    });
+    return;
   }
   const conversation = await Conversation.findOne({
     _id: message.conversationId,
@@ -26,18 +39,102 @@ async function processMedia(job) {
   const providerMediaId =
     message.media?.providerMediaId || message.media?.externalMediaId;
   const adapter = getChannelAdapter('whatsapp_cloud', { channelConfig: config });
-  const metadata = await adapter.getMediaMetadata(providerMediaId);
-  message.media = {
-    ...(message.media?.toObject?.() || message.media || {}),
-    ...metadata,
-    status: message.media?.url || message.media?.storageKey ? 'available' : 'pending',
-    error: ''
-  };
-  await message.save();
+  logger.info('media.download_started', {
+    jobId: job._id,
+    messageId: message._id,
+    companyId: message.companyId
+  });
+  const downloaded = await adapter.downloadMedia(
+    providerMediaId,
+    message.media?.filename || message.media?.fileName
+  );
+  const storageMb = downloaded.size / (1024 * 1024);
+  await Promise.all([
+    checkUsageLimit({
+      companyId: message.companyId,
+      distributorId: message.distributorId,
+      metric: 'media_storage_mb',
+      quantity: storageMb
+    }),
+    checkUsageLimit({
+      companyId: message.companyId,
+      distributorId: message.distributorId,
+      metric: 'media_files',
+      quantity: 1
+    })
+  ]);
+  const storage = getStorageProvider();
+  let stored;
+  try {
+    stored = await storage.uploadBuffer({
+      buffer: downloaded.buffer,
+      filename: downloaded.filename,
+      mimeType: downloaded.mimeType,
+      scope: { companyId: message.companyId }
+    });
+    message.media = {
+      ...(message.media?.toObject?.() || message.media || {}),
+      filename: stored.filename,
+      mimeType: stored.mimeType,
+      size: stored.size,
+      providerMediaId: downloaded.providerMediaId,
+      storageKey: stored.storageKey,
+      status: 'available',
+      error: ''
+    };
+    await message.save();
+  } catch (error) {
+    if (stored?.storageKey) {
+      await storage.deleteObject({ storageKey: stored.storageKey }).catch(() => {});
+    }
+    logger.error('media.storage_failed', error, {
+      jobId: job._id,
+      messageId: message._id,
+      companyId: message.companyId,
+      provider: storage.name
+    });
+    throw error;
+  }
+  await Promise.all([
+    trackUsage({
+      companyId: message.companyId,
+      distributorId: message.distributorId,
+      metric: 'media_storage_mb',
+      quantity: storageMb,
+      metadata: { messageId: message._id }
+    }),
+    trackUsage({
+      companyId: message.companyId,
+      distributorId: message.distributorId,
+      metric: 'media_files',
+      quantity: 1,
+      metadata: { messageId: message._id }
+    }),
+    ConversationService.createActivityLog({
+      actorId: await ConversationService.actorForChannelConfig(config),
+      companyId: message.companyId,
+      distributorId: message.distributorId,
+      type: 'media_downloaded',
+      summary: 'Media inbound de WhatsApp almacenada',
+      metadata: {
+        messageId: message._id,
+        conversationId: conversation._id,
+        mimeType: stored.mimeType,
+        size: stored.size
+      }
+    })
+  ]);
   RealtimeService.publish('message.status_updated', {
     companyId: conversation.companyId,
     assignedTo: conversation.assignedTo,
     data: { conversationId: conversation._id, message: message.toJSON() }
+  });
+  logger.info('media.download_succeeded', {
+    jobId: job._id,
+    messageId: message._id,
+    companyId: message.companyId,
+    mimeType: stored.mimeType,
+    size: stored.size
   });
 }
 
@@ -72,7 +169,7 @@ export async function handleTerminalJobFailure(job, error) {
     if (!message || message.status === 'failed') return;
     message.status = 'failed';
     message.failedAt = new Date();
-    message.error = error.message;
+    message.error = sanitize(error.message);
     await message.save();
     if (message.sentBy) {
       await NotificationService.create({
@@ -80,7 +177,7 @@ export async function handleTerminalJobFailure(job, error) {
         distributorId: message.distributorId,
         userId: message.sentBy,
         type: 'message_failed',
-        title: 'Mensaje agotó sus reintentos',
+        title: 'Mensaje agoto sus reintentos',
         body: message.error,
         relatedType: 'conversation',
         relatedId: message.conversationId,
@@ -92,7 +189,20 @@ export async function handleTerminalJobFailure(job, error) {
     const message = await Message.findById(job.payload.messageId);
     if (!message) return;
     message.media.status = 'failed';
-    message.media.error = error.message;
+    message.media.error = sanitize(error.message);
     await message.save();
+    logger.error('media.download_failed', error, {
+      jobId: job._id,
+      messageId: message._id,
+      companyId: message.companyId
+    });
+    const conversation = await Conversation.findById(message.conversationId);
+    if (conversation) {
+      RealtimeService.publish('message.status_updated', {
+        companyId: conversation.companyId,
+        assignedTo: conversation.assignedTo,
+        data: { conversationId: conversation._id, message: message.toJSON() }
+      });
+    }
   }
 }

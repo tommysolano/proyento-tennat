@@ -1,5 +1,10 @@
 import { BaseAdapter } from './BaseAdapter.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import {
+  extensionForMime,
+  mediaMaxBytes,
+  validateMedia
+} from '../../storage/mediaValidation.js';
 
 function textFromMessage(message) {
   if (message.type === 'text') return message.text?.body || '';
@@ -35,6 +40,36 @@ function retryableProviderError(status, providerError = {}) {
     status >= 500 ||
     [1, 2, 4, 17, 32, 613, 130429, 131000, 131016].includes(code)
   );
+}
+
+async function readResponseWithLimit(response, maxBytes) {
+  if (!response.body?.getReader) {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxBytes) {
+      throw Object.assign(new Error('La descarga supera el limite configurado'), {
+        retryable: false,
+        code: 'MEDIA_TOO_LARGE'
+      });
+    }
+    return buffer;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw Object.assign(new Error('La descarga supera el limite configurado'), {
+        retryable: false,
+        code: 'MEDIA_TOO_LARGE'
+      });
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks, total);
 }
 
 function publicMediaBody(type, media) {
@@ -133,7 +168,8 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
             providerPayload: message,
             metadata: {
               phoneNumberId: value.metadata?.phone_number_id || '',
-              displayPhoneNumber: value.metadata?.display_phone_number || ''
+              displayPhoneNumber: value.metadata?.display_phone_number || '',
+              sandboxMode: Boolean(this.channelConfig?.settings?.sandboxMode)
             }
           });
         }
@@ -304,7 +340,64 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
       mimeType: result.mime_type || '',
       size: Number(result.file_size || 0),
       providerMediaId: result.id || providerMediaId,
-      providerUrlAvailable: Boolean(result.url)
+      providerUrlAvailable: Boolean(result.url),
+      downloadUrl: result.url || ''
+    };
+  }
+
+  async downloadMedia(providerMediaId, filename = '') {
+    const credentials = this.channelConfig?.getDecryptedCredentials?.() || {};
+    const accessToken = credentials.accessToken;
+    if (!accessToken) {
+      throw Object.assign(new Error('Falta accessToken para descargar media de WhatsApp'), {
+        retryable: false,
+        code: 'WHATSAPP_CREDENTIALS_MISSING'
+      });
+    }
+    const metadata = await this.getMediaMetadata(providerMediaId);
+    if (!metadata.downloadUrl) {
+      throw Object.assign(new Error('WhatsApp no devolvio URL de descarga de media'), {
+        retryable: true
+      });
+    }
+    if (metadata.size > mediaMaxBytes()) {
+      throw Object.assign(new Error('La media de WhatsApp supera el limite configurado'), {
+        retryable: false,
+        code: 'MEDIA_TOO_LARGE'
+      });
+    }
+    const response = await fetch(metadata.downloadUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(`No se pudo descargar media de WhatsApp: HTTP ${response.status}`),
+        { retryable: retryableProviderError(response.status) }
+      );
+    }
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > mediaMaxBytes()) {
+      throw Object.assign(new Error('La descarga supera el limite configurado'), {
+        retryable: false,
+        code: 'MEDIA_TOO_LARGE'
+      });
+    }
+    const buffer = await readResponseWithLimit(response, mediaMaxBytes());
+    const mimeType =
+      metadata.mimeType ||
+      String(response.headers.get('content-type') || '').split(';')[0].trim();
+    const resolvedFilename =
+      filename ||
+      `${providerMediaId}${extensionForMime(mimeType)}`;
+    const validation = validateMedia({
+      filename: resolvedFilename,
+      mimeType,
+      size: buffer.length
+    });
+    return {
+      buffer,
+      providerMediaId: metadata.providerMediaId,
+      ...validation
     };
   }
 

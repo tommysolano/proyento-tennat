@@ -55,6 +55,7 @@ const messageSchema = new mongoose.Schema(
     provider: { type: String, trim: true, default: 'internal' },
     providerPayload: { type: mongoose.Schema.Types.Mixed, default: {}, select: false },
     sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    sentAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },
     readAt: { type: Date, default: null },
     failedAt: { type: Date, default: null },
@@ -68,6 +69,19 @@ const messageSchema = new mongoose.Schema(
     toJSON: {
       transform: (document, value) => {
         delete value.providerPayload;
+        if (value.media) {
+          const hasStoredContent = Boolean(value.media.storageKey);
+          delete value.media.storageKey;
+          delete value.media.providerMediaId;
+          delete value.media.externalMediaId;
+          value.media.storageKeyConfigured = hasStoredContent;
+          value.media.providerMediaIdConfigured = Boolean(
+            document.media?.providerMediaId || document.media?.externalMediaId
+          );
+          value.media.contentUrl = hasStoredContent
+            ? `/api/messages/${value._id}/media/content`
+            : '';
+        }
         return value;
       }
     }

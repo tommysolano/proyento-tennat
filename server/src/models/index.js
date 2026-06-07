@@ -28,3 +28,4 @@ export { WebhookEvent } from './WebhookEvent.js';
 export { Job } from './Job.js';
 export { Notification } from './Notification.js';
 export { RoutingRule } from './RoutingRule.js';
+export { OperationalAlert } from './OperationalAlert.js';

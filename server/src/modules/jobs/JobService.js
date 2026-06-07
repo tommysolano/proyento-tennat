@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Job } from '../../models/Job.js';
 import { sanitize, sanitizeError } from '../../utils/sanitize.js';
+import { OperationalAlertService } from '../ops/OperationalAlertService.js';
 
 const DEFAULT_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -93,6 +94,19 @@ export class JobService {
         }
       }
     );
+    if (terminal) {
+      await OperationalAlertService.create({
+        companyId: job.companyId,
+        distributorId: job.distributorId,
+        severity: 'critical',
+        type: 'dead_jobs',
+        title: `Job ${job.type} en dead`,
+        message: error?.message || 'El job agoto sus reintentos',
+        relatedType: 'job',
+        relatedId: job._id,
+        metadata: { jobType: job.type, attempts: job.attempts }
+      }).catch(() => {});
+    }
     return { terminal };
   }
 }

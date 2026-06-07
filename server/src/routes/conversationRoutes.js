@@ -22,6 +22,11 @@ import {
 import { canonicalChannel } from '../modules/conversations/adapters/index.js';
 import { assignedResourceScope, validateCrmAssignee } from '../utils/crmScope.js';
 import { cleanString, isValidObjectId } from '../utils/validation.js';
+import { mediaUpload } from '../middleware/mediaUploadMiddleware.js';
+import { getStorageProvider } from '../modules/storage/index.js';
+import { validateMedia } from '../modules/storage/mediaValidation.js';
+import { checkUsageLimit, trackUsage } from '../utils/usage.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
@@ -347,6 +352,121 @@ router.post(
   } catch (error) {
     next(error);
   }
+  }
+);
+
+router.post(
+  '/:id/messages/media',
+  requireAnyPermission('media:upload', 'media:upload_team', 'media:upload_assigned'),
+  requireModule('media'),
+  mediaUpload.single('file'),
+  async (req, res, next) => {
+    let stored = null;
+    try {
+      const conversation = await accessibleConversation(req.user, req.params.id);
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversacion no encontrada' });
+      }
+      if (!req.file?.buffer) {
+        throw badRequest('file es requerido');
+      }
+      const validation = validateMedia({
+        filename: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size
+      });
+      const storageMb = validation.size / (1024 * 1024);
+      await Promise.all([
+        checkUsageLimit({
+          companyId: req.user.companyId,
+          distributorId: req.user.distributorId,
+          metric: 'media_storage_mb',
+          quantity: storageMb
+        }),
+        checkUsageLimit({
+          companyId: req.user.companyId,
+          distributorId: req.user.distributorId,
+          metric: 'media_files',
+          quantity: 1
+        })
+      ]);
+      const storage = getStorageProvider();
+      stored = await storage.uploadBuffer({
+        buffer: req.file.buffer,
+        filename: validation.filename,
+        mimeType: validation.mimeType,
+        scope: { companyId: req.user.companyId }
+      });
+      const type = validation.mimeType.startsWith('image/')
+        ? 'image'
+        : validation.mimeType.startsWith('audio/')
+          ? 'audio'
+          : validation.mimeType.startsWith('video/')
+            ? 'video'
+            : 'document';
+      const message = await ConversationService.createOutboundMessage({
+        user: req.user,
+        conversation,
+        text: cleanString(req.body.caption),
+        type,
+        media: {
+          filename: stored.filename,
+          mimeType: stored.mimeType,
+          size: stored.size,
+          storageKey: stored.storageKey,
+          status: 'available',
+          caption: cleanString(req.body.caption)
+        }
+      });
+      await Promise.all([
+        trackUsage({
+          companyId: req.user.companyId,
+          distributorId: req.user.distributorId,
+          metric: 'media_storage_mb',
+          quantity: storageMb,
+          metadata: { messageId: message._id }
+        }),
+        trackUsage({
+          companyId: req.user.companyId,
+          distributorId: req.user.distributorId,
+          metric: 'media_files',
+          quantity: 1,
+          metadata: { messageId: message._id }
+        }),
+        ConversationService.createActivityLog({
+          user: req.user,
+          companyId: req.user.companyId,
+          distributorId: req.user.distributorId,
+          type: 'media_upload_created',
+          summary: 'Media outbound almacenada',
+          metadata: {
+            messageId: message._id,
+            conversationId: conversation._id,
+            mimeType: stored.mimeType,
+            size: stored.size
+          }
+        })
+      ]);
+      logger.info('media.upload_succeeded', {
+        messageId: message._id,
+        conversationId: conversation._id,
+        companyId: req.user.companyId,
+        mimeType: stored.mimeType,
+        size: stored.size
+      });
+      res.status(201).json(await message.populate('sentBy', 'name email role'));
+    } catch (error) {
+      if (stored?.storageKey) {
+        await getStorageProvider()
+          .deleteObject({ storageKey: stored.storageKey })
+          .catch(() => {});
+      }
+      logger.error('media.upload_failed', error, {
+        conversationId: req.params.id,
+        companyId: req.user?.companyId
+      });
+      next(error);
+    }
   }
 );
 

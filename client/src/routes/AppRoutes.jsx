@@ -30,6 +30,7 @@ import { ChannelSettingsPage } from '../pages/inbox/ChannelSettingsPage.jsx';
 import { MessageTemplatesPage } from '../pages/inbox/MessageTemplatesPage.jsx';
 import { NotificationsPage } from '../pages/inbox/NotificationsPage.jsx';
 import { RoutingRulesPage } from '../pages/inbox/RoutingRulesPage.jsx';
+import { OpsPage } from '../pages/ops/OpsPage.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
       {
         element: <Layout />,
         children: [
+          {
+            element: <RoleBasedRoute allowedRoles={['SUPERADMIN', 'ADMIN']} />,
+            children: [{ path: '/ops', element: <OpsPage /> }]
+          },
           {
             element: <RoleBasedRoute allowedRoles={['SUPERADMIN']} />,
             children: [

@@ -9,6 +9,9 @@ import { NotificationService } from '../notifications/NotificationService.js';
 import { RealtimeService } from '../realtime/RealtimeService.js';
 import { ConversationService } from './ConversationService.js';
 import { getChannelAdapter } from './adapters/index.js';
+import { logger } from '../../utils/logger.js';
+import { OperationalAlertService } from '../ops/OperationalAlertService.js';
+import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 
 function hashPayload(payload) {
   return createHash('sha256').update(JSON.stringify(payload || {})).digest('hex');
@@ -59,6 +62,12 @@ async function findOrCreateInboundContact(config, normalized, actorId) {
   let contact = await Contact.findOne(filter);
   if (contact) return { contact, created: false };
 
+  await checkUsageLimit({
+    companyId: config.companyId,
+    distributorId: config.distributorId,
+    metric: 'contacts',
+    quantity: 1
+  });
   contact = await Contact.create({
     companyId: config.companyId,
     distributorId: config.distributorId || null,
@@ -72,6 +81,13 @@ async function findOrCreateInboundContact(config, normalized, actorId) {
     createdBy: actorId,
     updatedBy: actorId,
     metadata: { whatsappWaId: normalized.phone }
+  });
+  await trackUsage({
+    companyId: config.companyId,
+    distributorId: config.distributorId,
+    metric: 'contacts',
+    quantity: 1,
+    metadata: { contactId: contact._id, source: 'whatsapp_cloud' }
   });
   await recordWebhookActivity(
     config,
@@ -142,15 +158,31 @@ async function processStatus(config, normalized, actorId) {
     });
     if (message) {
       const accepted = ['sent', 'delivered', 'read', 'failed'];
-      if (accepted.includes(normalized.status)) message.status = normalized.status;
-      if (normalized.status === 'delivered') message.deliveredAt = normalized.timestamp;
-      if (normalized.status === 'read') message.readAt = normalized.timestamp;
-      if (normalized.status === 'failed') {
+      const progression = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 99 };
+      const statusAccepted = accepted.includes(normalized.status);
+      const statusAdvances =
+        statusAccepted &&
+        (normalized.status === 'failed'
+          ? !['failed', 'delivered', 'read'].includes(message.status)
+          : (progression[normalized.status] ?? 0) >
+            (progression[message.status] ?? 0));
+      if (statusAdvances) message.status = normalized.status;
+      if (normalized.status === 'sent' && !message.sentAt) {
+        message.sentAt = normalized.timestamp;
+      }
+      if (normalized.status === 'delivered' && !message.deliveredAt) {
+        message.deliveredAt = normalized.timestamp;
+      }
+      if (normalized.status === 'read' && !message.readAt) {
+        message.readAt = normalized.timestamp;
+      }
+      if (normalized.status === 'failed' && statusAdvances) {
         message.failedAt = normalized.timestamp;
-        message.error =
+        message.error = sanitize(
           normalized.providerPayload?.errors?.[0]?.title ||
-          normalized.providerPayload?.errors?.[0]?.message ||
-          'WhatsApp reporto un fallo';
+            normalized.providerPayload?.errors?.[0]?.message ||
+            'WhatsApp reporto un fallo'
+        );
       }
       await message.save();
       const conversation = await import('../../models/Conversation.js').then(({ Conversation }) =>
@@ -163,7 +195,7 @@ async function processStatus(config, normalized, actorId) {
           data: { conversationId: conversation._id, message: message.toJSON() }
         });
       }
-      if (normalized.status === 'failed' && message.sentBy) {
+      if (normalized.status === 'failed' && statusAdvances && message.sentBy) {
         await NotificationService.create({
           companyId: message.companyId,
           distributorId: message.distributorId,
@@ -175,7 +207,51 @@ async function processStatus(config, normalized, actorId) {
           relatedId: message.conversationId,
           metadata: { messageId: message._id }
         });
+        await OperationalAlertService.create({
+          companyId: message.companyId,
+          distributorId: message.distributorId,
+          severity: 'warning',
+          type: 'message_failures',
+          title: 'WhatsApp reporto mensaje fallido',
+          message: message.error,
+          relatedType: 'message',
+          relatedId: message._id,
+          metadata: { status: normalized.status }
+        });
       }
+      if (statusAccepted) {
+        await recordWebhookActivity(
+          config,
+          actorId,
+          'message_status_updated',
+          statusAdvances
+            ? `Estado WhatsApp actualizado a ${normalized.status}`
+            : `Estado WhatsApp ${normalized.status} recibido sin regresion`,
+          {
+            messageId: message._id,
+            conversationId: message.conversationId,
+            status: normalized.status,
+            applied: statusAdvances
+          }
+        );
+      } else {
+        event.error = `Status WhatsApp no soportado: ${sanitize(normalized.status)}`;
+      }
+      logger.info('whatsapp.message_status_updated', {
+        channelConfigId: config._id,
+        companyId: config.companyId,
+        messageId: message._id,
+        status: normalized.status,
+        applied: statusAdvances
+      });
+    } else {
+      event.error = 'Status recibido para mensaje desconocido';
+      logger.warn('whatsapp.status_message_unknown', {
+        channelConfigId: config._id,
+        companyId: config.companyId,
+        externalMessageId: normalized.externalMessageId,
+        status: normalized.status
+      });
     }
     event.status = 'processed';
     event.processedAt = new Date();

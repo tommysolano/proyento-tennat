@@ -10,6 +10,18 @@ En `production` la variable es obligatoria y debe tener al menos 32
 caracteres. Perderla impide descifrar credenciales existentes. Una rotacion
 requiere descifrar con la clave anterior y volver a guardar con la nueva.
 
+`POST /api/channel-configs/:id/rotate-secret` reemplaza campos seleccionados,
+los cifra y registra actor/fecha sin devolver valores. Para rotar la master
+key use primero backup y luego:
+
+```bash
+npm run rotate-credentials-key --workspace server
+npm run rotate-credentials-key --workspace server -- --execute
+```
+
+El primer comando es dry-run. Requiere
+`OLD_CREDENTIALS_ENCRYPTION_KEY` y `NEW_CREDENTIALS_ENCRYPTION_KEY` distintas.
+
 ## Firma y raw body
 
 Meta envia `x-hub-signature-256`. La API calcula HMAC SHA-256 sobre
@@ -32,3 +44,8 @@ ActivityLog, respuestas de configuracion y vistas ops.
 
 Pendientes: secret manager, rotacion automatizada, KMS/HSM, antivirus para
 media y politicas formales de retencion.
+
+Los archivos locales viven fuera de Vite/Express static. El endpoint de
+contenido exige JWT, permisos, modulo `media`, tenant y scope de conversacion.
+Las respuestas de mensajes reemplazan `storageKey` e IDs de Meta por
+indicadores booleanos y una URL autenticada ligada al mensaje.

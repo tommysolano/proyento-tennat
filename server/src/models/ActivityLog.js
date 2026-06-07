@@ -111,7 +111,14 @@ const activityLogSchema = new mongoose.Schema(
         'contact_created_from_inbound',
         'routing_rule_created',
         'routing_rule_updated',
-        'routing_rule_toggled'
+        'routing_rule_toggled',
+        'media_stored',
+        'media_downloaded',
+        'media_upload_created',
+        'message_status_updated',
+        'job_replayed',
+        'operational_alert_acknowledged',
+        'channel_secret_rotated'
       ],
       required: true
     },

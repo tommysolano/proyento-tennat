@@ -9,21 +9,22 @@ import { Job } from '../models/Job.js';
 import { JobService } from '../modules/jobs/JobService.js';
 import { ConversationService } from '../modules/conversations/ConversationService.js';
 import { conversationScope } from '../modules/conversations/conversationScope.js';
+import { getStorageProvider } from '../modules/storage/index.js';
 
 const router = Router();
 router.use(authMiddleware);
 router.use(roleMiddleware('ADMIN', 'SUPERVISOR', 'CALLCENTER'));
-router.use(
+router.use(requireModule('conversations'));
+router.use(requireModule('inbox'));
+
+router.post(
+  '/:id/retry',
   requireAnyPermission(
     'conversations:send',
     'conversations:send_team',
     'conversations:send_assigned'
-  )
-);
-router.use(requireModule('conversations'));
-router.use(requireModule('inbox'));
-
-router.post('/:id/retry', async (req, res, next) => {
+  ),
+  async (req, res, next) => {
   try {
     const original = await Message.findOne({
       _id: req.params.id,
@@ -77,9 +78,14 @@ router.post('/:id/retry', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+  }
+);
 
-router.get('/:id/media', async (req, res, next) => {
+router.get(
+  '/:id/media',
+  requireAnyPermission('media:read', 'media:read_team', 'media:read_assigned'),
+  requireModule('media'),
+  async (req, res, next) => {
   try {
     const message = await Message.findOne({
       _id: req.params.id,
@@ -114,6 +120,9 @@ router.get('/:id/media', async (req, res, next) => {
       status: media.status || (publicUrl ? 'available' : 'none'),
       media: {
         url: publicUrl,
+        contentUrl: media.storageKey
+          ? `/api/messages/${message._id}/media/content`
+          : '',
         mimeType: media.mimeType || '',
         filename: media.filename || media.fileName || '',
         size: media.size || 0,
@@ -125,9 +134,65 @@ router.get('/:id/media', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+  }
+);
 
-router.post('/:id/media/retry-download', async (req, res, next) => {
+router.get(
+  '/:id/media/content',
+  requireAnyPermission('media:read', 'media:read_team', 'media:read_assigned'),
+  requireModule('media'),
+  async (req, res, next) => {
+    try {
+      const message = await Message.findOne({
+        _id: req.params.id,
+        companyId: req.user.companyId
+      });
+      if (!message) return res.status(404).json({ message: 'Mensaje no encontrado' });
+      const conversation = await Conversation.findOne({
+        _id: message.conversationId,
+        ...(await conversationScope(req.user)),
+        archivedAt: null
+      });
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversacion no encontrada' });
+      }
+      if (message.media?.status === 'pending') {
+        return res.status(202).json({ status: 'pending', message: 'Media pendiente' });
+      }
+      if (message.media?.status === 'failed') {
+        return res.status(409).json({
+          status: 'failed',
+          message: message.media.error || 'La media no esta disponible'
+        });
+      }
+      if (!message.media?.storageKey) {
+        return res.status(404).json({ message: 'La media no tiene contenido almacenado' });
+      }
+      const storage = getStorageProvider();
+      const { stream, metadata } = await storage.createReadStream({
+        storageKey: message.media.storageKey
+      });
+      res.setHeader('Content-Type', metadata.mimeType);
+      res.setHeader('Content-Length', metadata.size);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${metadata.filename.replace(/"/g, '')}"`
+      );
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      stream.on('error', next);
+      stream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  '/:id/media/retry-download',
+  requireAnyPermission('media:read', 'media:read_team', 'media:read_assigned'),
+  requireModule('media'),
+  requireModule('whatsapp'),
+  async (req, res, next) => {
   try {
     const message = await Message.findOne({
       _id: req.params.id,
@@ -158,6 +223,7 @@ router.post('/:id/media/retry-download', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+  }
+);
 
 export default router;

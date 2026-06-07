@@ -34,6 +34,17 @@ export async function apiRequest(path, options = {}) {
   return data;
 }
 
+async function authenticatedFetch(path, options = {}) {
+  const token = localStorage.getItem('tenantdesk_token');
+  return fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers
+    }
+  });
+}
+
 export function connectRealtime(onEvent, onStatus = () => {}) {
   const controller = new AbortController();
   const token = localStorage.getItem('tenantdesk_token');
@@ -251,6 +262,28 @@ export const retryMessageMedia = (id) =>
   apiRequest(`/messages/${id}/media/retry-download`, { method: 'POST', body: '{}' });
 export const getInboxMetrics = () => apiRequest('/conversations/metrics');
 
+export async function getMediaContentObjectUrl(messageId) {
+  const response = await authenticatedFetch(`/messages/${messageId}/media/content`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || 'No se pudo cargar la media');
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+export async function uploadConversationMedia(conversationId, file, caption = '') {
+  const form = new FormData();
+  form.append('file', file);
+  if (caption) form.append('caption', caption);
+  const response = await authenticatedFetch(
+    `/conversations/${conversationId}/messages/media`,
+    { method: 'POST', body: form }
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'No se pudo subir la media');
+  return data;
+}
+
 export const getChannelConfigs = () => apiRequest('/channel-configs');
 export const getChannelConfig = (id) => apiRequest(`/channel-configs/${id}`);
 export const createChannelConfig = (payload) =>
@@ -266,6 +299,13 @@ export const testChannelConfig = (id, live = false) =>
   apiRequest(`/channel-configs/${id}/test`, {
     method: 'PATCH',
     body: JSON.stringify({ live })
+  });
+export const getChannelDiagnostics = (id) =>
+  apiRequest(`/channel-configs/${id}/diagnostics`);
+export const rotateChannelSecrets = (id, payload) =>
+  apiRequest(`/channel-configs/${id}/rotate-secret`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
   });
 
 export const getNotifications = (filters = {}) =>
@@ -285,6 +325,16 @@ export const updateRoutingRule = (id, payload) =>
   });
 export const toggleRoutingRule = (id) =>
   apiRequest(`/routing-rules/${id}/toggle`, { method: 'PATCH', body: '{}' });
+
+export const getOpsJobs = (filters = {}) =>
+  apiRequest(`/ops/jobs${queryString(filters)}`);
+export const replayOpsJob = (id) =>
+  apiRequest(`/ops/jobs/${id}/replay`, { method: 'POST', body: '{}' });
+export const getOpsAlerts = (filters = {}) =>
+  apiRequest(`/ops/alerts${queryString(filters)}`);
+export const acknowledgeOpsAlert = (id) =>
+  apiRequest(`/ops/alerts/${id}/acknowledge`, { method: 'PATCH', body: '{}' });
+export const getHealth = () => apiRequest('/health');
 
 export const getMessageTemplates = (filters = {}) =>
   apiRequest(`/message-templates${queryString(filters)}`);

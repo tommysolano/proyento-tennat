@@ -25,7 +25,18 @@ const SUBSCRIPTION_STATUSES = ['trial', 'active', 'past_due', 'cancelled', 'susp
 const INVOICE_STATUSES = ['draft', 'open', 'paid', 'overdue', 'void', 'uncollectible'];
 const PAYMENT_STATUSES = ['pending', 'succeeded', 'failed', 'refunded'];
 const ACTIVE_SUBSCRIPTION_STATUSES = ['trial', 'active', 'past_due', 'suspended'];
-const LIMIT_FIELDS = ['companies', 'users', 'contacts', 'modules', 'storageMb', 'messages'];
+const LIMIT_FIELDS = [
+  'companies',
+  'users',
+  'contacts',
+  'modules',
+  'storageMb',
+  'messages',
+  'whatsappMessages',
+  'mediaStorageMb',
+  'mediaFiles',
+  'conversations'
+];
 
 function numberValue(value, field, { integer = false, min = 0 } = {}) {
   const parsed = Number(value);
