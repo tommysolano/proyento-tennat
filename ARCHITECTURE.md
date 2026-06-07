@@ -201,3 +201,21 @@ tenant, aplica idempotencia, cooldown, run-once y profundidad, crea
 delays guardan un cursor y usan `Job.runAt`. El payload durable esta
 sanitizado, oculto por defecto y excluido del JSON. Las acciones externas
 estan registradas como planned, no implementadas.
+
+## Marketing publico Fase 9
+
+`Form`, `LandingPage` y `Funnel` son agregados de empresa. `FormSubmission`,
+`FunnelStep`, `PageView` y `ConversionEvent` conservan tenant, origen y
+relaciones CRM. Los slugs de formularios, landings y funnels son globales; el
+slug de step es unico dentro del funnel.
+
+Las rutas publicas resuelven el tenant exclusivamente desde el slug
+persistido, validan empresa, modulo y estado publicado. No aceptan
+`companyId` ni `distributorId`. `marketingSecurity.js` limita keys, HTML,
+URLs, payloads, user agent e IP hasheada. Los formularios agregan rate limit,
+honeypot, token firmado y tiempo minimo.
+
+`FormsService` valida respuestas y mappings, crea o actualiza contactos,
+aplica tags y puede crear oportunidades. `FunnelService` valida referencias
+del mismo tenant, renderiza payloads publicos, registra vistas y conversiones.
+Ambos reutilizan ActivityLog, Notification, UsageRecord y WorkflowEvent.

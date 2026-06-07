@@ -3,13 +3,22 @@ import rateLimit from 'express-rate-limit';
 import { BookingLink } from '../models/BookingLink.js';
 import { Company } from '../models/Company.js';
 import { Contact } from '../models/Contact.js';
+import { Funnel } from '../models/Funnel.js';
+import { FunnelStep } from '../models/FunnelStep.js';
+import { LandingPage } from '../models/LandingPage.js';
 import { User } from '../models/User.js';
 import { CalendarService } from '../modules/calendar/CalendarService.js';
+import { FunnelService } from '../modules/funnels/FunnelService.js';
+import {
+  safeTrackingContext,
+  slugifyPublic
+} from '../modules/marketing/marketingSecurity.js';
 import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { cleanString, EMAIL_PATTERN } from '../utils/validation.js';
 import { checkPlatformLimit } from '../utils/platformLimits.js';
 import { checkUsageLimit } from '../utils/usage.js';
 import { recordActivity } from '../utils/activity.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 const publicLimiter = rateLimit({
@@ -72,6 +81,53 @@ function safeLink(context) {
       locationType: calendar.settings.locationType
     }
   };
+}
+
+async function bookingConversionTarget(link, source = {}) {
+  if (source.funnelSlug && source.stepSlug) {
+    const funnel = await Funnel.findOne({
+      companyId: link.companyId,
+      slug: slugifyPublic(source.funnelSlug),
+      status: 'published'
+    }).select('_id companyId distributorId');
+    const step = funnel
+      ? await FunnelStep.findOne({
+          companyId: link.companyId,
+          funnelId: funnel._id,
+          slug: slugifyPublic(source.stepSlug),
+          bookingLinkId: link._id,
+          status: 'published'
+        }).select('_id landingPageId')
+      : null;
+    if (funnel && step) {
+      return {
+        companyId: link.companyId,
+        distributorId: link.distributorId,
+        funnelId: funnel._id,
+        funnelStepId: step._id,
+        landingPageId: step.landingPageId || null
+      };
+    }
+  }
+  if (source.landingSlug) {
+    const page = await LandingPage.findOne({
+      companyId: link.companyId,
+      slug: slugifyPublic(source.landingSlug),
+      status: 'published',
+      $or: [
+        { 'settings.associatedBookingLinkId': link._id },
+        { 'content.sections.content.bookingLinkId': link._id }
+      ]
+    }).select('_id');
+    if (page) {
+      return {
+        companyId: link.companyId,
+        distributorId: link.distributorId,
+        landingPageId: page._id
+      };
+    }
+  }
+  return null;
 }
 
 router.get('/:slug', async (req, res, next) => {
@@ -222,6 +278,25 @@ router.post('/:slug/appointments', createLimiter, async (req, res, next) => {
       source: 'public_booking',
       enforceAvailability: true
     });
+    const conversionTarget = await bookingConversionTarget(link, req.body.source || {});
+    if (conversionTarget) {
+      await FunnelService.recordConversion({
+        target: conversionTarget,
+        type: 'booking_created',
+        tracking: safeTrackingContext(req),
+        metadata: {
+          appointmentId: appointment._id,
+          bookingLinkId: link._id,
+          contactId: contact._id
+        }
+      }).catch((error) => {
+        logger.warn('public_booking.conversion_failed', {
+          appointmentId: appointment._id,
+          bookingLinkId: link._id,
+          message: error.message
+        });
+      });
+    }
     res.status(201).json({
       appointment: {
         id: appointment._id,

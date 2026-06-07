@@ -41,7 +41,13 @@ const LIMIT_FIELDS = [
   'bookingLinks',
   'workflows',
   'workflowRunsPerMonth',
-  'workflowActionsPerMonth'
+  'workflowActionsPerMonth',
+  'forms',
+  'formSubmissionsPerMonth',
+  'landingPages',
+  'funnels',
+  'funnelSteps',
+  'pageViewsPerMonth'
 ];
 
 function numberValue(value, field, { integer = false, min = 0 } = {}) {

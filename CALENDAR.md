@@ -84,3 +84,11 @@ en dos reglas. Cada consulta de disponibilidad acepta como maximo 93 dias.
 Creacion, cancelacion, finalizacion, no-show, reprogramacion y reminder enviado
 pueden producir WorkflowEvent. `appointment.create_internal_reminder` crea un
 job interno y valida cita/empresa. No crea eventos en proveedores externos.
+
+## Conversiones desde marketing
+
+Los embeds de booking reutilizan `/api/public/bookings/:slug`; no duplican la
+logica de disponibilidad ni creacion de citas. Landing pages y funnel steps
+envian slugs de origen. El backend verifica que el `BookingLink` realmente
+este asociado al recurso publicado antes de registrar `booking_created` en
+`ConversionEvent`.

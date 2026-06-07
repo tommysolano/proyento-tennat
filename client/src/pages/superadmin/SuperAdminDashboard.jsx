@@ -38,7 +38,11 @@ import { Table } from '../../components/Table.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const inputClass = 'w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm';
-const PLATFORM_MODULES = ['core', 'crm', 'contacts', 'calendar', 'bookings', 'automations', 'workflows', 'billing', 'reporting'];
+const PLATFORM_MODULES = [
+  'core', 'crm', 'contacts', 'calendar', 'bookings', 'automations',
+  'workflows', 'forms', 'surveys', 'landing_pages', 'funnels',
+  'billing', 'reporting'
+];
 
 function money(value, currency = 'USD') {
   return new Intl.NumberFormat('en-US', {
@@ -230,7 +234,13 @@ export function SuperAdminDashboard({ section = 'all' }) {
             bookingLinks: Number(data.get('bookingLinks')),
             workflows: Number(data.get('workflows')),
             workflowRunsPerMonth: Number(data.get('workflowRunsPerMonth')),
-            workflowActionsPerMonth: Number(data.get('workflowActionsPerMonth'))
+            workflowActionsPerMonth: Number(data.get('workflowActionsPerMonth')),
+            forms: Number(data.get('forms')),
+            formSubmissionsPerMonth: Number(data.get('formSubmissionsPerMonth')),
+            landingPages: Number(data.get('landingPages')),
+            funnels: Number(data.get('funnels')),
+            funnelSteps: Number(data.get('funnelSteps')),
+            pageViewsPerMonth: Number(data.get('pageViewsPerMonth'))
           },
           includedModules: PLATFORM_MODULES,
           status: 'active'
@@ -539,6 +549,12 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <input required min="0" type="number" name="workflows" className={inputClass} placeholder="Workflows" />
                 <input required min="0" type="number" name="workflowRunsPerMonth" className={inputClass} placeholder="Runs workflow/mes" />
                 <input required min="0" type="number" name="workflowActionsPerMonth" className={inputClass} placeholder="Acciones workflow/mes" />
+                <input required min="0" type="number" name="forms" className={inputClass} placeholder="Formularios" />
+                <input required min="0" type="number" name="formSubmissionsPerMonth" className={inputClass} placeholder="Submissions/mes" />
+                <input required min="0" type="number" name="landingPages" className={inputClass} placeholder="Landing pages" />
+                <input required min="0" type="number" name="funnels" className={inputClass} placeholder="Funnels" />
+                <input required min="0" type="number" name="funnelSteps" className={inputClass} placeholder="Steps de funnel" />
+                <input required min="0" type="number" name="pageViewsPerMonth" className={inputClass} placeholder="Page views/mes" />
               </div>
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
             </form>

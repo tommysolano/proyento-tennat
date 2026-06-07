@@ -14,7 +14,14 @@ const METRIC_LIMITS = {
   booking_links: ['bookingLinks'],
   workflows: ['workflows'],
   workflow_runs: ['workflowRunsPerMonth'],
-  workflow_actions: ['workflowActionsPerMonth']
+  workflow_actions: ['workflowActionsPerMonth'],
+  forms: ['forms'],
+  form_submissions: ['formSubmissionsPerMonth'],
+  landing_pages: ['landingPages'],
+  funnels: ['funnels'],
+  funnel_steps: ['funnelSteps'],
+  page_views: ['pageViewsPerMonth'],
+  conversions: []
 };
 
 export function usagePeriod(date = new Date()) {
@@ -176,7 +183,14 @@ export async function usageSnapshot(companyId) {
     'booking_links',
     'workflows',
     'workflow_runs',
-    'workflow_actions'
+    'workflow_actions',
+    'forms',
+    'form_submissions',
+    'landing_pages',
+    'funnels',
+    'funnel_steps',
+    'page_views',
+    'conversions'
   ];
   const subscription = await companySubscription(companyId);
   const rows = await Promise.all(

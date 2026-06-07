@@ -75,6 +75,14 @@ La matriz vive en
 - `workflows:read`
 - `workflows:test`
 - `workflow_runs:read`
+- `forms:manage`
+- `forms:read`
+- `forms:submissions`
+- `forms:analytics`
+- `landing_pages:manage`
+- `landing_pages:analytics`
+- `funnels:manage`
+- `funnels:analytics`
 
 ## SUPERVISOR
 
@@ -105,6 +113,9 @@ La matriz vive en
 - `availability:read_team`
 - `workflows:read_team`
 - `workflow_runs:read_team`
+- `forms:read_team`
+- `forms:submissions_read`
+- `funnels:read_team`
 
 ## CALLCENTER
 
@@ -173,3 +184,9 @@ Las APIs de workflows permiten gestion solo a ADMIN. SUPERVISOR tiene lectura
 de definiciones y runs de su empresa; CALLCENTER y DISTRIBUTOR no entran.
 SUPERADMIN dispone de `workflows:read_all`, `workflows:manage_all` y
 `workflow_runs:read_all`; una escritura global exige empresa valida.
+
+Las APIs de marketing permiten gestion a ADMIN. SUPERVISOR solo lista forms,
+submissions y funnels de su empresa; no publica ni modifica. CALLCENTER y
+DISTRIBUTOR no tienen acceso operativo. SUPERADMIN posee `forms:read_all`,
+`landing_pages:read_all` y `funnels:read_all`; la escritura sigue requiriendo
+una sesion ADMIN de empresa.

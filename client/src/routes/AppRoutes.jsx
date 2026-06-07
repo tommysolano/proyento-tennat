@@ -39,6 +39,21 @@ import {
   WorkflowRunsPage,
   WorkflowsPage
 } from '../pages/workflows/WorkflowsPage.jsx';
+import {
+  FormBuilderPage,
+  FormsPage,
+  PublicFormPage
+} from '../pages/marketing/FormsPage.jsx';
+import {
+  LandingPageBuilderPage,
+  LandingPagesPage,
+  PublicLandingPage
+} from '../pages/marketing/LandingPagesPage.jsx';
+import {
+  FunnelBuilderPage,
+  FunnelsPage,
+  PublicFunnelPage
+} from '../pages/marketing/FunnelsPage.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -52,6 +67,22 @@ export const router = createBrowserRouter([
   {
     path: '/book/:slug',
     element: <PublicBookingPage />
+  },
+  {
+    path: '/forms/:slug',
+    element: <PublicFormPage />
+  },
+  {
+    path: '/p/:slug',
+    element: <PublicLandingPage />
+  },
+  {
+    path: '/f/:funnelSlug',
+    element: <PublicFunnelPage />
+  },
+  {
+    path: '/f/:funnelSlug/:stepSlug',
+    element: <PublicFunnelPage />
   },
   {
     element: <ProtectedRoute />,
@@ -94,7 +125,15 @@ export const router = createBrowserRouter([
             children: [
               { path: '/admin/dashboard', element: <AdminDashboard /> },
               { path: '/workflows/new', element: <WorkflowBuilderPage /> },
-              { path: '/workflows/:id', element: <WorkflowBuilderPage /> }
+              { path: '/workflows/:id', element: <WorkflowBuilderPage /> },
+              { path: '/marketing', element: <FormsPage /> },
+              { path: '/marketing/analytics', element: <FormsPage mode="analytics" /> },
+              { path: '/marketing/forms/new', element: <FormBuilderPage /> },
+              { path: '/marketing/forms/:id', element: <FormBuilderPage /> },
+              { path: '/marketing/landing-pages', element: <LandingPagesPage /> },
+              { path: '/marketing/landing-pages/new', element: <LandingPageBuilderPage /> },
+              { path: '/marketing/landing-pages/:id', element: <LandingPageBuilderPage /> },
+              { path: '/marketing/funnels/:id', element: <FunnelBuilderPage /> }
             ]
           },
           {
@@ -125,7 +164,10 @@ export const router = createBrowserRouter([
             element: <RoleBasedRoute allowedRoles={['ADMIN', 'SUPERVISOR']} />,
             children: [
               { path: '/workflows', element: <WorkflowsPage /> },
-              { path: '/workflow-runs', element: <WorkflowRunsPage /> }
+              { path: '/workflow-runs', element: <WorkflowRunsPage /> },
+              { path: '/marketing/forms', element: <FormsPage /> },
+              { path: '/marketing/submissions', element: <FormsPage mode="submissions" /> },
+              { path: '/marketing/funnels', element: <FunnelsPage /> }
             ]
           },
           {

@@ -15,7 +15,10 @@ export const ROLE_PERMISSIONS = {
     'alerts:ack_all',
     'workflows:read_all',
     'workflows:manage_all',
-    'workflow_runs:read_all'
+    'workflow_runs:read_all',
+    'forms:read_all',
+    'landing_pages:read_all',
+    'funnels:read_all'
   ],
   DISTRIBUTOR: [
     'companies:manage',
@@ -74,7 +77,15 @@ export const ROLE_PERMISSIONS = {
     'workflows:read',
     'workflows:manage',
     'workflows:test',
-    'workflow_runs:read'
+    'workflow_runs:read',
+    'forms:manage',
+    'forms:read',
+    'forms:submissions',
+    'forms:analytics',
+    'landing_pages:manage',
+    'landing_pages:analytics',
+    'funnels:manage',
+    'funnels:analytics'
   ],
   SUPERVISOR: [
     'crm:read_team',
@@ -103,7 +114,10 @@ export const ROLE_PERMISSIONS = {
     'appointments:update_team',
     'availability:read_team',
     'workflows:read_team',
-    'workflow_runs:read_team'
+    'workflow_runs:read_team',
+    'forms:read_team',
+    'forms:submissions_read',
+    'funnels:read_team'
   ],
   CALLCENTER: [
     'contacts:read_assigned',

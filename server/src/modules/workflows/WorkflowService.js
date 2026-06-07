@@ -12,6 +12,12 @@ import { User } from '../../models/User.js';
 import { Workflow } from '../../models/Workflow.js';
 import { WorkflowEvent } from '../../models/WorkflowEvent.js';
 import { WorkflowRun } from '../../models/WorkflowRun.js';
+import { Form } from '../../models/Form.js';
+import { FormSubmission } from '../../models/FormSubmission.js';
+import { LandingPage } from '../../models/LandingPage.js';
+import { Funnel } from '../../models/Funnel.js';
+import { FunnelStep } from '../../models/FunnelStep.js';
+import { ConversionEvent } from '../../models/ConversionEvent.js';
 import { sanitizeError } from '../../utils/sanitize.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 import { JobService } from '../jobs/JobService.js';
@@ -30,7 +36,13 @@ const ENTITY_MODELS = {
   message: Message,
   opportunity: Opportunity,
   payment: Payment,
-  task: Task
+  task: Task,
+  form: Form,
+  form_submission: FormSubmission,
+  landing_page: LandingPage,
+  funnel: Funnel,
+  funnel_step: FunnelStep,
+  conversion_event: ConversionEvent
 };
 
 function startOfUtcDay(date = new Date()) {

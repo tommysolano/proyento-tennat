@@ -54,6 +54,12 @@ const planSchema = new mongoose.Schema(
       workflows: { type: Number, default: 0, min: 0 },
       workflowRunsPerMonth: { type: Number, default: 0, min: 0 },
       workflowActionsPerMonth: { type: Number, default: 0, min: 0 },
+      forms: { type: Number, default: 0, min: 0 },
+      formSubmissionsPerMonth: { type: Number, default: 0, min: 0 },
+      landingPages: { type: Number, default: 0, min: 0 },
+      funnels: { type: Number, default: 0, min: 0 },
+      funnelSteps: { type: Number, default: 0, min: 0 },
+      pageViewsPerMonth: { type: Number, default: 0, min: 0 },
       modules: { type: Number, default: 3, min: 0 }
     },
     includedModules: { type: [String], default: ['core', 'crm', 'contacts'] },

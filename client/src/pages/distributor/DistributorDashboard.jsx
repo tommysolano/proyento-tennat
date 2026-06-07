@@ -201,6 +201,12 @@ export function DistributorDashboard() {
             workflows: Number(data.get('workflows')),
             workflowRunsPerMonth: Number(data.get('workflowRunsPerMonth')),
             workflowActionsPerMonth: Number(data.get('workflowActionsPerMonth')),
+            forms: Number(data.get('forms')),
+            formSubmissionsPerMonth: Number(data.get('formSubmissionsPerMonth')),
+            landingPages: Number(data.get('landingPages')),
+            funnels: Number(data.get('funnels')),
+            funnelSteps: Number(data.get('funnelSteps')),
+            pageViewsPerMonth: Number(data.get('pageViewsPerMonth')),
             modules: Number(data.get('modules'))
           },
           code: data.get('code'),
@@ -411,11 +417,17 @@ export function DistributorDashboard() {
               <input required min="0" type="number" name="workflows" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Workflows" />
               <input required min="0" type="number" name="workflowRunsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Runs workflow/mes" />
               <input required min="0" type="number" name="workflowActionsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Acciones workflow/mes" />
+              <input required min="0" type="number" name="forms" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Formularios" />
+              <input required min="0" type="number" name="formSubmissionsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Submissions/mes" />
+              <input required min="0" type="number" name="landingPages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Landing pages" />
+              <input required min="0" type="number" name="funnels" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funnels" />
+              <input required min="0" type="number" name="funnelSteps" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Steps de funnel" />
+              <input required min="0" type="number" name="pageViewsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Page views/mes" />
               <input required min="0" type="number" name="modules" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos" />
             </div>
             <p className="text-xs text-slate-500">En limites operativos, 0 significa sin limite configurado.</p>
             <textarea name="description" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Descripcion" />
-            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime,calendar,bookings,automations,workflows" />
+            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime,calendar,bookings,automations,workflows,forms,surveys,landing_pages,funnels" />
             <input name="features" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funciones separadas por coma" />
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activo</option>

@@ -1,6 +1,6 @@
 import { CalendarDays, CheckCircle2, Clock3, MapPin } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   createPublicAppointment,
   getPublicBookingAvailability,
@@ -20,6 +20,7 @@ function dateKey(value, timeZone) {
 
 export function PublicBookingPage() {
   const { slug } = useParams();
+  const [searchParams] = useSearchParams();
   const [link, setLink] = useState(null);
   const [slots, setSlots] = useState([]);
   const [selected, setSelected] = useState('');
@@ -81,7 +82,14 @@ export function PublicBookingPage() {
         email: data.get('email'),
         phone: data.get('phone'),
         notes: data.get('notes'),
-        startAt: selected
+        startAt: selected,
+        sessionId: sessionStorage.getItem('tenantdesk_session_id') || '',
+        visitorId: localStorage.getItem('tenantdesk_visitor_id') || '',
+        source: {
+          landingSlug: searchParams.get('landingSlug') || '',
+          funnelSlug: searchParams.get('funnelSlug') || '',
+          stepSlug: searchParams.get('stepSlug') || ''
+        }
       });
       setResult(response);
       if (response.redirectUrl) {

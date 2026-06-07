@@ -621,3 +621,83 @@ export const testWorkflow = (id, payload) =>
 export const getWorkflowRuns = (filters = {}) =>
   apiRequest(`/workflow-runs${queryString(filters)}`);
 export const getWorkflowRun = (id) => apiRequest(`/workflow-runs/${id}`);
+
+export const getForms = (filters = {}) => apiRequest(`/forms${queryString(filters)}`);
+export const getForm = (id) => apiRequest(`/forms/${id}`);
+export const createFormDefinition = (payload) =>
+  apiRequest('/forms', { method: 'POST', body: JSON.stringify(payload) });
+export const updateFormDefinition = (id, payload) =>
+  apiRequest(`/forms/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishForm = (id) =>
+  apiRequest(`/forms/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const pauseForm = (id) =>
+  apiRequest(`/forms/${id}/pause`, { method: 'PATCH', body: '{}' });
+export const archiveFormDefinition = (id) =>
+  apiRequest(`/forms/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getFormSubmissions = (id, filters = {}) =>
+  apiRequest(`/forms/${id}/submissions${queryString(filters)}`);
+export const getFormAnalytics = (id) => apiRequest(`/forms/${id}/analytics`);
+export const getPublicForm = (slug) =>
+  apiRequest(`/public/forms/${encodeURIComponent(slug)}`);
+export const submitPublicForm = (slug, payload) =>
+  apiRequest(`/public/forms/${encodeURIComponent(slug)}/submit`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const getLandingPages = (filters = {}) =>
+  apiRequest(`/landing-pages${queryString(filters)}`);
+export const getLandingPage = (id) => apiRequest(`/landing-pages/${id}`);
+export const createLandingPage = (payload) =>
+  apiRequest('/landing-pages', { method: 'POST', body: JSON.stringify(payload) });
+export const updateLandingPage = (id, payload) =>
+  apiRequest(`/landing-pages/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishLandingPage = (id) =>
+  apiRequest(`/landing-pages/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const pauseLandingPage = (id) =>
+  apiRequest(`/landing-pages/${id}/pause`, { method: 'PATCH', body: '{}' });
+export const archiveLandingPage = (id) =>
+  apiRequest(`/landing-pages/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getLandingPageAnalytics = (id) =>
+  apiRequest(`/landing-pages/${id}/analytics`);
+export const getPublicLandingPage = (slug) =>
+  apiRequest(`/public/pages/${encodeURIComponent(slug)}`);
+export const trackLandingPageEvent = (slug, payload) =>
+  apiRequest(`/public/pages/${encodeURIComponent(slug)}/events`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const getFunnels = (filters = {}) => apiRequest(`/funnels${queryString(filters)}`);
+export const getFunnel = (id) => apiRequest(`/funnels/${id}`);
+export const createFunnel = (payload) =>
+  apiRequest('/funnels', { method: 'POST', body: JSON.stringify(payload) });
+export const updateFunnel = (id, payload) =>
+  apiRequest(`/funnels/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishFunnel = (id) =>
+  apiRequest(`/funnels/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const pauseFunnel = (id) =>
+  apiRequest(`/funnels/${id}/pause`, { method: 'PATCH', body: '{}' });
+export const archiveFunnel = (id) =>
+  apiRequest(`/funnels/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getFunnelSteps = (id) => apiRequest(`/funnels/${id}/steps`);
+export const createFunnelStep = (id, payload) =>
+  apiRequest(`/funnels/${id}/steps`, { method: 'POST', body: JSON.stringify(payload) });
+export const updateFunnelStep = (id, payload) =>
+  apiRequest(`/funnel-steps/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishFunnelStep = (id) =>
+  apiRequest(`/funnel-steps/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const archiveFunnelStep = (id) =>
+  apiRequest(`/funnel-steps/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getFunnelAnalytics = (id) => apiRequest(`/funnels/${id}/analytics`);
+export const getPublicFunnel = (funnelSlug, stepSlug = '') =>
+  apiRequest(
+    `/public/funnels/${encodeURIComponent(funnelSlug)}${
+      stepSlug ? `/${encodeURIComponent(stepSlug)}` : ''
+    }`
+  );
+export const trackFunnelEvent = (funnelSlug, stepSlug, payload) =>
+  apiRequest(
+    `/public/funnels/${encodeURIComponent(funnelSlug)}/${encodeURIComponent(stepSlug)}/events`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );

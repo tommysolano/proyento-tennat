@@ -21,6 +21,9 @@
 - `reporting`
 - `automations`
 - `workflows`
+- `forms`
+- `surveys`
+- `landing_pages`
 - `funnels`
 - `reputation`
 - `integrations`
@@ -85,5 +88,14 @@ Ambos modulos estan activos en version `1.0.0` y habilitados por defecto para
 el MVP. Las rutas privadas exigen los dos modulos. Pueden bloquearse por plan,
 suscripcion, distribuidor o empresa con `ModuleEntitlement`.
 
-La activacion no habilita canales externos: email, SMS, WhatsApp, webhooks,
-IA y funnels permanecen planned.
+La activacion no habilita canales externos: email, SMS, WhatsApp, webhooks e
+IA permanecen planned.
+
+## Forms, surveys, landing pages y funnels
+
+Los cuatro modulos estan activos en `1.0.0` y `enabledByDefault` para el MVP.
+Las rutas privadas y publicas vuelven a resolver los entitlements en backend.
+`surveys` se comprueba adicionalmente cuando un `Form.type` es `survey`.
+
+Desactivar un modulo no elimina datos: bloquea administracion, publicacion y
+resolucion publica hasta restaurar el entitlement.

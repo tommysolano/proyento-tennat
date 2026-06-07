@@ -32,7 +32,20 @@ export const WORKFLOW_TRIGGERS = [
   ['payment.succeeded', 'billing', 'Pago exitoso'],
   ['payment.failed', 'billing', 'Pago fallido'],
   ['alert.created', 'ops', 'Alerta creada', 'planned'],
-  ['job.dead', 'jobs', 'Job agotado']
+  ['job.dead', 'jobs', 'Job agotado'],
+  ['form.created', 'forms', 'Formulario creado'],
+  ['form.published', 'forms', 'Formulario publicado'],
+  ['form.submitted', 'forms', 'Formulario enviado'],
+  ['form.submission_processed', 'forms', 'Submission procesado'],
+  ['form.spam_detected', 'forms', 'Spam de formulario detectado'],
+  ['form.contact_created', 'forms', 'Contacto creado por formulario'],
+  ['form.opportunity_created', 'forms', 'Oportunidad creada por formulario'],
+  ['survey.submitted', 'surveys', 'Encuesta enviada'],
+  ['landing_page.published', 'landing_pages', 'Landing page publicada'],
+  ['landing_page.viewed', 'landing_pages', 'Landing page visitada'],
+  ['funnel.published', 'funnels', 'Funnel publicado'],
+  ['funnel.step_viewed', 'funnels', 'Step de funnel visitado'],
+  ['funnel.conversion', 'funnels', 'Conversion de funnel']
 ].map(([eventType, sourceModule, label, status = 'active']) => ({
   eventType,
   sourceModule,
@@ -101,7 +114,10 @@ export const PLANNED_ACTIONS = [
   'whatsapp.send',
   'webhook.call',
   'ai.generate',
-  'funnel.enroll'
+  'funnel.enroll',
+  'form.send_confirmation_email',
+  'funnel.redirect',
+  'webhook.external_call'
 ].map((type) => ({ type, status: 'planned' }));
 
 export const workflowCatalog = {

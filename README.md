@@ -13,6 +13,8 @@ La Fase 7 incorpora calendarios multiusuario, disponibilidad con zonas
 horarias, citas CRM, recordatorios internos y reservas publicas.
 La Fase 8 agrega workflows internos por empresa con eventos durables,
 condiciones seguras, acciones auditables, delays sobre jobs e historial.
+La Fase 9 incorpora formularios, encuestas, landing pages y funnels publicos
+con captura CRM, booking links, workflows, anti-spam y analytics basicos.
 
 ## Requisitos
 
@@ -119,6 +121,14 @@ Frontend:
 - `/workflows`
 - `/workflows/new`
 - `/workflow-runs`
+- `/marketing/forms`
+- `/marketing/submissions`
+- `/marketing/analytics`
+- `/marketing/landing-pages`
+- `/marketing/funnels`
+- `/forms/:slug`
+- `/p/:slug`
+- `/f/:funnelSlug/:stepSlug`
 
 API de plataforma:
 
@@ -194,6 +204,13 @@ API de conversaciones:
 - `/api/workflows`
 - `/api/workflows/catalog`
 - `/api/workflow-runs`
+- `/api/forms`
+- `/api/public/forms/:slug`
+- `/api/landing-pages`
+- `/api/public/pages/:slug`
+- `/api/funnels`
+- `/api/funnel-steps`
+- `/api/public/funnels/:funnelSlug/:stepSlug`
 
 ## Variables de Fase 5 y 6
 
@@ -228,6 +245,10 @@ suscripcion comercial activa no puede consumir estas operaciones.
 Fase 8 agrega `workflows`, `workflow_runs` y `workflow_actions`, asociados a
 los limites `workflows`, `workflowRunsPerMonth` y
 `workflowActionsPerMonth`.
+Fase 9 agrega `forms`, `form_submissions`, `landing_pages`, `funnels`,
+`funnel_steps`, `page_views` y `conversions`. Sus limites configurables son
+`forms`, `formSubmissionsPerMonth`, `landingPages`, `funnels`, `funnelSteps`
+y `pageViewsPerMonth`.
 
 ## Documentacion
 
@@ -249,6 +270,10 @@ los limites `workflows`, `workflowRunsPerMonth` y
 - [BOOKINGS.md](BOOKINGS.md)
 - [WORKFLOWS.md](WORKFLOWS.md)
 - [AUTOMATIONS.md](AUTOMATIONS.md)
+- [FORMS.md](FORMS.md)
+- [LANDING_PAGES.md](LANDING_PAGES.md)
+- [FUNNELS.md](FUNNELS.md)
+- [PUBLIC_PAGES.md](PUBLIC_PAGES.md)
 - [WHATSAPP_PRODUCTION_CHECKLIST.md](WHATSAPP_PRODUCTION_CHECKLIST.md)
 
 ## Alcance
@@ -260,8 +285,8 @@ si faltan credenciales. El provider local sirve contenido solo por endpoint
 autenticado. Para enviar media local a WhatsApp aun se requiere una URL
 publica o subir primero el archivo a Graph API. Facebook, Instagram,
 Messenger, SMS y email siguen como placeholders. Tampoco existen pasarelas de
-pago, funnels, automatizaciones visuales o landing pages. El calendario y las
-reservas son internos: no sincronizan Google Calendar/Outlook ni crean enlaces
-de Zoom, Meet u otros proveedores.
+pago, checkout, A/B testing, editor drag and drop, dominios personalizados
+reales o SSR. El calendario y las reservas son internos: no sincronizan
+Google Calendar/Outlook ni crean enlaces de Zoom, Meet u otros proveedores.
 Los workflows no envian WhatsApp, email o SMS, no llaman webhooks externos y
 no ejecutan IA; esos tipos permanecen `planned`.

@@ -170,14 +170,44 @@ export const MODULE_REGISTRY = [
     status: 'active'
   },
   {
+    key: 'forms',
+    name: 'Formularios',
+    description: 'Formularios publicos, submissions y captura de leads.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'surveys',
+    name: 'Encuestas',
+    description: 'Formularios de tipo encuesta y respuestas estructuradas.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'landing_pages',
+    name: 'Landing Pages',
+    description: 'Paginas publicas basicas construidas por secciones seguras.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
     key: 'funnels',
     name: 'Funnels',
-    description: 'Funnels y landing pages futuros.',
-    version: '0.1.0',
-    enabledByDefault: false,
+    description: 'Funnels publicos, pasos, tracking y conversiones internas.',
+    version: '1.0.0',
+    enabledByDefault: true,
     requiredPermissions: [],
-    requiredPlanFeatures: ['funnels'],
-    status: 'planned'
+    requiredPlanFeatures: [],
+    status: 'active'
   },
   {
     key: 'reputation',

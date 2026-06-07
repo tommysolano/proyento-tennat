@@ -23,6 +23,13 @@ const usageRecordSchema = new mongoose.Schema(
         'workflows',
         'workflow_runs',
         'workflow_actions',
+        'forms',
+        'form_submissions',
+        'landing_pages',
+        'funnels',
+        'funnel_steps',
+        'page_views',
+        'conversions',
         'ai_tokens'
       ],
       required: true

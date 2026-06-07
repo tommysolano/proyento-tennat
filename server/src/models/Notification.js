@@ -13,7 +13,11 @@ export const NOTIFICATION_TYPES = [
   'appointment_no_show',
   'workflow_notification',
   'workflow_completed',
-  'workflow_failed'
+  'workflow_failed',
+  'form_submission_received',
+  'form_lead_created',
+  'form_opportunity_created',
+  'form_spam_detected'
 ];
 
 const notificationSchema = new mongoose.Schema(

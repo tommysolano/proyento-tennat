@@ -35,6 +35,7 @@ puede notificar si `notifyOnComplete` esta activo. Un job dead emite
 
 ## Alcance
 
-No hay drag and drop, campanas, canales externos, webhooks reales, IA,
-funnels, landing pages ni pagos automaticos. Los schedulers de vencimientos
-marcados `planned` quedan pendientes.
+No hay drag and drop, campanas, canales externos, webhooks reales, IA ni pagos
+automaticos. Forms, landings y funnels emiten eventos internos, pero sus
+acciones externas siguen `planned`. Los schedulers de vencimientos marcados
+`planned` quedan pendientes.

@@ -24,6 +24,12 @@ const LIMIT_FIELDS = [
   'workflows',
   'workflowRunsPerMonth',
   'workflowActionsPerMonth',
+  'forms',
+  'formSubmissionsPerMonth',
+  'landingPages',
+  'funnels',
+  'funnelSteps',
+  'pageViewsPerMonth',
   'modules'
 ];
 

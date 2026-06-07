@@ -18,6 +18,10 @@ El catalogo vive en
 `server/src/modules/workflows/workflowCatalog.js` y se consulta con
 `GET /api/workflows/catalog`. Los triggers emitidos actualmente incluyen
 contactos, oportunidades, tareas, inbox, calendario, billing y jobs dead.
+Fase 9 agrega `form.created`, `form.published`, `form.submitted`,
+`form.submission_processed`, `form.spam_detected`, `survey.submitted`,
+`landing_page.published`, `landing_page.viewed`, `funnel.published`,
+`funnel.step_viewed` y `funnel.conversion`.
 
 `contact.followup_due`, `task.overdue`, `appointment.reminder_due`,
 `invoice.overdue` y `alert.created` aparecen como `planned`: aun no tienen
@@ -41,8 +45,10 @@ Se bloquean `__proto__`, `constructor`, `password`, `credentials`, `token`,
 - sistema: notificacion, alerta y ActivityLog;
 - delays: `delay.wait_minutes` y `delay.wait_until`.
 
-Email, SMS, WhatsApp, webhook externo, IA y funnels son `planned` y el
-validador los rechaza.
+Email, SMS, WhatsApp, webhook externo, IA y enrolamiento automatico en funnel
+son `planned`; el validador los rechaza.
+Tambien permanecen planned `form.send_confirmation_email`,
+`funnel.redirect` y `webhook.external_call`.
 
 ## Ejecucion
 
@@ -92,3 +98,5 @@ Las actividades generadas llevan `sourceWorkflowId`, `sourceWorkflowRunId` y
 Las rutas derivan el tenant del JWT. IDs fijos se validan al guardar y el
 ejecutor repite el filtro tenant. `WorkflowEvent.payload` usa `select:false`,
 se sanitiza y nunca aparece en JSON. Los errores tambien se sanitizan.
+Los eventos de formularios solo incluyen IDs, tipo y origen; nunca copian
+`values` completos al payload del workflow.

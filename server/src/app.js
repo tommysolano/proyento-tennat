@@ -37,6 +37,12 @@ import bookingLinkRoutes from './routes/bookingLinkRoutes.js';
 import publicBookingRoutes from './routes/publicBookingRoutes.js';
 import workflowRoutes from './routes/workflowRoutes.js';
 import workflowRunRoutes from './routes/workflowRunRoutes.js';
+import formRoutes from './routes/formRoutes.js';
+import publicFormRoutes from './routes/publicFormRoutes.js';
+import landingPageRoutes from './routes/landingPageRoutes.js';
+import publicLandingPageRoutes from './routes/publicLandingPageRoutes.js';
+import funnelRoutes, { funnelStepRoutes } from './routes/funnelRoutes.js';
+import publicFunnelRoutes from './routes/publicFunnelRoutes.js';
 import { logger } from './utils/logger.js';
 import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
 
@@ -100,6 +106,13 @@ app.use('/api/public/booking', publicBookingRoutes);
 app.use('/api/public/bookings', publicBookingRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/workflow-runs', workflowRunRoutes);
+app.use('/api/forms', formRoutes);
+app.use('/api/public/forms', publicFormRoutes);
+app.use('/api/landing-pages', landingPageRoutes);
+app.use('/api/public/pages', publicLandingPageRoutes);
+app.use('/api/funnels', funnelRoutes);
+app.use('/api/funnel-steps', funnelStepRoutes);
+app.use('/api/public/funnels', publicFunnelRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });

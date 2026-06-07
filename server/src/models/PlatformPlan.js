@@ -17,7 +17,13 @@ const platformLimitsSchema = new mongoose.Schema(
     bookingLinks: { type: Number, default: 0, min: 0 },
     workflows: { type: Number, default: 0, min: 0 },
     workflowRunsPerMonth: { type: Number, default: 0, min: 0 },
-    workflowActionsPerMonth: { type: Number, default: 0, min: 0 }
+    workflowActionsPerMonth: { type: Number, default: 0, min: 0 },
+    forms: { type: Number, default: 0, min: 0 },
+    formSubmissionsPerMonth: { type: Number, default: 0, min: 0 },
+    landingPages: { type: Number, default: 0, min: 0 },
+    funnels: { type: Number, default: 0, min: 0 },
+    funnelSteps: { type: Number, default: 0, min: 0 },
+    pageViewsPerMonth: { type: Number, default: 0, min: 0 }
   },
   { _id: false }
 );

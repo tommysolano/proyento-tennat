@@ -11,8 +11,8 @@ La Fase 3 incorpora un CRM operativo por empresa:
 - tareas, notas, seguimientos, timelines y metricas por rol.
 
 La Fase 4 integra el CRM con un inbox omnicanal y deja WhatsApp Cloud
-preparado. La Fase 7 agrega citas y reservas. Automatizaciones visuales,
-funnels, landing pages y pagos reales siguen fuera del alcance.
+preparado. La Fase 7 agrega citas y reservas. La Fase 9 agrega captura desde
+formularios, landing pages y funnels. Pagos y checkout reales siguen fuera.
 
 ## Modelos
 
@@ -77,3 +77,14 @@ ActivityLog emite eventos de contacto, oportunidad y tarea al motor. Las
 acciones repiten el scope tenant antes de actualizar status, lifecycle,
 prioridad, asignacion, tags, notas, etapas o tareas. El metadata de origen
 evita que el mismo workflow se dispare indefinidamente.
+
+## Formularios y funnels
+
+`FormsService` usa mappings declarativos hacia campos estandar o
+`customFields` de Contact y Opportunity. Antes de guardar valida que usuarios,
+tags, custom fields, pipeline y etapa pertenezcan a la empresa.
+
+La estrategia de duplicados puede crear, actualizar o ignorar. Los contactos
+nuevos reciben estado, lifecycle, responsable y tags configurados. Cada
+submission conserva `contactId` y `opportunityId`, agrega ActivityLog y crea
+conversiones sin incluir valores sensibles en WorkflowEvent.
