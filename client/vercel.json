@@ -1,5 +1,10 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/api/:path*",
+      "destination": "https://proyento-tennat.onrender.com/api/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -19,14 +19,17 @@ export function Login() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (loading) return;
+
     setError('');
     setLoading(true);
 
     try {
-      const data = await login(email, password);
-      navigate(data.redirectPath, { replace: true });
+      const data = await login(email.trim(), password);
+      const destination = data.redirectPath || roleHome[data.user?.role] || '/login';
+      navigate(destination, { replace: true });
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'No se pudo iniciar sesion.');
     } finally {
       setLoading(false);
     }
@@ -97,6 +100,9 @@ export function Login() {
                 <input
                   className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm outline-none ring-cyan-100 transition focus:border-cyan-600 focus:ring-4"
                   type="email"
+                  name="email"
+                  autoComplete="email"
+                  required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="correo@empresa.com"
@@ -108,6 +114,9 @@ export function Login() {
                 <input
                   className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm outline-none ring-cyan-100 transition focus:border-cyan-600 focus:ring-4"
                   type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  required
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Tu password"
@@ -115,7 +124,11 @@ export function Login() {
               </label>
 
               {error ? (
-                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                <div
+                  className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                  role="alert"
+                  aria-live="polite"
+                >
                   {error}
                 </div>
               ) : null}

@@ -1,6 +1,30 @@
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? 'http://localhost:4000/api' : '/api');
+import { buildApiUrl, normalizeApiBaseUrl } from './apiUrl.js';
+
+const API_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL, {
+  dev: import.meta.env.DEV
+});
+
+async function parseResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    return response.json().catch(() => ({}));
+  }
+
+  const text = await response.text().catch(() => '');
+  return contentType.includes('text/html') ? {} : { message: text.trim() };
+}
+
+async function request(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (cause) {
+    const error = new Error('No se pudo conectar con la API. Verifica la URL y tu conexion.');
+    error.cause = cause;
+    error.url = url;
+    throw error;
+  }
+}
 
 function queryString(filters = {}) {
   const query = new URLSearchParams();
@@ -12,7 +36,8 @@ function queryString(filters = {}) {
 
 export async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('tenantdesk_token');
-  const response = await fetch(`${API_URL}${path}`, {
+  const url = buildApiUrl(API_URL, path);
+  const response = await request(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -21,15 +46,19 @@ export async function apiRequest(path, options = {}) {
     }
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await parseResponse(response);
 
   if (!response.ok) {
     if (response.status === 401 && token && path !== '/auth/login') {
       window.dispatchEvent(new CustomEvent('tenantdesk:unauthorized'));
     }
 
-    const error = new Error(data.message || 'Error de comunicacion con la API');
+    const statusLabel = response.statusText
+      ? `${response.status} ${response.statusText}`
+      : String(response.status);
+    const error = new Error(data.message || `La API respondio HTTP ${statusLabel}`);
     error.status = response.status;
+    error.url = url;
     throw error;
   }
 
@@ -38,7 +67,7 @@ export async function apiRequest(path, options = {}) {
 
 async function authenticatedFetch(path, options = {}) {
   const token = localStorage.getItem('tenantdesk_token');
-  return fetch(`${API_URL}${path}`, {
+  return request(buildApiUrl(API_URL, path), {
     ...options,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -54,7 +83,7 @@ export function connectRealtime(onEvent, onStatus = () => {}) {
   async function connect() {
     onStatus('connecting');
     try {
-      const response = await fetch(`${API_URL}/realtime/events`, {
+      const response = await request(buildApiUrl(API_URL, '/realtime/events'), {
         headers: {
           Accept: 'text/event-stream',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -168,9 +197,10 @@ export const importContacts = (contacts, updateDuplicates = false) =>
 
 export async function exportContacts(filters = {}) {
   const token = localStorage.getItem('tenantdesk_token');
-  const response = await fetch(`${API_URL}/contacts/export${queryString(filters)}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
+  const response = await request(
+    buildApiUrl(API_URL, `/contacts/export${queryString(filters)}`),
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.message || 'No se pudo exportar');
