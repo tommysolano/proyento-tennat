@@ -65,15 +65,21 @@ Use secretos aleatorios largos para `JWT_SECRET`,
 
 ## SUPERADMIN inicial
 
-Desde Render Shell o un entorno con acceso a Atlas:
+Configure `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD` antes de desplegar. En
+cada arranque, despues de conectar MongoDB y antes de aceptar trafico, el
+backend crea el usuario `SUPERADMIN` si todavia no existe.
+
+El log de Render debe incluir `superadmin.bootstrap_complete`; el campo
+`created` indica si el usuario fue creado en ese arranque. Como alternativa
+manual, desde Render Shell o un entorno con acceso a Atlas:
 
 ```bash
 npm run seed:superadmin
 ```
 
-El script requiere `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD`, crea solo un
-usuario `SUPERADMIN`, no duplica por email y no sobrescribe el password de un
-usuario existente. El primer login usa esas credenciales.
+Tanto el arranque como el script son idempotentes, no duplican por email y no
+sobrescriben el password de un usuario existente. El primer login usa esas
+credenciales.
 
 ## Frontend en Vercel
 
@@ -109,7 +115,7 @@ el mismo proceso.
 
 1. Abra `https://tu-backend.onrender.com/health`.
 2. Abra `https://tu-backend.onrender.com/api/health`.
-3. Ejecute el seed de SUPERADMIN.
+3. Confirme `superadmin.bootstrap_complete` en los logs de Render.
 4. Abra el frontend y pruebe login.
 5. Confirme que requests desde Vercel no generan errores CORS.
 
@@ -143,7 +149,9 @@ SMS; esos canales estan marcados como planned.
 
 - `Variables de entorno requeridas`: falta una variable validada al inicio.
 - Error CORS: agregue el origin exacto, sin path, a `CORS_ORIGINS`.
-- Login falla tras deploy: ejecute `npm run seed:superadmin` y verifique Atlas.
+- Login falla tras deploy: verifique `SUPERADMIN_EMAIL`,
+  `SUPERADMIN_PASSWORD`, el log `superadmin.bootstrap_complete` y la conexion a
+  Atlas; despues redespliegue el backend.
 - Health `degraded`: revise MongoDB, jobs y storage en el payload.
 - Links publicos apuntan mal: corrija `CLIENT_URL` y `VITE_PUBLIC_BASE_URL`.
 - Media desaparece: cambie de storage local a un provider persistente.

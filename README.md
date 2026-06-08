@@ -48,8 +48,10 @@ configuracion es: variables del proceso, `server/.env`, `.env` raiz.
 
 No se crean distribuidores, empresas, planes ni datos operativos demo.
 Configure `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD` (minimo 12 caracteres)
-y ejecute `npm run seed:superadmin`. El script crea solo el usuario
-`SUPERADMIN`, es idempotente y no cambia su password si ya existe.
+y arranque el servidor. Despues de conectar MongoDB, el backend crea el usuario
+`SUPERADMIN` si todavia no existe. El proceso es idempotente y no cambia su
+password si ya existe. `npm run seed:superadmin` queda disponible como opcion
+manual.
 
 ## Scripts
 
