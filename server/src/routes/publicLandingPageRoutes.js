@@ -4,6 +4,7 @@ import { BookingLink } from '../models/BookingLink.js';
 import { Company } from '../models/Company.js';
 import { Form } from '../models/Form.js';
 import { LandingPage } from '../models/LandingPage.js';
+import { ReviewWidget } from '../models/ReviewWidget.js';
 import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { FunnelService } from '../modules/funnels/FunnelService.js';
 import { safeTrackingContext, slugifyPublic } from '../modules/marketing/marketingSecurity.js';
@@ -44,22 +45,30 @@ async function context(slug) {
 async function sectionSlugs(page) {
   const formIds = [];
   const bookingIds = [];
+  const widgetIds = [];
   for (const section of page.content.sections) {
     if (section.content?.formId) formIds.push(section.content.formId);
     if (section.content?.bookingLinkId) bookingIds.push(section.content.bookingLinkId);
+    if (section.content?.reviewWidgetId) widgetIds.push(section.content.reviewWidgetId);
   }
-  const [forms, bookings] = await Promise.all([
+  const [forms, bookings, widgets] = await Promise.all([
     Form.find({ _id: { $in: formIds }, companyId: page.companyId, status: 'published' }).select('slug'),
     BookingLink.find({
       _id: { $in: bookingIds },
       companyId: page.companyId,
       status: 'active',
       publicEnabled: true
+    }).select('slug'),
+    ReviewWidget.find({
+      _id: { $in: widgetIds },
+      companyId: page.companyId,
+      status: 'published'
     }).select('slug')
   ]);
   return {
     forms: new Map(forms.map((item) => [String(item._id), item.slug])),
-    bookings: new Map(bookings.map((item) => [String(item._id), item.slug]))
+    bookings: new Map(bookings.map((item) => [String(item._id), item.slug])),
+    widgets: new Map(widgets.map((item) => [String(item._id), item.slug]))
   };
 }
 
@@ -76,8 +85,10 @@ router.get('/:slug', async (req, res, next) => {
       const original = orderedSections[index];
       delete section.content.formId;
       delete section.content.bookingLinkId;
+      delete section.content.reviewWidgetId;
       if (original.content?.formId) section.content.formSlug = references.forms.get(String(original.content.formId)) || '';
       if (original.content?.bookingLinkId) section.content.bookingLinkSlug = references.bookings.get(String(original.content.bookingLinkId)) || '';
+      if (original.content?.reviewWidgetId) section.content.reviewWidgetSlug = references.widgets.get(String(original.content.reviewWidgetId)) || '';
       return section;
     });
     if (resolved.page.settings.trackingEnabled) {

@@ -43,15 +43,46 @@ import landingPageRoutes from './routes/landingPageRoutes.js';
 import publicLandingPageRoutes from './routes/publicLandingPageRoutes.js';
 import funnelRoutes, { funnelStepRoutes } from './routes/funnelRoutes.js';
 import publicFunnelRoutes from './routes/publicFunnelRoutes.js';
+import reputationRoutes from './routes/reputationRoutes.js';
+import reviewRequestRoutes from './routes/reviewRequestRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
+import testimonialRoutes from './routes/testimonialRoutes.js';
+import reviewWidgetRoutes from './routes/reviewWidgetRoutes.js';
+import publicReviewRoutes, { publicReviewWidgetRoutes } from './routes/publicReviewRoutes.js';
+import satisfactionSurveyRoutes from './routes/satisfactionSurveyRoutes.js';
+import publicSurveyRoutes from './routes/publicSurveyRoutes.js';
+import couponRoutes, { couponRedemptionRoutes } from './routes/couponRoutes.js';
+import referralProgramRoutes, { referralRoutes } from './routes/referralRoutes.js';
+import publicReferralRoutes from './routes/publicReferralRoutes.js';
 import { logger } from './utils/logger.js';
 import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
 
 export const app = express();
 
+function corsOrigins() {
+  const configured = [
+    process.env.CLIENT_URL,
+    ...(process.env.CORS_ORIGINS || '').split(',')
+  ]
+    .map((value) => String(value || '').trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  if (process.env.NODE_ENV !== 'production') {
+    configured.push('http://localhost:5173', 'http://127.0.0.1:5173');
+  }
+  return new Set(configured);
+}
+
+const allowedOrigins = corsOrigins();
+
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin.replace(/\/$/, ''))) {
+        return callback(null, true);
+      }
+      return callback(Object.assign(new Error('Origen no permitido por CORS'), { status: 403 }));
+    },
     credentials: true
   })
 );
@@ -113,6 +144,20 @@ app.use('/api/public/pages', publicLandingPageRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/funnel-steps', funnelStepRoutes);
 app.use('/api/public/funnels', publicFunnelRoutes);
+app.use('/api/reputation', reputationRoutes);
+app.use('/api/review-requests', reviewRequestRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/testimonials', testimonialRoutes);
+app.use('/api/review-widgets', reviewWidgetRoutes);
+app.use('/api/public/reviews', publicReviewRoutes);
+app.use('/api/public/review-widgets', publicReviewWidgetRoutes);
+app.use('/api/satisfaction-surveys', satisfactionSurveyRoutes);
+app.use('/api/public/surveys', publicSurveyRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/coupon-redemptions', couponRedemptionRoutes);
+app.use('/api/referral-programs', referralProgramRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/public/referrals', publicReferralRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });

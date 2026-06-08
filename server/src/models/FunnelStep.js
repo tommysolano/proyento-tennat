@@ -10,6 +10,7 @@ export const FUNNEL_STEP_TYPES = [
   'landing',
   'form',
   'survey',
+  'satisfaction_survey',
   'booking',
   'thank_you',
   'redirect'
@@ -35,6 +36,11 @@ const funnelStepSchema = new mongoose.Schema(
     landingPageId: { type: mongoose.Schema.Types.ObjectId, ref: 'LandingPage', default: null },
     formId: { type: mongoose.Schema.Types.ObjectId, ref: 'Form', default: null },
     bookingLinkId: { type: mongoose.Schema.Types.ObjectId, ref: 'BookingLink', default: null },
+    satisfactionSurveyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SatisfactionSurvey',
+      default: null
+    },
     content: {
       title: { type: String, default: '', maxlength: 180 },
       description: { type: String, default: '', maxlength: 2000 },

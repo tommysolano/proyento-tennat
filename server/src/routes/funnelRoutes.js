@@ -58,6 +58,7 @@ router.get(
           .populate('landingPageId', 'name slug status')
           .populate('formId', 'name slug status')
           .populate('bookingLinkId', 'title slug status')
+          .populate('satisfactionSurveyId', 'name slug status type')
           .sort({ order: 1 })
       );
     } catch (error) {

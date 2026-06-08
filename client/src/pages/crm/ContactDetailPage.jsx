@@ -1,17 +1,23 @@
-import { Archive, ArrowLeft, CalendarDays, MessageSquare, Save, StickyNote } from 'lucide-react';
+import { Archive, ArrowLeft, CalendarDays, Gift, MessageSquare, Save, Send, Share2, Star, StickyNote } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   addContactNote,
+  createReferral,
+  createReviewRequest,
   createConversation,
   deleteContact,
   getContact,
+  getContactReputation,
   getContactTimeline,
   getConversations,
   getAppointments,
   getCustomFields,
+  getCoupons,
+  getReferralPrograms,
   getTags,
   getUsers,
+  issueCoupon,
   updateContact
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
@@ -53,6 +59,14 @@ export function ContactDetailPage() {
   const [users, setUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [reputation, setReputation] = useState({
+    reviews: [],
+    reviewRequests: [],
+    couponRedemptions: [],
+    referrals: []
+  });
+  const [coupons, setCoupons] = useState([]);
+  const [referralPrograms, setReferralPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -62,16 +76,33 @@ export function ContactDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [contactData, timelineData, tagData, fieldData, userData, conversationData, appointmentData] = await Promise.all([
+      const [
+        contactData,
+        timelineData,
+        tagData,
+        fieldData,
+        userData,
+        conversationData,
+        appointmentData,
+        reputationData,
+        couponData,
+        referralProgramData
+      ] = await Promise.all([
         getContact(id), getContactTimeline(id), getTags(), getCustomFields('contact'),
         user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
         getConversations({ contactId: id }),
-        getAppointments({ contactId: id })
+        getAppointments({ contactId: id }),
+        getContactReputation(id),
+        getCoupons(),
+        user.role === 'ADMIN' ? getReferralPrograms() : Promise.resolve([])
       ]);
       setContact(contactData); setTimeline(timelineData); setTags(tagData);
       setFields(fieldData.filter((field) => field.status === 'active')); setUsers(userData);
       setConversations(conversationData);
       setAppointments(appointmentData);
+      setReputation(reputationData);
+      setCoupons(couponData);
+      setReferralPrograms(referralProgramData);
     } catch (requestError) { setError(requestError.message); }
     finally { setLoading(false); }
   }, [id, user.role]);
@@ -136,6 +167,56 @@ export function ContactDetailPage() {
     }
   }
 
+  async function requestReview() {
+    setBusy(true); setError('');
+    try {
+      const request = await createReviewRequest({ contactId: id, channel: 'manual' });
+      await navigator.clipboard.writeText(request.publicUrl).catch(() => {});
+      setNotice('Solicitud creada. El link publico fue copiado.');
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function issueContactCoupon() {
+    const active = coupons.filter((coupon) => coupon.status === 'active');
+    const couponId = window.prompt(
+      `ID del cupon a emitir:\n${active.map((coupon) => `${coupon._id} | ${coupon.code} - ${coupon.name}`).join('\n')}`
+    );
+    if (!couponId) return;
+    setBusy(true); setError('');
+    try {
+      await issueCoupon(couponId, id);
+      setNotice('Cupon emitido.');
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createContactReferral() {
+    const active = referralPrograms.filter((program) => program.status === 'active');
+    const referralProgramId = window.prompt(
+      `ID del programa:\n${active.map((program) => `${program._id} | ${program.name}`).join('\n')}`
+    );
+    if (!referralProgramId) return;
+    setBusy(true); setError('');
+    try {
+      await createReferral({ referralProgramId, referrerContactId: id });
+      setNotice('Referido creado.');
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <PageShell eyebrow="CRM" title="Ficha de contacto"><CrmLoading /></PageShell>;
   return (
     <PageShell eyebrow="CRM" title={contact?.name || 'Contacto'} description="Ficha operativa, campos personalizados y timeline comercial.">
@@ -169,6 +250,23 @@ export function ContactDetailPage() {
           </form>
         </Card>
         <div className="space-y-6">
+          <Card>
+            <CardHeader title="Reputacion y fidelizacion" description="Acciones vinculadas a este contacto" />
+            <div className="space-y-4 p-5">
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={busy} onClick={requestReview}><Send className="h-4 w-4" />Solicitar resena</Button>
+                <Button disabled={busy || !coupons.some((coupon) => coupon.status === 'active')} variant="secondary" onClick={issueContactCoupon}><Gift className="h-4 w-4" />Emitir cupon</Button>
+                {user.role === 'ADMIN' ? <Button disabled={busy || !referralPrograms.some((program) => program.status === 'active')} variant="secondary" onClick={createContactReferral}><Share2 className="h-4 w-4" />Crear referido</Button> : null}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">Resenas</p><p className="mt-1 text-2xl font-semibold">{reputation.reviews.length}</p></div>
+                <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">Solicitudes</p><p className="mt-1 text-2xl font-semibold">{reputation.reviewRequests.length}</p></div>
+                <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">Cupones</p><p className="mt-1 text-2xl font-semibold">{reputation.couponRedemptions.length}</p></div>
+                <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">Referidos</p><p className="mt-1 text-2xl font-semibold">{reputation.referrals.length}</p></div>
+              </div>
+              {reputation.reviews.slice(0, 3).map((review) => <div key={review._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center gap-1 text-amber-500">{Array.from({ length: review.rating }, (_, index) => <Star key={index} className="h-4 w-4 fill-current" />)}</div><p className="mt-2 text-sm text-slate-600">{review.comment}</p></div>)}
+            </div>
+          </Card>
           <Card>
             <CardHeader title="Conversaciones" description={`${conversations.length} conversaciones vinculadas`} />
             <div className="space-y-3 p-5">

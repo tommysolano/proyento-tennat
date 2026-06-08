@@ -41,6 +41,17 @@ export const WORKFLOW_TRIGGERS = [
   ['form.contact_created', 'forms', 'Contacto creado por formulario'],
   ['form.opportunity_created', 'forms', 'Oportunidad creada por formulario'],
   ['survey.submitted', 'surveys', 'Encuesta enviada'],
+  ['review_request.created', 'reviews', 'Solicitud de resena creada'],
+  ['review.submitted', 'reviews', 'Resena recibida'],
+  ['review.approved', 'reviews', 'Resena aprobada'],
+  ['review.published', 'reviews', 'Resena publicada'],
+  ['review.negative_received', 'reviews', 'Resena negativa recibida'],
+  ['testimonial.published', 'testimonials', 'Testimonio publicado'],
+  ['nps.low_score', 'surveys', 'NPS bajo recibido'],
+  ['coupon.issued', 'coupons', 'Cupon emitido'],
+  ['coupon.redeemed', 'coupons', 'Cupon redimido'],
+  ['referral.created', 'referrals', 'Referido creado'],
+  ['referral.converted', 'referrals', 'Referido convertido'],
   ['landing_page.published', 'landing_pages', 'Landing page publicada'],
   ['landing_page.viewed', 'landing_pages', 'Landing page visitada'],
   ['funnel.published', 'funnels', 'Funnel publicado'],
@@ -117,7 +128,11 @@ export const PLANNED_ACTIONS = [
   'funnel.enroll',
   'form.send_confirmation_email',
   'funnel.redirect',
-  'webhook.external_call'
+  'webhook.external_call',
+  'review_request.create',
+  'coupon.issue',
+  'referral.create',
+  'testimonial.create_from_review'
 ].map((type) => ({ type, status: 'planned' }));
 
 export const workflowCatalog = {

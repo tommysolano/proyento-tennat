@@ -24,6 +24,16 @@ const platformLimitsSchema = new mongoose.Schema(
     funnels: { type: Number, default: 0, min: 0 },
     funnelSteps: { type: Number, default: 0, min: 0 },
     pageViewsPerMonth: { type: Number, default: 0, min: 0 }
+    ,
+    reviewRequestsPerMonth: { type: Number, default: 0, min: 0 },
+    reviews: { type: Number, default: 0, min: 0 },
+    reviewWidgets: { type: Number, default: 0, min: 0 },
+    surveys: { type: Number, default: 0, min: 0 },
+    surveyResponsesPerMonth: { type: Number, default: 0, min: 0 },
+    coupons: { type: Number, default: 0, min: 0 },
+    couponRedemptionsPerMonth: { type: Number, default: 0, min: 0 },
+    referralPrograms: { type: Number, default: 0, min: 0 },
+    referralsPerMonth: { type: Number, default: 0, min: 0 }
   },
   { _id: false }
 );

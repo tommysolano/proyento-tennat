@@ -6,6 +6,8 @@ import { Funnel } from '../../models/Funnel.js';
 import { FunnelStep, FUNNEL_STEP_TYPES } from '../../models/FunnelStep.js';
 import { LandingPage } from '../../models/LandingPage.js';
 import { PageView } from '../../models/PageView.js';
+import { ReviewWidget } from '../../models/ReviewWidget.js';
+import { SatisfactionSurvey } from '../../models/SatisfactionSurvey.js';
 import { User } from '../../models/User.js';
 import { WorkflowEventEmitter } from '../workflows/WorkflowEventEmitter.js';
 import { recordActivity } from '../../utils/activity.js';
@@ -85,6 +87,9 @@ export class FunnelService {
       }
       if (section.type === 'booking_embed' && section.content?.bookingLinkId) {
         await tenantReference(BookingLink, section.content.bookingLinkId, companyId);
+      }
+      if (section.type === 'review_widget_embed' && section.content?.reviewWidgetId) {
+        await tenantReference(ReviewWidget, section.content.reviewWidgetId, companyId);
       }
     }
   }
@@ -205,7 +210,8 @@ export class FunnelService {
     const [, form] = await Promise.all([
       tenantReference(LandingPage, input.landingPageId, companyId),
       tenantReference(Form, input.formId, companyId),
-      tenantReference(BookingLink, input.bookingLinkId, companyId)
+      tenantReference(BookingLink, input.bookingLinkId, companyId),
+      tenantReference(SatisfactionSurvey, input.satisfactionSurveyId, companyId)
     ]);
     if (input.type === 'survey' && form && form.type !== 'survey') {
       throw badRequest('Un step survey requiere un formulario de tipo survey');
@@ -299,6 +305,7 @@ export class FunnelService {
       landingPageId: body.landingPageId || null,
       formId: body.formId || null,
       bookingLinkId: body.bookingLinkId || null,
+      satisfactionSurveyId: body.satisfactionSurveyId || null,
       content: body.content || {},
       settings: body.settings || {},
       createdBy: actor._id,
@@ -339,6 +346,7 @@ export class FunnelService {
       'landingPageId',
       'formId',
       'bookingLinkId',
+      'satisfactionSurveyId',
       'content',
       'metadata'
     ]) {
@@ -413,9 +421,13 @@ export class FunnelService {
         landing: step.landingPageId,
         form: step.formId,
         survey: step.formId,
+        satisfaction_survey: step.satisfactionSurveyId,
         booking: step.bookingLinkId
       }[step.type];
-      if (['landing', 'form', 'survey', 'booking'].includes(step.type) && !requiredReference) {
+      if (
+        ['landing', 'form', 'survey', 'satisfaction_survey', 'booking'].includes(step.type) &&
+        !requiredReference
+      ) {
         throw badRequest(`El step ${step.type} no tiene su referencia configurada`);
       }
       if (step.type === 'redirect' && !safePublicUrl(step.settings.redirectUrl)) {
@@ -480,6 +492,7 @@ export class FunnelService {
         nextStepSlug: relations.nextStep?.slug || '',
         landingPageSlug: relations.landingPage?.slug || '',
         formSlug: relations.form?.slug || '',
+        satisfactionSurveySlug: relations.satisfactionSurvey?.slug || '',
         bookingLinkSlug: relations.bookingLink?.slug || ''
       }
     };

@@ -14,6 +14,7 @@ export const LANDING_SECTION_TYPES = [
   'button',
   'form_embed',
   'booking_embed',
+  'review_widget_embed',
   'testimonials_static',
   'faq',
   'custom_html_limited'

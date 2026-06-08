@@ -1,6 +1,5 @@
 import { loadEnv, validateEnv } from './config/env.js';
 import { connectDB } from './config/db.js';
-import { seedDemoData } from './data/demoData.js';
 import { startJobWorker } from './modules/jobs/JobWorker.js';
 import { logger } from './utils/logger.js';
 
@@ -12,11 +11,6 @@ try {
   validateEnv();
   await connectDB();
   const { app } = await import('./app.js');
-
-  if (process.env.DEMO_SEED === 'true') {
-    const result = await seedDemoData();
-    logger.info('demo.seed_ready', { result });
-  }
 
   const worker = startJobWorker();
   const server = app.listen(port, () => {

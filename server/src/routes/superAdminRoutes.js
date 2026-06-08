@@ -47,7 +47,16 @@ const LIMIT_FIELDS = [
   'landingPages',
   'funnels',
   'funnelSteps',
-  'pageViewsPerMonth'
+  'pageViewsPerMonth',
+  'reviewRequestsPerMonth',
+  'reviews',
+  'reviewWidgets',
+  'surveys',
+  'surveyResponsesPerMonth',
+  'coupons',
+  'couponRedemptionsPerMonth',
+  'referralPrograms',
+  'referralsPerMonth'
 ];
 
 function numberValue(value, field, { integer = false, min = 0 } = {}) {

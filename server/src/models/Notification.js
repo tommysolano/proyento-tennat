@@ -17,7 +17,12 @@ export const NOTIFICATION_TYPES = [
   'form_submission_received',
   'form_lead_created',
   'form_opportunity_created',
-  'form_spam_detected'
+  'form_spam_detected',
+  'review_received',
+  'review_negative_received',
+  'survey_low_nps',
+  'coupon_redeemed',
+  'referral_converted'
 ];
 
 const notificationSchema = new mongoose.Schema(

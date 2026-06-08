@@ -212,12 +212,62 @@ export const MODULE_REGISTRY = [
   {
     key: 'reputation',
     name: 'Reputacion',
-    description: 'Gestion futura de resenas y reputacion.',
-    version: '0.1.0',
-    enabledByDefault: false,
+    description: 'Metricas, solicitudes y gestion de reputacion.',
+    version: '1.0.0',
+    enabledByDefault: true,
     requiredPermissions: [],
-    requiredPlanFeatures: ['reputation'],
-    status: 'planned'
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'reviews',
+    name: 'Resenas',
+    description: 'Solicitudes, moderacion y publicacion de resenas internas.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'testimonials',
+    name: 'Testimonios',
+    description: 'Testimonios publicables derivados de resenas aprobadas.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'coupons',
+    name: 'Cupones',
+    description: 'Emision y redencion manual de cupones.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'referrals',
+    name: 'Referidos',
+    description: 'Programas y seguimiento basico de referidos.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
+  },
+  {
+    key: 'loyalty',
+    name: 'Fidelizacion',
+    description: 'Capa basica de fidelizacion con cupones y referidos.',
+    version: '1.0.0',
+    enabledByDefault: true,
+    requiredPermissions: [],
+    requiredPlanFeatures: [],
+    status: 'active'
   },
   {
     key: 'integrations',

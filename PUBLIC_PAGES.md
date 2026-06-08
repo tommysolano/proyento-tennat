@@ -41,3 +41,14 @@ limitada de etiquetas y elimina scripts, estilos, handlers y URLs
 No hay CAPTCHA, CDN, SSR, custom domains reales, cookies de atribucion
 avanzada ni A/B testing. Visitor y session IDs son identificadores tecnicos,
 no autenticacion.
+
+## Rutas publicas Fase 10
+
+- `/r/:token`: formulario de review individual.
+- `/widgets/reviews/:slug`: reviews y testimonios publicados.
+- `/surveys/:slug`: encuesta NPS, CSAT o custom.
+- `/ref/:programSlug/:code`: captura basica de referido.
+
+Todas aplican rate limit y resuelven empresa desde identificadores publicos.
+Una landing puede incluir `review_widget_embed`; el payload reemplaza el
+ObjectId por el slug publicado.

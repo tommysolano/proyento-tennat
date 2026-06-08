@@ -207,6 +207,15 @@ export function DistributorDashboard() {
             funnels: Number(data.get('funnels')),
             funnelSteps: Number(data.get('funnelSteps')),
             pageViewsPerMonth: Number(data.get('pageViewsPerMonth')),
+            reviewRequestsPerMonth: Number(data.get('reviewRequestsPerMonth')),
+            reviews: Number(data.get('reviews')),
+            reviewWidgets: Number(data.get('reviewWidgets')),
+            surveys: Number(data.get('surveys')),
+            surveyResponsesPerMonth: Number(data.get('surveyResponsesPerMonth')),
+            coupons: Number(data.get('coupons')),
+            couponRedemptionsPerMonth: Number(data.get('couponRedemptionsPerMonth')),
+            referralPrograms: Number(data.get('referralPrograms')),
+            referralsPerMonth: Number(data.get('referralsPerMonth')),
             modules: Number(data.get('modules'))
           },
           code: data.get('code'),
@@ -423,11 +432,20 @@ export function DistributorDashboard() {
               <input required min="0" type="number" name="funnels" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funnels" />
               <input required min="0" type="number" name="funnelSteps" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Steps de funnel" />
               <input required min="0" type="number" name="pageViewsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Page views/mes" />
+              <input required min="0" type="number" name="reviewRequestsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Solicitudes review/mes" />
+              <input required min="0" type="number" name="reviews" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Reviews" />
+              <input required min="0" type="number" name="reviewWidgets" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Widgets review" />
+              <input required min="0" type="number" name="surveys" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Encuestas satisfaccion" />
+              <input required min="0" type="number" name="surveyResponsesPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Respuestas encuesta/mes" />
+              <input required min="0" type="number" name="coupons" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cupones" />
+              <input required min="0" type="number" name="couponRedemptionsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Redenciones/mes" />
+              <input required min="0" type="number" name="referralPrograms" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Programas referidos" />
+              <input required min="0" type="number" name="referralsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Referidos/mes" />
               <input required min="0" type="number" name="modules" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos" />
             </div>
             <p className="text-xs text-slate-500">En limites operativos, 0 significa sin limite configurado.</p>
             <textarea name="description" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Descripcion" />
-            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime,calendar,bookings,automations,workflows,forms,surveys,landing_pages,funnels" />
+            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime,calendar,bookings,automations,workflows,forms,surveys,landing_pages,funnels,reputation,reviews,testimonials,coupons,referrals,loyalty" />
             <input name="features" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funciones separadas por coma" />
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activo</option>

@@ -219,3 +219,15 @@ honeypot, token firmado y tiempo minimo.
 aplica tags y puede crear oportunidades. `FunnelService` valida referencias
 del mismo tenant, renderiza payloads publicos, registra vistas y conversiones.
 Ambos reutilizan ActivityLog, Notification, UsageRecord y WorkflowEvent.
+
+## Reputacion y fidelizacion Fase 10
+
+`ReviewRequest`, `Review`, `Testimonial`, `ReviewWidget`,
+`SatisfactionSurvey`, `SurveyResponse`, `Coupon`, `CouponRedemption`,
+`ReferralProgram` y `Referral` son agregados multi-tenant. Los servicios
+`ReputationService` y `LoyaltyService` concentran transiciones, auditoria,
+notificaciones, workflow events y medidores.
+
+Los recursos publicos resuelven tenant exclusivamente desde token, slug y
+codigo. Las IP se hashean; los payloads se sanitizan y nunca aceptan
+`companyId` o `distributorId`.

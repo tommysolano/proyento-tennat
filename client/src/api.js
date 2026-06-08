@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? 'http://localhost:4000/api' : '/api');
 
 function queryString(filters = {}) {
   const query = new URLSearchParams();
@@ -701,3 +703,103 @@ export const trackFunnelEvent = (funnelSlug, stepSlug, payload) =>
     `/public/funnels/${encodeURIComponent(funnelSlug)}/${encodeURIComponent(stepSlug)}/events`,
     { method: 'POST', body: JSON.stringify(payload) }
   );
+
+export const getReputationOverview = () => apiRequest('/reputation/overview');
+export const getContactReputation = (contactId) =>
+  apiRequest(`/reputation/contacts/${contactId}`);
+export const getReviewRequests = (filters = {}) =>
+  apiRequest(`/review-requests${queryString(filters)}`);
+export const createReviewRequest = (payload) =>
+  apiRequest('/review-requests', { method: 'POST', body: JSON.stringify(payload) });
+export const cancelReviewRequest = (id) =>
+  apiRequest(`/review-requests/${id}/cancel`, { method: 'PATCH', body: '{}' });
+export const getReviews = (filters = {}) => apiRequest(`/reviews${queryString(filters)}`);
+export const approveReview = (id) => apiRequest(`/reviews/${id}/approve`, { method: 'PATCH', body: '{}' });
+export const rejectReview = (id) => apiRequest(`/reviews/${id}/reject`, { method: 'PATCH', body: '{}' });
+export const publishReview = (id) => apiRequest(`/reviews/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const archiveReview = (id) => apiRequest(`/reviews/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const respondToReview = (id, responseText) =>
+  apiRequest(`/reviews/${id}/respond`, { method: 'POST', body: JSON.stringify({ responseText }) });
+
+export const getTestimonials = () => apiRequest('/testimonials');
+export const createTestimonialFromReview = (reviewId, payload = {}) =>
+  apiRequest(`/testimonials/from-review/${reviewId}`, { method: 'POST', body: JSON.stringify(payload) });
+export const updateTestimonial = (id, payload) =>
+  apiRequest(`/testimonials/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishTestimonial = (id) =>
+  apiRequest(`/testimonials/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const archiveTestimonial = (id) =>
+  apiRequest(`/testimonials/${id}/archive`, { method: 'PATCH', body: '{}' });
+
+export const getReviewWidgets = () => apiRequest('/review-widgets');
+export const createReviewWidget = (payload) =>
+  apiRequest('/review-widgets', { method: 'POST', body: JSON.stringify(payload) });
+export const updateReviewWidget = (id, payload) =>
+  apiRequest(`/review-widgets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishReviewWidget = (id) =>
+  apiRequest(`/review-widgets/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const archiveReviewWidget = (id) =>
+  apiRequest(`/review-widgets/${id}/archive`, { method: 'PATCH', body: '{}' });
+
+export const getSatisfactionSurveys = () => apiRequest('/satisfaction-surveys');
+export const getSatisfactionSurvey = (id) => apiRequest(`/satisfaction-surveys/${id}`);
+export const createSatisfactionSurvey = (payload) =>
+  apiRequest('/satisfaction-surveys', { method: 'POST', body: JSON.stringify(payload) });
+export const updateSatisfactionSurvey = (id, payload) =>
+  apiRequest(`/satisfaction-surveys/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const publishSatisfactionSurvey = (id) =>
+  apiRequest(`/satisfaction-surveys/${id}/publish`, { method: 'PATCH', body: '{}' });
+export const pauseSatisfactionSurvey = (id) =>
+  apiRequest(`/satisfaction-surveys/${id}/pause`, { method: 'PATCH', body: '{}' });
+export const archiveSatisfactionSurvey = (id) =>
+  apiRequest(`/satisfaction-surveys/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getSurveyResponses = (id) => apiRequest(`/satisfaction-surveys/${id}/responses`);
+export const getSurveyAnalytics = (id) => apiRequest(`/satisfaction-surveys/${id}/analytics`);
+
+export const getCoupons = (filters = {}) => apiRequest(`/coupons${queryString(filters)}`);
+export const createCoupon = (payload) =>
+  apiRequest('/coupons', { method: 'POST', body: JSON.stringify(payload) });
+export const updateCoupon = (id, payload) =>
+  apiRequest(`/coupons/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const activateCoupon = (id) => apiRequest(`/coupons/${id}/activate`, { method: 'PATCH', body: '{}' });
+export const disableCoupon = (id) => apiRequest(`/coupons/${id}/disable`, { method: 'PATCH', body: '{}' });
+export const archiveCoupon = (id) => apiRequest(`/coupons/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const issueCoupon = (id, contactId) =>
+  apiRequest(`/coupons/${id}/issue`, { method: 'POST', body: JSON.stringify({ contactId }) });
+export const redeemCoupon = (id, contactId, redemptionId = null) =>
+  apiRequest(`/coupons/${id}/redeem`, { method: 'POST', body: JSON.stringify({ contactId, redemptionId }) });
+export const getCouponRedemptions = (filters = {}) =>
+  apiRequest(`/coupon-redemptions${queryString(filters)}`);
+
+export const getReferralPrograms = () => apiRequest('/referral-programs');
+export const createReferralProgram = (payload) =>
+  apiRequest('/referral-programs', { method: 'POST', body: JSON.stringify(payload) });
+export const updateReferralProgram = (id, payload) =>
+  apiRequest(`/referral-programs/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const activateReferralProgram = (id) =>
+  apiRequest(`/referral-programs/${id}/activate`, { method: 'PATCH', body: '{}' });
+export const pauseReferralProgram = (id) =>
+  apiRequest(`/referral-programs/${id}/pause`, { method: 'PATCH', body: '{}' });
+export const archiveReferralProgram = (id) =>
+  apiRequest(`/referral-programs/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const getReferrals = (filters = {}) => apiRequest(`/referrals${queryString(filters)}`);
+export const createReferral = (payload) =>
+  apiRequest('/referrals', { method: 'POST', body: JSON.stringify(payload) });
+export const convertReferral = (id) => apiRequest(`/referrals/${id}/convert`, { method: 'PATCH', body: '{}' });
+export const rewardReferral = (id, rewardStatus) =>
+  apiRequest(`/referrals/${id}/reward`, { method: 'PATCH', body: JSON.stringify({ rewardStatus }) });
+
+export const getPublicReviewRequest = (token) =>
+  apiRequest(`/public/reviews/request/${encodeURIComponent(token)}`);
+export const submitPublicReview = (token, payload) =>
+  apiRequest(`/public/reviews/request/${encodeURIComponent(token)}/submit`, { method: 'POST', body: JSON.stringify(payload) });
+export const getPublicReviewWidget = (slug) =>
+  apiRequest(`/public/review-widgets/${encodeURIComponent(slug)}`);
+export const getPublicSatisfactionSurvey = (slug) =>
+  apiRequest(`/public/surveys/${encodeURIComponent(slug)}`);
+export const submitPublicSatisfactionSurvey = (slug, payload) =>
+  apiRequest(`/public/surveys/${encodeURIComponent(slug)}/submit`, { method: 'POST', body: JSON.stringify(payload) });
+export const getPublicReferral = (programSlug, code) =>
+  apiRequest(`/public/referrals/${encodeURIComponent(programSlug)}/${encodeURIComponent(code)}`);
+export const submitPublicReferral = (programSlug, code, payload) =>
+  apiRequest(`/public/referrals/${encodeURIComponent(programSlug)}/${encodeURIComponent(code)}/submit`, { method: 'POST', body: JSON.stringify(payload) });

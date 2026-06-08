@@ -190,3 +190,19 @@ submissions y funnels de su empresa; no publica ni modifica. CALLCENTER y
 DISTRIBUTOR no tienen acceso operativo. SUPERADMIN posee `forms:read_all`,
 `landing_pages:read_all` y `funnels:read_all`; la escritura sigue requiriendo
 una sesion ADMIN de empresa.
+
+## Fase 10
+
+- ADMIN: `reputation:manage`, `reviews:manage`,
+  `review_requests:manage`, `testimonials:manage`,
+  `review_widgets:manage`, `surveys:manage`, `coupons:manage`,
+  `referrals:manage`, `reputation:analytics`.
+- SUPERVISOR: `reviews:read_team`, `review_requests:create_team`,
+  `coupons:issue_team`, `referrals:read_team`.
+- CALLCENTER: `review_requests:create_assigned`,
+  `coupons:issue_assigned`, `reviews:read_assigned`.
+- SUPERADMIN: `reputation:read_all`.
+- DISTRIBUTOR: sin operacion directa salvo impersonacion.
+
+Los alcances de equipo y asignados se traducen a contactos de la misma
+empresa antes de consultar recursos.

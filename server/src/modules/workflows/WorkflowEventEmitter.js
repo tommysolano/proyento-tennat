@@ -24,7 +24,17 @@ const ACTIVITY_EVENTS = {
   appointment_rescheduled: ['appointment.rescheduled', 'calendar', 'appointment', 'appointmentId'],
   appointment_reminder_sent: ['appointment.reminder_sent', 'calendar', 'appointment', 'appointmentId'],
   company_invoice_created: ['invoice.created', 'billing', 'invoice', 'invoiceId'],
-  company_payment_recorded: ['payment.succeeded', 'billing', 'payment', 'paymentId']
+  company_payment_recorded: ['payment.succeeded', 'billing', 'payment', 'paymentId'],
+  review_request_created: ['review_request.created', 'reviews', 'review_request', 'reviewRequestId'],
+  review_received: ['review.submitted', 'reviews', 'review', 'reviewId'],
+  review_approved: ['review.approved', 'reviews', 'review', 'reviewId'],
+  review_published: ['review.published', 'reviews', 'review', 'reviewId'],
+  testimonial_published: ['testimonial.published', 'testimonials', 'testimonial', 'testimonialId'],
+  survey_response_received: ['survey.submitted', 'surveys', 'survey_response', 'surveyResponseId'],
+  coupon_issued: ['coupon.issued', 'coupons', 'coupon_redemption', 'couponRedemptionId'],
+  coupon_redeemed: ['coupon.redeemed', 'coupons', 'coupon_redemption', 'couponRedemptionId'],
+  referral_created: ['referral.created', 'referrals', 'referral', 'referralId'],
+  referral_converted: ['referral.converted', 'referrals', 'referral', 'referralId']
 };
 
 export class WorkflowEventEmitter {

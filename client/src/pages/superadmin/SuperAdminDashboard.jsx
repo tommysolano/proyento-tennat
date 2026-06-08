@@ -41,6 +41,7 @@ const inputClass = 'w-full rounded-md border border-slate-200 px-3 py-2.5 text-s
 const PLATFORM_MODULES = [
   'core', 'crm', 'contacts', 'calendar', 'bookings', 'automations',
   'workflows', 'forms', 'surveys', 'landing_pages', 'funnels',
+  'reputation', 'reviews', 'testimonials', 'coupons', 'referrals', 'loyalty',
   'billing', 'reporting'
 ];
 
@@ -240,7 +241,16 @@ export function SuperAdminDashboard({ section = 'all' }) {
             landingPages: Number(data.get('landingPages')),
             funnels: Number(data.get('funnels')),
             funnelSteps: Number(data.get('funnelSteps')),
-            pageViewsPerMonth: Number(data.get('pageViewsPerMonth'))
+            pageViewsPerMonth: Number(data.get('pageViewsPerMonth')),
+            reviewRequestsPerMonth: Number(data.get('reviewRequestsPerMonth')),
+            reviews: Number(data.get('reviews')),
+            reviewWidgets: Number(data.get('reviewWidgets')),
+            surveys: Number(data.get('surveys')),
+            surveyResponsesPerMonth: Number(data.get('surveyResponsesPerMonth')),
+            coupons: Number(data.get('coupons')),
+            couponRedemptionsPerMonth: Number(data.get('couponRedemptionsPerMonth')),
+            referralPrograms: Number(data.get('referralPrograms')),
+            referralsPerMonth: Number(data.get('referralsPerMonth'))
           },
           includedModules: PLATFORM_MODULES,
           status: 'active'
@@ -470,7 +480,7 @@ export function SuperAdminDashboard({ section = 'all' }) {
               <input name="phone" className={inputClass} placeholder="Telefono" />
               <input name="region" className={inputClass} placeholder="Region" defaultValue="LatAm" />
               <input required type="email" name="userEmail" className={inputClass} placeholder="Email de acceso" />
-              <input required minLength="8" type="password" name="password" className={inputClass} placeholder="Password demo/dev" />
+              <input required minLength="8" type="password" name="password" className={inputClass} placeholder="Password temporal" />
               <select name="status" className={inputClass}>
                 <option value="trial">Trial</option>
                 <option value="active">Activo</option>
@@ -555,6 +565,15 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <input required min="0" type="number" name="funnels" className={inputClass} placeholder="Funnels" />
                 <input required min="0" type="number" name="funnelSteps" className={inputClass} placeholder="Steps de funnel" />
                 <input required min="0" type="number" name="pageViewsPerMonth" className={inputClass} placeholder="Page views/mes" />
+                <input required min="0" type="number" name="reviewRequestsPerMonth" className={inputClass} placeholder="Solicitudes review/mes" />
+                <input required min="0" type="number" name="reviews" className={inputClass} placeholder="Reviews" />
+                <input required min="0" type="number" name="reviewWidgets" className={inputClass} placeholder="Widgets review" />
+                <input required min="0" type="number" name="surveys" className={inputClass} placeholder="Encuestas satisfaccion" />
+                <input required min="0" type="number" name="surveyResponsesPerMonth" className={inputClass} placeholder="Respuestas encuesta/mes" />
+                <input required min="0" type="number" name="coupons" className={inputClass} placeholder="Cupones" />
+                <input required min="0" type="number" name="couponRedemptionsPerMonth" className={inputClass} placeholder="Redenciones/mes" />
+                <input required min="0" type="number" name="referralPrograms" className={inputClass} placeholder="Programas referidos" />
+                <input required min="0" type="number" name="referralsPerMonth" className={inputClass} placeholder="Referidos/mes" />
               </div>
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
             </form>

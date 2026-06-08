@@ -30,6 +30,15 @@ const LIMIT_FIELDS = [
   'funnels',
   'funnelSteps',
   'pageViewsPerMonth',
+  'reviewRequestsPerMonth',
+  'reviews',
+  'reviewWidgets',
+  'surveys',
+  'surveyResponsesPerMonth',
+  'coupons',
+  'couponRedemptionsPerMonth',
+  'referralPrograms',
+  'referralsPerMonth',
   'modules'
 ];
 

@@ -15,6 +15,9 @@ La Fase 8 agrega workflows internos por empresa con eventos durables,
 condiciones seguras, acciones auditables, delays sobre jobs e historial.
 La Fase 9 incorpora formularios, encuestas, landing pages y funnels publicos
 con captura CRM, booking links, workflows, anti-spam y analytics basicos.
+La Fase 10 agrega solicitudes de resena, moderacion, testimonios, widgets,
+encuestas NPS/CSAT, cupones y referidos. Tambien elimina el seed demo y deja
+el monorepo listo para Render, Vercel y MongoDB Atlas.
 
 ## Requisitos
 
@@ -27,7 +30,7 @@ con captura CRM, booking links, workflows, anti-spam y analytics basicos.
 npm install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
-npm run seed
+npm run seed:superadmin
 npm run dev
 ```
 
@@ -41,30 +44,21 @@ Copy-Item client/.env.example client/.env
 Los `.env` reales estan ignorados y no deben versionarse. La precedencia de
 configuracion es: variables del proceso, `server/.env`, `.env` raiz.
 
-## Cuentas demo
+## Primer acceso
 
-El seed es exclusivamente para desarrollo.
-
-| Rol | Email |
-| --- | --- |
-| SUPERADMIN | superadmin@example.com |
-| DISTRIBUTOR | distributor@demo.com |
-| ADMIN | admin@demo.com |
-| SUPERVISOR | supervisor@demo.com |
-| CALLCENTER | callcenter@demo.com |
-
-El seed genera passwords aleatorios y los muestra una sola vez en consola.
-Opcionalmente pueden definirse `DEMO_PASSWORD` y
-`SUPERADMIN_DEMO_PASSWORD` antes de ejecutar `npm run seed`. No use cuentas
-demo en produccion.
+No se crean distribuidores, empresas, planes ni datos operativos demo.
+Configure `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD` (minimo 12 caracteres)
+y ejecute `npm run seed:superadmin`. El script crea solo el usuario
+`SUPERADMIN`, es idempotente y no cambia su password si ya existe.
 
 ## Scripts
 
 ```bash
 npm run dev
-npm run seed
+npm run seed:superadmin
 npm test
 npm run build
+npm run start:server
 npm run rotate-credentials-key --workspace server
 ```
 
@@ -129,6 +123,10 @@ Frontend:
 - `/forms/:slug`
 - `/p/:slug`
 - `/f/:funnelSlug/:stepSlug`
+- `/r/:token`
+- `/widgets/reviews/:slug`
+- `/surveys/:slug`
+- `/ref/:programSlug/:code`
 
 API de plataforma:
 
@@ -211,6 +209,20 @@ API de conversaciones:
 - `/api/funnels`
 - `/api/funnel-steps`
 - `/api/public/funnels/:funnelSlug/:stepSlug`
+- `/api/reputation/overview`
+- `/api/review-requests`
+- `/api/reviews`
+- `/api/testimonials`
+- `/api/review-widgets`
+- `/api/satisfaction-surveys`
+- `/api/coupons`
+- `/api/coupon-redemptions`
+- `/api/referral-programs`
+- `/api/referrals`
+- `/api/public/reviews/request/:token`
+- `/api/public/review-widgets/:slug`
+- `/api/public/surveys/:slug`
+- `/api/public/referrals/:programSlug/:code`
 
 ## Variables de Fase 5 y 6
 
@@ -249,6 +261,20 @@ Fase 9 agrega `forms`, `form_submissions`, `landing_pages`, `funnels`,
 `funnel_steps`, `page_views` y `conversions`. Sus limites configurables son
 `forms`, `formSubmissionsPerMonth`, `landingPages`, `funnels`, `funnelSteps`
 y `pageViewsPerMonth`.
+Fase 10 agrega `review_requests`, `reviews`, `review_widgets`,
+`satisfaction_surveys`, `survey_responses`, `coupons`,
+`coupon_redemptions`, `referral_programs` y `referrals`.
+
+## Deploy rapido
+
+- Render: Root Directory `server`, Build Command `npm install`, Start Command
+  `npm start`, health check `/health`.
+- Vercel: Root Directory `client`, Build Command `npm run build`, output
+  `dist`, con `VITE_API_URL` apuntando al backend Render.
+- MongoDB: use Atlas y configure `MONGODB_URI` solo como secreto de entorno.
+- CORS: configure `CLIENT_URL` y `CORS_ORIGINS` con los dominios frontend.
+
+Consulte [DEPLOYMENT.md](DEPLOYMENT.md) antes de publicar.
 
 ## Documentacion
 
@@ -274,6 +300,11 @@ y `pageViewsPerMonth`.
 - [LANDING_PAGES.md](LANDING_PAGES.md)
 - [FUNNELS.md](FUNNELS.md)
 - [PUBLIC_PAGES.md](PUBLIC_PAGES.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [REPUTATION.md](REPUTATION.md)
+- [REVIEWS.md](REVIEWS.md)
+- [LOYALTY.md](LOYALTY.md)
+- [REFERRALS.md](REFERRALS.md)
 - [WHATSAPP_PRODUCTION_CHECKLIST.md](WHATSAPP_PRODUCTION_CHECKLIST.md)
 
 ## Alcance
@@ -290,3 +321,6 @@ reales o SSR. El calendario y las reservas son internos: no sincronizan
 Google Calendar/Outlook ni crean enlaces de Zoom, Meet u otros proveedores.
 Los workflows no envian WhatsApp, email o SMS, no llaman webhooks externos y
 no ejecutan IA; esos tipos permanecen `planned`.
+Reputacion no consulta Google, Facebook, Trustpilot ni otras APIs externas.
+Los cupones y recompensas son registros manuales: no hay checkout, pagos ni
+sistema avanzado de puntos.

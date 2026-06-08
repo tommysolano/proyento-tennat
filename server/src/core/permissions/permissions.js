@@ -18,7 +18,8 @@ export const ROLE_PERMISSIONS = {
     'workflow_runs:read_all',
     'forms:read_all',
     'landing_pages:read_all',
-    'funnels:read_all'
+    'funnels:read_all',
+    'reputation:read_all'
   ],
   DISTRIBUTOR: [
     'companies:manage',
@@ -85,7 +86,16 @@ export const ROLE_PERMISSIONS = {
     'landing_pages:manage',
     'landing_pages:analytics',
     'funnels:manage',
-    'funnels:analytics'
+    'funnels:analytics',
+    'reputation:manage',
+    'reviews:manage',
+    'review_requests:manage',
+    'testimonials:manage',
+    'review_widgets:manage',
+    'surveys:manage',
+    'coupons:manage',
+    'referrals:manage',
+    'reputation:analytics'
   ],
   SUPERVISOR: [
     'crm:read_team',
@@ -117,7 +127,11 @@ export const ROLE_PERMISSIONS = {
     'workflow_runs:read_team',
     'forms:read_team',
     'forms:submissions_read',
-    'funnels:read_team'
+    'funnels:read_team',
+    'reviews:read_team',
+    'review_requests:create_team',
+    'coupons:issue_team',
+    'referrals:read_team'
   ],
   CALLCENTER: [
     'contacts:read_assigned',
@@ -140,7 +154,10 @@ export const ROLE_PERMISSIONS = {
     'calendars:read_assigned',
     'appointments:manage_assigned',
     'appointments:read_assigned',
-    'appointments:update_assigned'
+    'appointments:update_assigned',
+    'review_requests:create_assigned',
+    'coupons:issue_assigned',
+    'reviews:read_assigned'
   ]
 };
 

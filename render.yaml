@@ -1,0 +1,62 @@
+services:
+  - type: web
+    name: tenantdesk-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: SERVER_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SUPERADMIN_NAME
+        value: Programador
+      - key: SUPERADMIN_EMAIL
+        sync: false
+      - key: SUPERADMIN_PASSWORD
+        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
+      - key: REQUIRE_WEBHOOK_SIGNATURE
+        value: "true"
+      - key: JOB_WORKER_ENABLED
+        value: "true"
+      - key: JOB_WORKER_CONCURRENCY
+        value: "2"
+      - key: JOB_MAX_ATTEMPTS
+        value: "5"
+      - key: REALTIME_ENABLED
+        value: "true"
+      - key: WHATSAPP_GRAPH_API_VERSION
+        value: v20.0
+      - key: WHATSAPP_GRAPH_API_BASE_URL
+        value: https://graph.facebook.com
+      - key: MEDIA_STORAGE_PROVIDER
+        value: local
+      - key: MEDIA_LOCAL_DIR
+        value: uploads
+      - key: MEDIA_MAX_SIZE_MB
+        value: "25"
+      - key: MEDIA_SIGNED_URL_TTL_SECONDS
+        value: "300"
+      - key: MEDIA_ALLOWED_MIME_TYPES
+        value: image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,video/mp4,application/pdf
+      - key: WHATSAPP_SANDBOX_MODE
+        value: "false"
+      - key: ALERTS_ENABLED
+        value: "true"
+      - key: PUBLIC_TRACKING_SALT
+        sync: false

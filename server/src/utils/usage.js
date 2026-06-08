@@ -21,7 +21,16 @@ const METRIC_LIMITS = {
   funnels: ['funnels'],
   funnel_steps: ['funnelSteps'],
   page_views: ['pageViewsPerMonth'],
-  conversions: []
+  conversions: [],
+  review_requests: ['reviewRequestsPerMonth'],
+  reviews: ['reviews'],
+  review_widgets: ['reviewWidgets'],
+  satisfaction_surveys: ['surveys'],
+  survey_responses: ['surveyResponsesPerMonth'],
+  coupons: ['coupons'],
+  coupon_redemptions: ['couponRedemptionsPerMonth'],
+  referral_programs: ['referralPrograms'],
+  referrals: ['referralsPerMonth']
 };
 
 export function usagePeriod(date = new Date()) {
@@ -190,7 +199,16 @@ export async function usageSnapshot(companyId) {
     'funnels',
     'funnel_steps',
     'page_views',
-    'conversions'
+    'conversions',
+    'review_requests',
+    'reviews',
+    'review_widgets',
+    'satisfaction_surveys',
+    'survey_responses',
+    'coupons',
+    'coupon_redemptions',
+    'referral_programs',
+    'referrals'
   ];
   const subscription = await companySubscription(companyId);
   const rows = await Promise.all(

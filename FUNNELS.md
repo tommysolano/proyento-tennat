@@ -41,3 +41,9 @@ oportunidades, conversion rate y abandono por step.
 
 No hay checkout, pagos, dominios reales, A/B testing, editor visual avanzado,
 webhooks externos ni acciones de mensajes.
+
+## Integracion Fase 10
+
+Un `FunnelStep` puede usar `satisfaction_survey` y referenciar una
+`SatisfactionSurvey` publicada de la misma empresa. Review requests no se
+usan como step estatico porque cada link contiene un token individual.

@@ -55,3 +55,9 @@ Eventos: `form.created`, `form.published`, `form.submitted`,
 Metricas: vistas, submissions, procesados, spam, ignorados, fallidos,
 contactos, oportunidades y conversion rate. Medidores: `forms`,
 `form_submissions` y `conversions`.
+
+## Integracion Fase 10
+
+Una submission puede disparar workflows existentes. La accion futura
+`coupon.issue` esta catalogada como planned; forms no emite cupones
+directamente ni acepta configuracion de pagos.

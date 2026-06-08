@@ -26,6 +26,11 @@
 - `landing_pages`
 - `funnels`
 - `reputation`
+- `reviews`
+- `testimonials`
+- `coupons`
+- `referrals`
+- `loyalty`
 - `integrations`
 
 Cada entrada define `key`, nombre, descripcion, version, estado,
@@ -99,3 +104,12 @@ Las rutas privadas y publicas vuelven a resolver los entitlements en backend.
 
 Desactivar un modulo no elimina datos: bloquea administracion, publicacion y
 resolucion publica hasta restaurar el entitlement.
+
+## Reputacion y loyalty
+
+`reputation`, `reviews`, `testimonials`, `coupons`, `referrals` y `loyalty`
+estan activos en `1.0.0` y habilitados por defecto para el MVP. Las rutas
+publicas vuelven a evaluar entitlements. Desactivar uno bloquea su superficie
+privada y publica sin borrar datos.
+
+No habilitan Google/Facebook Reviews, mensajes, pagos ni puntos.

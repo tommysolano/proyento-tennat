@@ -100,3 +100,14 @@ ejecutor repite el filtro tenant. `WorkflowEvent.payload` usa `select:false`,
 se sanitiza y nunca aparece en JSON. Los errores tambien se sanitizan.
 Los eventos de formularios solo incluyen IDs, tipo y origen; nunca copian
 `values` completos al payload del workflow.
+
+## Eventos Fase 10
+
+Eventos activos: `review_request.created`, `review.submitted`,
+`review.approved`, `review.published`, `review.negative_received`,
+`testimonial.published`, `survey.submitted`, `nps.low_score`,
+`coupon.issued`, `coupon.redeemed`, `referral.created` y
+`referral.converted`.
+
+Acciones planned: `review_request.create`, `coupon.issue`, `referral.create`
+y `testimonial.create_from_review`.

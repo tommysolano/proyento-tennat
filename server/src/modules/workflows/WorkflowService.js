@@ -18,6 +18,15 @@ import { LandingPage } from '../../models/LandingPage.js';
 import { Funnel } from '../../models/Funnel.js';
 import { FunnelStep } from '../../models/FunnelStep.js';
 import { ConversionEvent } from '../../models/ConversionEvent.js';
+import { ReviewRequest } from '../../models/ReviewRequest.js';
+import { Review } from '../../models/Review.js';
+import { Testimonial } from '../../models/Testimonial.js';
+import { SatisfactionSurvey } from '../../models/SatisfactionSurvey.js';
+import { SurveyResponse } from '../../models/SurveyResponse.js';
+import { Coupon } from '../../models/Coupon.js';
+import { CouponRedemption } from '../../models/CouponRedemption.js';
+import { ReferralProgram } from '../../models/ReferralProgram.js';
+import { Referral } from '../../models/Referral.js';
 import { sanitizeError } from '../../utils/sanitize.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 import { JobService } from '../jobs/JobService.js';
@@ -42,7 +51,16 @@ const ENTITY_MODELS = {
   landing_page: LandingPage,
   funnel: Funnel,
   funnel_step: FunnelStep,
-  conversion_event: ConversionEvent
+  conversion_event: ConversionEvent,
+  review_request: ReviewRequest,
+  review: Review,
+  testimonial: Testimonial,
+  satisfaction_survey: SatisfactionSurvey,
+  survey_response: SurveyResponse,
+  coupon: Coupon,
+  coupon_redemption: CouponRedemption,
+  referral_program: ReferralProgram,
+  referral: Referral
 };
 
 function startOfUtcDay(date = new Date()) {

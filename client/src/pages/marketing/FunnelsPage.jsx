@@ -22,6 +22,7 @@ import {
   getFunnelSteps,
   getLandingPages,
   getPublicFunnel,
+  getSatisfactionSurveys,
   pauseFunnel,
   publishFunnel,
   publishFunnelStep,
@@ -38,8 +39,17 @@ import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { PublicFormRenderer } from './FormsPage.jsx';
 import { PublicLandingRenderer } from './LandingPagesPage.jsx';
+import { PublicSurveyPage } from '../reputation/PublicReputationPages.jsx';
 
-const stepTypes = ['landing', 'form', 'survey', 'booking', 'thank_you', 'redirect'];
+const stepTypes = [
+  'landing',
+  'form',
+  'survey',
+  'satisfaction_survey',
+  'booking',
+  'thank_you',
+  'redirect'
+];
 const emptyFunnel = {
   name: '',
   slug: '',
@@ -73,6 +83,7 @@ function normalizeStep(step, order) {
     landingPageId: idOf(step.landingPageId),
     formId: idOf(step.formId),
     bookingLinkId: idOf(step.bookingLinkId),
+    satisfactionSurveyId: idOf(step.satisfactionSurveyId),
     content: {
       title: '',
       description: '',
@@ -204,19 +215,25 @@ export function FunnelBuilderPage() {
   const navigate = useNavigate();
   const [funnel, setFunnel] = useState(emptyFunnel);
   const [steps, setSteps] = useState([]);
-  const [references, setReferences] = useState({ pages: [], forms: [], bookings: [] });
+  const [references, setReferences] = useState({
+    pages: [],
+    forms: [],
+    bookings: [],
+    satisfactionSurveys: []
+  });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
-    const [funnelData, stepData, pages, forms, bookings] = await Promise.all([
+    const [funnelData, stepData, pages, forms, bookings, satisfactionSurveys] = await Promise.all([
       id ? getFunnel(id) : Promise.resolve(emptyFunnel),
       id ? getFunnelSteps(id) : Promise.resolve([]),
       getLandingPages({ status: 'published' }),
       getForms({ status: 'published' }),
-      getBookingLinks({ status: 'active' })
+      getBookingLinks({ status: 'active' }),
+      getSatisfactionSurveys()
     ]);
     setFunnel({
       ...emptyFunnel,
@@ -228,7 +245,12 @@ export function FunnelBuilderPage() {
       }
     });
     setSteps(stepData.map(normalizeStep));
-    setReferences({ pages, forms, bookings });
+    setReferences({
+      pages,
+      forms,
+      bookings,
+      satisfactionSurveys: satisfactionSurveys.filter((survey) => survey.status === 'published')
+    });
   }, [id]);
 
   useEffect(() => {
@@ -282,6 +304,7 @@ export function FunnelBuilderPage() {
           landingPageId: step.landingPageId || null,
           formId: step.formId || null,
           bookingLinkId: step.bookingLinkId || null,
+          satisfactionSurveyId: step.satisfactionSurveyId || null,
           settings: { ...step.settings, nextStepId: step.settings.nextStepId || null }
         })));
       }
@@ -344,6 +367,7 @@ export function FunnelBuilderPage() {
                 {step.type === 'landing' ? <label className="text-xs font-semibold">Landing<select className={inputClass} value={step.landingPageId} onChange={(event) => updateStep(index, { landingPageId: event.target.value, formId: '', bookingLinkId: '' })}><option value="">Selecciona</option>{references.pages.map((page) => <option key={page._id} value={page._id}>{page.name}</option>)}</select></label> : null}
                 {['form', 'survey'].includes(step.type) ? <label className="text-xs font-semibold">Formulario<select className={inputClass} value={step.formId} onChange={(event) => updateStep(index, { formId: event.target.value, landingPageId: '', bookingLinkId: '' })}><option value="">Selecciona</option>{references.forms.filter((form) => step.type !== 'survey' || form.type === 'survey').map((form) => <option key={form._id} value={form._id}>{form.name}</option>)}</select></label> : null}
                 {step.type === 'booking' ? <label className="text-xs font-semibold">Booking<select className={inputClass} value={step.bookingLinkId} onChange={(event) => updateStep(index, { bookingLinkId: event.target.value, landingPageId: '', formId: '' })}><option value="">Selecciona</option>{references.bookings.map((booking) => <option key={booking._id} value={booking._id}>{booking.title}</option>)}</select></label> : null}
+                {step.type === 'satisfaction_survey' ? <label className="text-xs font-semibold">Encuesta de satisfaccion<select className={inputClass} value={step.satisfactionSurveyId} onChange={(event) => updateStep(index, { satisfactionSurveyId: event.target.value, bookingLinkId: '', landingPageId: '', formId: '' })}><option value="">Selecciona</option>{references.satisfactionSurveys.map((survey) => <option key={survey._id} value={survey._id}>{survey.name}</option>)}</select></label> : null}
                 <label className="text-xs font-semibold">Titulo<input className={inputClass} value={step.content.title} onChange={(event) => updateStep(index, { content: { ...step.content, title: event.target.value } })} /></label>
                 <label className="text-xs font-semibold md:col-span-2">Descripcion<input className={inputClass} value={step.content.description} onChange={(event) => updateStep(index, { content: { ...step.content, description: event.target.value } })} /></label>
                 {['thank_you', 'landing'].includes(step.type) ? <label className="text-xs font-semibold md:col-span-2">HTML limitado<textarea className={`${inputClass} min-h-24`} value={step.content.html} onChange={(event) => updateStep(index, { content: { ...step.content, html: event.target.value } })} /></label> : null}
@@ -390,6 +414,8 @@ export function PublicFunnelPage() {
     body = <PublicLandingRenderer slug={data.step.landingPageSlug} embedded />;
   } else if (['form', 'survey'].includes(data.step.type) && data.step.formSlug) {
     body = <div className="mx-auto max-w-xl"><PublicFormRenderer slug={data.step.formSlug} source={source} embedded /></div>;
+  } else if (data.step.type === 'satisfaction_survey' && data.step.satisfactionSurveySlug) {
+    body = <PublicSurveyPage slug={data.step.satisfactionSurveySlug} embedded />;
   } else if (data.step.type === 'booking' && data.step.bookingLinkSlug) {
     body = <div className="text-center"><h1 className="text-3xl font-semibold">{data.step.content.title || 'Reserva tu cita'}</h1><p className="mt-3 text-slate-600">{data.step.content.description}</p><Link to={`/book/${data.step.bookingLinkSlug}?funnelSlug=${encodeURIComponent(data.funnel.slug)}&stepSlug=${encodeURIComponent(data.step.slug)}`} className="mt-8 inline-flex rounded-lg bg-cyan-700 px-6 py-3 font-semibold text-white">Ver disponibilidad</Link></div>;
   } else if (data.step.type === 'redirect') {

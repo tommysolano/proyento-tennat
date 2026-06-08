@@ -39,3 +39,9 @@ No hay drag and drop, campanas, canales externos, webhooks reales, IA ni pagos
 automaticos. Forms, landings y funnels emiten eventos internos, pero sus
 acciones externas siguen `planned`. Los schedulers de vencimientos marcados
 `planned` quedan pendientes.
+
+## Fase 10
+
+Reviews, NPS, cupones y referidos pueden disparar workflows internos. Las
+acciones de crear solicitudes, emitir cupones, crear referidos o testimonios
+estan catalogadas como `planned`; no realizan mensajes ni pagos.

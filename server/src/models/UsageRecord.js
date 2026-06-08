@@ -30,6 +30,15 @@ const usageRecordSchema = new mongoose.Schema(
         'funnel_steps',
         'page_views',
         'conversions',
+        'review_requests',
+        'reviews',
+        'review_widgets',
+        'satisfaction_surveys',
+        'survey_responses',
+        'coupons',
+        'coupon_redemptions',
+        'referral_programs',
+        'referrals',
         'ai_tokens'
       ],
       required: true

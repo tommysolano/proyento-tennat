@@ -45,7 +45,17 @@ test('phase 6 operational endpoints require authentication', async () => {
     '/api/forms',
     '/api/landing-pages',
     '/api/funnels',
-    '/api/funnel-steps/000000000000000000000000'
+    '/api/funnel-steps/000000000000000000000000',
+    '/api/reputation/overview',
+    '/api/review-requests',
+    '/api/reviews',
+    '/api/testimonials',
+    '/api/review-widgets',
+    '/api/satisfaction-surveys',
+    '/api/coupons',
+    '/api/coupon-redemptions',
+    '/api/referral-programs',
+    '/api/referrals'
   ]) {
     const response = await fetch(`${baseUrl}${path}`);
     assert.equal(response.status, 401, path);

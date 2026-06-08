@@ -21,6 +21,7 @@ import {
   getLandingPageAnalytics,
   getLandingPages,
   getPublicLandingPage,
+  getReviewWidgets,
   pauseLandingPage,
   publishLandingPage,
   trackLandingPageEvent,
@@ -33,10 +34,11 @@ import { CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.js
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { PublicFormRenderer } from './FormsPage.jsx';
+import { PublicReviewWidgetPage } from '../reputation/PublicReputationPages.jsx';
 
 const sectionTypes = [
   'hero', 'text', 'image', 'button', 'form_embed',
-  'booking_embed', 'faq', 'custom_html_limited'
+  'booking_embed', 'review_widget_embed', 'faq', 'custom_html_limited'
 ];
 const emptyPage = {
   name: '',
@@ -105,6 +107,7 @@ function defaultContent(type) {
     button: { label: 'Continuar', href: '/' },
     form_embed: { formId: '' },
     booking_embed: { bookingLinkId: '', label: 'Reservar una cita' },
+    review_widget_embed: { reviewWidgetId: '' },
     faq: { items: [{ question: 'Pregunta frecuente', answer: 'Respuesta breve.' }] },
     custom_html_limited: { html: '<p>Contenido HTML limitado.</p>' }
   }[type];
@@ -217,7 +220,7 @@ export function LandingPageBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [page, setPage] = useState(emptyPage);
-  const [references, setReferences] = useState({ forms: [], bookings: [] });
+  const [references, setReferences] = useState({ forms: [], bookings: [], widgets: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -227,10 +230,15 @@ export function LandingPageBuilderPage() {
     Promise.all([
       id ? getLandingPage(id) : Promise.resolve(emptyPage),
       getForms({ status: 'published' }),
-      getBookingLinks({ status: 'active' })
-    ]).then(([pageData, forms, bookings]) => {
+      getBookingLinks({ status: 'active' }),
+      getReviewWidgets()
+    ]).then(([pageData, forms, bookings, widgets]) => {
       setPage(normalizePage(pageData));
-      setReferences({ forms, bookings });
+      setReferences({
+        forms,
+        bookings,
+        widgets: widgets.filter((widget) => widget.status === 'published')
+      });
     }).catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
   }, [id]);
@@ -346,6 +354,8 @@ export function LandingPageBuilderPage() {
                   <label className="text-xs font-semibold">Booking<select className={inputClass} value={idOf(section.content.bookingLinkId)} onChange={(event) => updateSection(index, { content: { ...section.content, bookingLinkId: event.target.value } })}><option value="">Selecciona</option>{references.bookings.map((booking) => <option key={booking._id} value={booking._id}>{booking.title}</option>)}</select></label>
                   <label className="text-xs font-semibold">Label<input className={inputClass} value={section.content.label || ''} onChange={(event) => updateSection(index, { content: { ...section.content, label: event.target.value } })} /></label>
                 </div>
+              ) : section.type === 'review_widget_embed' ? (
+                <label className="mt-3 block text-xs font-semibold">Widget de resenas<select className={inputClass} value={idOf(section.content.reviewWidgetId)} onChange={(event) => updateSection(index, { content: { reviewWidgetId: event.target.value } })}><option value="">Selecciona</option>{references.widgets.map((widget) => <option key={widget._id} value={widget._id}>{widget.name}</option>)}</select></label>
               ) : (
                 <label className="mt-3 block text-xs font-semibold">Contenido JSON<textarea key={`${section.type}-${section._id || index}`} className={`${inputClass} min-h-40 font-mono text-xs`} defaultValue={JSON.stringify(section.content, null, 2)} onBlur={(event) => {
                   try {
@@ -389,6 +399,7 @@ function LandingSection({ section, pageSlug, primaryColor }) {
   if (section.type === 'button') return <section className="px-6 py-10 text-center"><a href={content.href || '/'} onClick={() => trackLandingPageEvent(pageSlug, { type: 'button_click', label: content.label || '' }).catch(() => {})} className="inline-flex rounded-lg px-6 py-3 font-semibold text-white" style={{ backgroundColor: primaryColor }}>{content.label || 'Continuar'}</a></section>;
   if (section.type === 'form_embed' && content.formSlug) return <section className="mx-auto max-w-xl px-4 py-12"><PublicFormRenderer slug={content.formSlug} source={{ landingSlug: pageSlug }} embedded /></section>;
   if (section.type === 'booking_embed' && content.bookingLinkSlug) return <section className="px-6 py-12 text-center"><Link className="inline-flex rounded-lg px-6 py-3 font-semibold text-white" style={{ backgroundColor: primaryColor }} to={`/book/${content.bookingLinkSlug}?landingSlug=${encodeURIComponent(pageSlug)}`}>{content.label || 'Reservar una cita'}</Link></section>;
+  if (section.type === 'review_widget_embed' && content.reviewWidgetSlug) return <section className="px-4 py-12"><PublicReviewWidgetPage slug={content.reviewWidgetSlug} embedded /></section>;
   if (section.type === 'faq') return <section className="mx-auto max-w-4xl space-y-3 px-6 py-14">{(content.items || []).map((item, index) => <details key={index} className="rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer font-semibold">{item.question}</summary><p className="mt-3 text-slate-600">{item.answer}</p></details>)}</section>;
   if (section.type === 'custom_html_limited') return <section className="mx-auto max-w-4xl px-6 py-12" dangerouslySetInnerHTML={{ __html: content.html || '' }} />;
   return null;

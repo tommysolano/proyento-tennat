@@ -6,6 +6,7 @@ import { Form } from '../models/Form.js';
 import { Funnel } from '../models/Funnel.js';
 import { FunnelStep } from '../models/FunnelStep.js';
 import { LandingPage } from '../models/LandingPage.js';
+import { SatisfactionSurvey } from '../models/SatisfactionSurvey.js';
 import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { FunnelService } from '../modules/funnels/FunnelService.js';
 import { safeTrackingContext, slugifyPublic } from '../modules/marketing/marketingSecurity.js';
@@ -63,7 +64,7 @@ async function resolve(funnelSlug, stepSlug = '') {
     }).sort({ order: 1 });
   }
   if (!step) return null;
-  const [landingPage, form, bookingLink, nextStep] = await Promise.all([
+  const [landingPage, form, bookingLink, satisfactionSurvey, nextStep] = await Promise.all([
     step.landingPageId
       ? LandingPage.findOne({ _id: step.landingPageId, companyId: funnel.companyId, status: 'published' }).select('slug')
       : null,
@@ -76,6 +77,13 @@ async function resolve(funnelSlug, stepSlug = '') {
           companyId: funnel.companyId,
           status: 'active',
           publicEnabled: true
+        }).select('slug')
+      : null,
+    step.satisfactionSurveyId
+      ? SatisfactionSurvey.findOne({
+          _id: step.satisfactionSurveyId,
+          companyId: funnel.companyId,
+          status: 'published'
         }).select('slug')
       : null,
     step.settings.nextStepId
@@ -92,7 +100,16 @@ async function resolve(funnelSlug, stepSlug = '') {
           order: { $gt: step.order }
         }).sort({ order: 1 }).select('slug')
   ]);
-  return { funnel, step, company, landingPage, form, bookingLink, nextStep };
+  return {
+    funnel,
+    step,
+    company,
+    landingPage,
+    form,
+    bookingLink,
+    satisfactionSurvey,
+    nextStep
+  };
 }
 
 async function render(req, res, next) {

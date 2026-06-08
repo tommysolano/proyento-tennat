@@ -7,7 +7,11 @@ export const CONVERSION_TYPES = [
   'booking_created',
   'contact_created',
   'opportunity_created',
-  'button_click'
+  'button_click',
+  'review_submission',
+  'survey_response',
+  'coupon_redemption',
+  'referral_submission'
 ];
 
 const conversionEventSchema = new mongoose.Schema(

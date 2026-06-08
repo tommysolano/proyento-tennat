@@ -54,6 +54,21 @@ import {
   FunnelsPage,
   PublicFunnelPage
 } from '../pages/marketing/FunnelsPage.jsx';
+import {
+  ReputationPage,
+  ReviewRequestsPage,
+  ReviewsPage,
+  ReviewWidgetsPage,
+  SurveysPage,
+  TestimonialsPage
+} from '../pages/reputation/ReputationPages.jsx';
+import { CouponsPage, ReferralsPage } from '../pages/reputation/LoyaltyPages.jsx';
+import {
+  PublicReferralPage,
+  PublicReviewPage,
+  PublicReviewWidgetPage,
+  PublicSurveyPage
+} from '../pages/reputation/PublicReputationPages.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -83,6 +98,22 @@ export const router = createBrowserRouter([
   {
     path: '/f/:funnelSlug/:stepSlug',
     element: <PublicFunnelPage />
+  },
+  {
+    path: '/r/:token',
+    element: <PublicReviewPage />
+  },
+  {
+    path: '/widgets/reviews/:slug',
+    element: <PublicReviewWidgetPage />
+  },
+  {
+    path: '/surveys/:slug',
+    element: <PublicSurveyPage />
+  },
+  {
+    path: '/ref/:programSlug/:code',
+    element: <PublicReferralPage />
   },
   {
     element: <ProtectedRoute />,
@@ -133,7 +164,10 @@ export const router = createBrowserRouter([
               { path: '/marketing/landing-pages', element: <LandingPagesPage /> },
               { path: '/marketing/landing-pages/new', element: <LandingPageBuilderPage /> },
               { path: '/marketing/landing-pages/:id', element: <LandingPageBuilderPage /> },
-              { path: '/marketing/funnels/:id', element: <FunnelBuilderPage /> }
+              { path: '/marketing/funnels/:id', element: <FunnelBuilderPage /> },
+              { path: '/reputation/testimonials', element: <TestimonialsPage /> },
+              { path: '/reputation/widgets', element: <ReviewWidgetsPage /> },
+              { path: '/reputation/surveys', element: <SurveysPage /> }
             ]
           },
           {
@@ -158,6 +192,11 @@ export const router = createBrowserRouter([
               { path: '/inbox', element: <InboxPage /> },
               { path: '/notifications', element: <NotificationsPage /> },
               { path: '/calendar', element: <CalendarPage /> }
+              ,
+              { path: '/reputation', element: <ReputationPage /> },
+              { path: '/reputation/requests', element: <ReviewRequestsPage /> },
+              { path: '/reputation/reviews', element: <ReviewsPage /> },
+              { path: '/reputation/coupons', element: <CouponsPage /> }
             ]
           },
           {
@@ -168,6 +207,8 @@ export const router = createBrowserRouter([
               { path: '/marketing/forms', element: <FormsPage /> },
               { path: '/marketing/submissions', element: <FormsPage mode="submissions" /> },
               { path: '/marketing/funnels', element: <FunnelsPage /> }
+              ,
+              { path: '/reputation/referrals', element: <ReferralsPage /> }
             ]
           },
           {

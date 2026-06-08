@@ -88,3 +88,11 @@ La estrategia de duplicados puede crear, actualizar o ignorar. Los contactos
 nuevos reciben estado, lifecycle, responsable y tags configurados. Cada
 submission conserva `contactId` y `opportunityId`, agrega ActivityLog y crea
 conversiones sin incluir valores sensibles en WorkflowEvent.
+
+## Reputacion y fidelizacion
+
+La ficha del contacto carga reviews, solicitudes, cupones y referidos. Puede
+solicitar una resena, emitir un cupon y, para ADMIN, crear un referido.
+
+ActivityLog agrega al timeline solicitudes, reviews, cupones y referidos. El
+alcance sigue las asignaciones CRM existentes.

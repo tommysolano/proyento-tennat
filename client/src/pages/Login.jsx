@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { demoAccounts } from '../data/mockData.js';
 import { roleHome } from '../routes/roleHome.js';
 
 export function Login() {
@@ -54,8 +53,8 @@ export function Login() {
             Flujo jerarquico listo para presentar y seguir construyendo.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-7 text-slate-300">
-            Distribuidores, empresas, supervisores y agentes entran a vistas separadas con datos
-            demo, rutas protegidas y API preparada para crecer por modulos.
+            Distribuidores, empresas, supervisores y agentes entran a vistas separadas con rutas
+            protegidas y una API modular preparada para operacion real.
           </p>
         </div>
 
@@ -100,7 +99,7 @@ export function Login() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="correo@demo.com"
+                  placeholder="correo@empresa.com"
                 />
               </label>
 
@@ -126,25 +125,6 @@ export function Login() {
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </form>
-          </div>
-
-          <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-              Cuentas demo
-            </p>
-            <div className="grid gap-2">
-              {demoAccounts.map((account) => (
-                <button
-                  key={account.email}
-                  type="button"
-                  onClick={() => setEmail(account.email)}
-                  className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
-                >
-                  <span className="font-medium text-slate-700">{account.role}</span>
-                  <span className="text-xs text-slate-500">{account.email}</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </section>
