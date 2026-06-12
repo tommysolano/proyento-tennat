@@ -7,7 +7,7 @@ import { CRM_PRIORITIES } from '../models/Contact.js';
 import { Task, TASK_STATUSES } from '../models/Task.js';
 import { recordActivity } from '../utils/activity.js';
 import { assertRelatedResource, assignedResourceScope, tenantFields, validateCrmAssignee } from '../utils/crmScope.js';
-import { cleanString } from '../utils/validation.js';
+import { cleanString, isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 
@@ -23,12 +23,24 @@ router.use(roleMiddleware('ADMIN', 'SUPERVISOR', 'CALLCENTER'));
 router.use(requireAnyPermission('tasks:manage', 'tasks:create_team', 'tasks:read_assigned'));
 router.use(requireModule('crm'));
 router.use(requireModule('tasks'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de tarea invalido' });
+  }
+  next();
+});
 
 router.get('/', async (req, res, next) => {
   try {
     const filter = { ...(await assignedResourceScope(req.user)), archivedAt: null };
+    if (req.query.relatedId && !isValidObjectId(req.query.relatedId)) {
+      return res.status(400).json({ message: 'relatedId invalido' });
+    }
     for (const field of ['status', 'relatedType', 'relatedId', 'priority']) if (req.query[field]) filter[field] = req.query[field];
     if (req.query.assignedTo) {
+      if (!isValidObjectId(req.query.assignedTo)) {
+        return res.status(400).json({ message: 'assignedTo invalido' });
+      }
       const requested = String(req.query.assignedTo);
       const current = filter.assignedTo;
       const allowed = !current ||

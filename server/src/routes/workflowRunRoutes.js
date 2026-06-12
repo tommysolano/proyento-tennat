@@ -4,6 +4,7 @@ import { requireModule } from '../middleware/moduleMiddleware.js';
 import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { WorkflowRun } from '../models/WorkflowRun.js';
+import { isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 
@@ -18,6 +19,12 @@ router.use(
     'workflow_runs:read_all'
   )
 );
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de ejecucion invalido' });
+  }
+  next();
+});
 
 function scope(req) {
   if (req.user.role === 'SUPERADMIN') {
@@ -29,8 +36,17 @@ function scope(req) {
 router.get('/', async (req, res, next) => {
   try {
     const filter = scope(req);
+    if (req.query.workflowId && !isValidObjectId(req.query.workflowId)) {
+      return res.status(400).json({ message: 'workflowId invalido' });
+    }
     for (const field of ['workflowId', 'status', 'eventType', 'entityType']) {
       if (req.query[field]) filter[field] = req.query[field];
+    }
+    if (req.query.entityId) {
+      if (!isValidObjectId(req.query.entityId)) {
+        return res.status(400).json({ message: 'entityId invalido' });
+      }
+      filter.entityId = req.query.entityId;
     }
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
     res.json(

@@ -4,15 +4,17 @@ import { requireModule } from '../middleware/moduleMiddleware.js';
 import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Appointment } from '../models/Appointment.js';
+import { Conversation } from '../models/Conversation.js';
 import { User } from '../models/User.js';
 import { Company } from '../models/Company.js';
 import { CalendarService } from '../modules/calendar/CalendarService.js';
+import { conversationScope } from '../modules/conversations/conversationScope.js';
 import {
   assertRelatedResource,
   assignedResourceScope,
   validateCrmAssignee
 } from '../utils/crmScope.js';
-import { cleanString } from '../utils/validation.js';
+import { cleanString, isValidObjectId } from '../utils/validation.js';
 import {
   addDaysToDateKey,
   dateKeyInZone,
@@ -31,6 +33,11 @@ function dateValue(value, field) {
 
 async function appointmentFilter(user, query = {}) {
   const filter = await assignedResourceScope(user);
+  for (const field of ['calendarId', 'contactId', 'opportunityId', 'assignedTo']) {
+    if (query[field] && !isValidObjectId(query[field])) {
+      throw Object.assign(new Error(`${field} invalido`), { status: 400 });
+    }
+  }
   for (const field of [
     'calendarId',
     'contactId',
@@ -77,6 +84,12 @@ router.use(
   )
 );
 router.use(requireModule('calendar'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de cita invalido' });
+  }
+  next();
+});
 
 router.get('/metrics', async (req, res, next) => {
   try {
@@ -150,6 +163,28 @@ router.post('/', async (req, res, next) => {
     if (req.body.opportunityId) {
       await assertRelatedResource(req.user, 'opportunity', req.body.opportunityId);
     }
+    let metadata =
+      req.body.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {};
+    if (metadata.conversationId) {
+      if (!isValidObjectId(metadata.conversationId)) {
+        return res.status(400).json({ message: 'metadata.conversationId invalido' });
+      }
+      const conversation = await Conversation.findOne({
+        _id: metadata.conversationId,
+        ...(await conversationScope(req.user)),
+        archivedAt: null
+      }).select('_id contactId');
+      if (
+        !conversation ||
+        !req.body.contactId ||
+        String(conversation.contactId) !== String(req.body.contactId)
+      ) {
+        return res.status(400).json({
+          message: 'La conversacion no pertenece al contacto o al alcance del usuario'
+        });
+      }
+      metadata = { ...metadata, conversationId: conversation._id };
+    }
     let assignedTo;
     if (req.user.role === 'CALLCENTER') assignedTo = req.user._id;
     else if (req.body.assignedTo) {
@@ -162,7 +197,7 @@ router.post('/', async (req, res, next) => {
         actor: req.user,
         companyId: req.user.companyId,
         distributorId: req.user.distributorId || null,
-        body: { ...req.body, ...(assignedTo ? { assignedTo } : {}) },
+        body: { ...req.body, metadata, ...(assignedTo ? { assignedTo } : {}) },
         source: req.body.source || 'manual'
       })
     );

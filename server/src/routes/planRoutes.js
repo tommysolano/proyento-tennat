@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Plan } from '../models/Plan.js';
 import { recordActivity } from '../utils/activity.js';
+import { normalizeCurrency } from '../utils/billing.js';
 import { cleanString } from '../utils/validation.js';
 import { refreshDistributorOnboarding } from '../utils/onboarding.js';
 
@@ -88,7 +90,7 @@ function planPayload(body, partial = false) {
   }
 
   if ('currency' in body) {
-    data.currency = cleanString(body.currency).toUpperCase() || 'USD';
+    data.currency = normalizeCurrency(body.currency);
   }
 
   if ('billingCycle' in body) {
@@ -148,6 +150,19 @@ function planPayload(body, partial = false) {
   return data;
 }
 
+async function assertAuthorizedModules(user, includedModules) {
+  if (!includedModules) return;
+  for (const moduleKey of includedModules) {
+    const access = await checkModuleAccess(moduleKey, user);
+    if (!access.enabled) {
+      throw Object.assign(
+        new Error(`El modulo ${moduleKey} no esta autorizado para este distribuidor`),
+        { status: 403 }
+      );
+    }
+  }
+}
+
 router.use(authMiddleware);
 
 router.get('/', roleMiddleware('DISTRIBUTOR', 'SUPERADMIN'), async (req, res, next) => {
@@ -179,8 +194,10 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       return res.status(403).json({ message: 'El distribuidor autenticado no tiene distributorId' });
     }
 
+    const payload = planPayload(req.body);
+    await assertAuthorizedModules(req.user, payload.includedModules);
     const plan = await Plan.create({
-      ...planPayload(req.body),
+      ...payload,
       distributorId: req.user.distributorId
     });
     await recordActivity({
@@ -199,9 +216,11 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
 
 async function updatePlan(req, res, next) {
   try {
+    const payload = planPayload(req.body, true);
+    await assertAuthorizedModules(req.user, payload.includedModules);
     const plan = await Plan.findOneAndUpdate(
       { _id: req.params.id, distributorId: req.user.distributorId },
-      planPayload(req.body, true),
+      payload,
       { new: true, runValidators: true }
     ).populate('distributorId', 'name');
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });

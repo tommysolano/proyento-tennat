@@ -34,7 +34,12 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
-import { CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.jsx';
+import {
+  CrmLoadError,
+  CrmLoading,
+  CrmNotice,
+  inputClass
+} from '../../components/CrmCommon.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -160,6 +165,7 @@ export function FormsPage({ mode = 'forms' }) {
   const [analytics, setAnalytics] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -181,10 +187,13 @@ export function FormsPage({ mode = 'forms' }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      setForms(await getForms());
+      const data = await getForms();
+      if (!Array.isArray(data)) throw new Error('La API devolvio una lista de formularios invalida.');
+      setForms(data);
     } catch (requestError) {
-      setError(requestError.message);
+      setLoadError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -247,7 +256,9 @@ export function FormsPage({ mode = 'forms' }) {
         {canManage && mode === 'forms' ? <Button disabled={busy} onClick={createNew}><Plus className="h-4 w-4" />Nuevo formulario</Button> : null}
       </div>
       <CrmNotice notice={notice} error={error} />
-      {loading ? <CrmLoading /> : (
+      {loading ? <CrmLoading label="Cargando formularios..." /> : loadError ? (
+        <CrmLoadError message={loadError} onRetry={load} />
+      ) : (
         <div className="grid gap-4">
           {forms.map((form) => (
             <Card key={form._id} className="p-5">
@@ -259,7 +270,7 @@ export function FormsPage({ mode = 'forms' }) {
                     <Badge>{form.type}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-slate-500">{form.description || 'Sin descripcion'}</p>
-                  <p className="mt-2 text-xs text-slate-400">/forms/{form.slug} · {form.fields.length} campos</p>
+                  <p className="mt-2 text-xs text-slate-400">/forms/{form.slug} · {(form.fields || []).length} campos</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" onClick={() => inspect(form)}>{mode === 'analytics' ? 'Ver analytics' : 'Ver submissions'}</Button>
@@ -317,24 +328,64 @@ export function FormBuilderPage() {
     users: [], tags: [], pipelines: [], stages: [], bookings: [], customFields: []
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  useEffect(() => {
-    Promise.all([
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    const results = await Promise.allSettled([
       id ? getForm(id) : Promise.resolve(emptyForm),
       getUsers(),
       getTags(),
       getPipelines(),
       getBookingLinks(),
       getCustomFields()
-    ]).then(([formData, users, tags, pipelines, bookings, customFields]) => {
-      setForm(normalizeForm(formData));
-      setOptions((current) => ({ ...current, users, tags, pipelines, bookings, customFields }));
-    }).catch((requestError) => setError(requestError.message))
-      .finally(() => setLoading(false));
+    ]);
+    const [formResult, usersResult, tagsResult, pipelinesResult, bookingsResult, customFieldsResult] = results;
+    if (formResult.status === 'rejected') {
+      setLoadError(formResult.reason?.message || 'No se pudo cargar el formulario.');
+      setLoading(false);
+      return;
+    }
+    if (!formResult.value || typeof formResult.value !== 'object' || (id && !formResult.value._id)) {
+      setLoadError('La API devolvio un formulario invalido.');
+      setLoading(false);
+      return;
+    }
+
+    setForm(normalizeForm(formResult.value));
+    const optionalResults = [
+      ['usuarios', usersResult],
+      ['tags', tagsResult],
+      ['pipelines', pipelinesResult],
+      ['booking links', bookingsResult],
+      ['campos personalizados', customFieldsResult]
+    ];
+    const failed = optionalResults
+      .filter(([, result]) => result.status === 'rejected' || !Array.isArray(result.value))
+      .map(([label]) => label);
+    setOptions((current) => ({
+      ...current,
+      users: usersResult.status === 'fulfilled' && Array.isArray(usersResult.value) ? usersResult.value : [],
+      tags: tagsResult.status === 'fulfilled' && Array.isArray(tagsResult.value) ? tagsResult.value : [],
+      pipelines: pipelinesResult.status === 'fulfilled' && Array.isArray(pipelinesResult.value) ? pipelinesResult.value : [],
+      bookings: bookingsResult.status === 'fulfilled' && Array.isArray(bookingsResult.value) ? bookingsResult.value : [],
+      customFields: customFieldsResult.status === 'fulfilled' && Array.isArray(customFieldsResult.value) ? customFieldsResult.value : []
+    }));
+    setError(
+      failed.length
+        ? `El formulario cargo, pero no se pudieron cargar: ${failed.join(', ')}.`
+        : ''
+    );
+    setLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!form.settings.pipelineId) {
@@ -436,6 +487,13 @@ export function FormBuilderPage() {
   }
 
   if (loading) return <PageShell title="Constructor de formulario"><CrmLoading /></PageShell>;
+  if (loadError) {
+    return (
+      <PageShell title="Constructor de formulario">
+        <CrmLoadError message={loadError} onRetry={load} />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell eyebrow="Marketing" title={form.name || 'Nuevo formulario'} description="Builder simple por campos, integraciones CRM y controles publicos.">
@@ -543,11 +601,23 @@ export function PublicFormRenderer({ slug, source = {}, embedded = false }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setLoading(true);
+    setError('');
+    setForm(null);
     getPublicForm(slug)
       .then((data) => {
+        if (
+          !data ||
+          !Array.isArray(data.fields) ||
+          !data.settings ||
+          !data.styling ||
+          !data.company
+        ) {
+          throw new Error('La API devolvio un formulario publico invalido.');
+        }
         setForm(data);
         setValues(Object.fromEntries(data.fields.map((field) => [
           field.key,
@@ -560,7 +630,7 @@ export function PublicFormRenderer({ slug, source = {}, embedded = false }) {
       })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [slug, reloadKey]);
 
   async function submit(event) {
     event.preventDefault();
@@ -586,7 +656,14 @@ export function PublicFormRenderer({ slug, source = {}, embedded = false }) {
   }
 
   if (loading) return <div className="p-6 text-center text-sm text-slate-500">Cargando formulario...</div>;
-  if (error && !form) return <div className="rounded-xl border border-rose-200 bg-white p-6 text-center text-sm text-rose-700">{error}</div>;
+  if (error && !form) {
+    return (
+      <CrmLoadError
+        message={error}
+        onRetry={() => setReloadKey((current) => current + 1)}
+      />
+    );
+  }
   if (result) return <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-8 text-center"><h2 className="text-xl font-semibold text-emerald-950">Envio recibido</h2><p className="mt-2 text-emerald-800">{result.successMessage}</p></div>;
 
   const content = (

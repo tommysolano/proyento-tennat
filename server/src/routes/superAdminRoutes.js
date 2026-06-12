@@ -16,12 +16,19 @@ import {
   User
 } from '../models/index.js';
 import { recordActivity } from '../utils/activity.js';
+import {
+  assertActivePlan,
+  assertBillableSubscription,
+  buildSubscriptionTerms,
+  invoiceBalance,
+  normalizeCurrency,
+  validatePaymentInput
+} from '../utils/billing.js';
 import { cleanString, EMAIL_PATTERN, isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 const DISTRIBUTOR_STATUSES = ['active', 'suspended', 'cancelled', 'trial'];
 const PLAN_STATUSES = ['active', 'inactive', 'archived'];
-const SUBSCRIPTION_STATUSES = ['trial', 'active', 'past_due', 'cancelled', 'suspended'];
 const INVOICE_STATUSES = ['draft', 'open', 'paid', 'overdue', 'void', 'uncollectible'];
 const PAYMENT_STATUSES = ['pending', 'succeeded', 'failed', 'refunded'];
 const ACTIVE_SUBSCRIPTION_STATUSES = ['trial', 'active', 'past_due', 'suspended'];
@@ -91,7 +98,7 @@ function platformPlanPayload(body, partial = false) {
   }
   if (!partial || 'price' in body) data.price = numberValue(body.price, 'price');
   if ('description' in body) data.description = cleanString(body.description);
-  if ('currency' in body) data.currency = cleanString(body.currency).toUpperCase() || 'USD';
+  if ('currency' in body) data.currency = normalizeCurrency(body.currency);
   if ('billingCycle' in body) {
     if (!['monthly', 'yearly'].includes(body.billingCycle)) {
       throw Object.assign(new Error('billingCycle invalido'), { status: 400 });
@@ -133,31 +140,6 @@ function platformPlanPayload(body, partial = false) {
   return data;
 }
 
-function subscriptionPayload(body) {
-  const data = {};
-  if ('status' in body) {
-    if (!SUBSCRIPTION_STATUSES.includes(body.status)) {
-      throw Object.assign(new Error('status de suscripcion invalido'), { status: 400 });
-    }
-    data.status = body.status;
-  }
-  for (const field of [
-    'startsAt',
-    'endsAt',
-    'trialEndsAt',
-    'currentPeriodStart',
-    'currentPeriodEnd'
-  ]) {
-    if (field in body) data[field] = dateValue(body[field], field);
-  }
-  if ('cancelAtPeriodEnd' in body) data.cancelAtPeriodEnd = Boolean(body.cancelAtPeriodEnd);
-  for (const field of ['paymentProvider', 'providerCustomerId', 'providerSubscriptionId']) {
-    if (field in body) data[field] = cleanString(body[field]);
-  }
-  if ('metadata' in body) data.metadata = body.metadata || {};
-  return data;
-}
-
 function invoicePayload(body, partial = false) {
   const data = {};
 
@@ -174,7 +156,7 @@ function invoicePayload(body, partial = false) {
       : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
   }
   if ('currency' in body || !partial) {
-    data.currency = cleanString(body.currency).toUpperCase() || 'USD';
+    data.currency = normalizeCurrency(body.currency);
   }
   if ('lineItems' in body || !partial) {
     if (!Array.isArray(body.lineItems) || !body.lineItems.length) {
@@ -217,6 +199,23 @@ function populateSubscription(query) {
   return query
     .populate('distributorId', 'name slug email status')
     .populate('platformPlanId', 'name code price currency billingCycle limits includedModules status');
+}
+
+async function addInvoiceBalances(invoices) {
+  const plainInvoices = invoices.map((invoice) =>
+    typeof invoice.toObject === 'function' ? invoice.toObject() : invoice
+  );
+  const invoiceIds = plainInvoices.map((invoice) => invoice._id);
+  if (!invoiceIds.length) return plainInvoices;
+  const totals = await Payment.aggregate([
+    { $match: { invoiceId: { $in: invoiceIds }, status: 'succeeded' } },
+    { $group: { _id: '$invoiceId', total: { $sum: '$amount' } } }
+  ]);
+  const totalByInvoice = new Map(totals.map((item) => [String(item._id), item.total]));
+  return plainInvoices.map((invoice) => ({
+    ...invoice,
+    ...invoiceBalance(invoice, totalByInvoice.get(String(invoice._id)) || 0)
+  }));
 }
 
 router.use(authMiddleware);
@@ -515,6 +514,7 @@ router.post(
       if (!distributor || !plan) {
         return res.status(400).json({ message: 'Distribuidor o plan no encontrado' });
       }
+      assertActivePlan(plan);
       if (existing) {
         return res.status(409).json({
           message: 'El distribuidor ya tiene una suscripcion de plataforma vigente'
@@ -524,8 +524,7 @@ router.post(
       const subscription = await PlatformSubscription.create({
         distributorId: distributor._id,
         platformPlanId: plan._id,
-        status: req.body.status || 'trial',
-        ...subscriptionPayload(req.body)
+        ...buildSubscriptionTerms(req.body, plan, { defaultStatus: 'trial' })
       });
       await recordActivity({
         user: req.user,
@@ -547,16 +546,19 @@ async function updatePlatformSubscription(req, res, next) {
     if (!subscription) {
       return res.status(404).json({ message: 'Suscripcion de plataforma no encontrada' });
     }
+    let plan = await PlatformPlan.findById(subscription.platformPlanId);
     if ('platformPlanId' in req.body) {
       if (!isValidObjectId(req.body.platformPlanId)) {
         return res.status(400).json({ message: 'platformPlanId invalido' });
       }
-      const plan = await PlatformPlan.findById(req.body.platformPlanId);
+      plan = await PlatformPlan.findById(req.body.platformPlanId);
       if (!plan) return res.status(400).json({ message: 'Plan de plataforma no encontrado' });
+      if (String(plan._id) !== String(subscription.platformPlanId)) assertActivePlan(plan);
       subscription.platformPlanId = plan._id;
     }
-    Object.assign(subscription, subscriptionPayload(req.body));
-    if (ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status)) {
+    if (!plan) return res.status(400).json({ message: 'Plan de plataforma no encontrado' });
+    const terms = buildSubscriptionTerms(req.body, plan, { current: subscription });
+    if (ACTIVE_SUBSCRIPTION_STATUSES.includes(terms.status)) {
       const duplicate = await PlatformSubscription.exists({
         _id: { $ne: subscription._id },
         distributorId: subscription.distributorId,
@@ -568,6 +570,7 @@ async function updatePlatformSubscription(req, res, next) {
         });
       }
     }
+    Object.assign(subscription, terms);
     await subscription.save();
     await recordActivity({
       user: req.user,
@@ -600,9 +603,8 @@ router.put(
 router.get('/invoices', requirePermission('platform_billing:manage'), async (req, res, next) => {
   try {
     const filter = req.query.scope === 'all' ? {} : { issuerType: 'platform' };
-    res.json(
-      await Invoice.find(filter).sort({ createdAt: -1 }).limit(500)
-    );
+    const invoices = await Invoice.find(filter).sort({ createdAt: -1 }).limit(500);
+    res.json(await addInvoiceBalances(invoices));
   } catch (error) {
     next(error);
   }
@@ -616,16 +618,25 @@ router.post('/invoices', requirePermission('platform_billing:manage'), async (re
     const distributor = await Distributor.findById(req.body.distributorId);
     if (!distributor) return res.status(404).json({ message: 'Distribuidor no encontrado' });
 
-    let subscriptionId = null;
-    if (req.body.subscriptionId) {
-      const subscription = await PlatformSubscription.findOne({
-        _id: req.body.subscriptionId,
-        distributorId: distributor._id
+    if (!isValidObjectId(req.body.subscriptionId)) {
+      return res.status(400).json({ message: 'subscriptionId valido es requerido' });
+    }
+    const subscription = await PlatformSubscription.findOne({
+      _id: req.body.subscriptionId,
+      distributorId: distributor._id
+    }).populate('platformPlanId', 'name price currency billingCycle status');
+    if (!subscription) {
+      return res.status(400).json({ message: 'La suscripcion no pertenece al distribuidor' });
+    }
+    assertBillableSubscription(subscription);
+    if (!subscription.platformPlanId) {
+      return res.status(400).json({ message: 'El plan de la suscripcion no existe' });
+    }
+    const currency = normalizeCurrency(req.body.currency, subscription.platformPlanId.currency);
+    if (currency !== normalizeCurrency(subscription.platformPlanId.currency)) {
+      return res.status(400).json({
+        message: 'La moneda de la factura debe coincidir con la moneda del plan'
       });
-      if (!subscription) {
-        return res.status(400).json({ message: 'La suscripcion no pertenece al distribuidor' });
-      }
-      subscriptionId = subscription._id;
     }
 
     const invoice = await Invoice.create({
@@ -634,9 +645,9 @@ router.post('/invoices', requirePermission('platform_billing:manage'), async (re
       customerType: 'distributor',
       customerId: distributor._id,
       subscriptionType: 'platform',
-      subscriptionId,
+      subscriptionId: subscription._id,
       number: cleanString(req.body.number) || generatedInvoiceNumber(),
-      ...invoicePayload(req.body)
+      ...invoicePayload({ ...req.body, currency })
     });
     await recordActivity({
       user: req.user,
@@ -655,9 +666,13 @@ async function updateInvoice(req, res, next) {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, issuerType: 'platform' });
     if (!invoice) return res.status(404).json({ message: 'Factura no encontrada' });
+    if (req.body.status === 'paid') {
+      return res.status(400).json({
+        message: 'Registra un pago para cambiar la factura a paid'
+      });
+    }
     Object.assign(invoice, invoicePayload(req.body, true));
-    if (invoice.status === 'paid' && !invoice.paidAt) invoice.paidAt = new Date();
-    if (invoice.status !== 'paid' && 'status' in req.body) invoice.paidAt = null;
+    if ('status' in req.body) invoice.paidAt = null;
     await invoice.save();
     await recordActivity({
       user: req.user,
@@ -705,12 +720,22 @@ router.post('/payments', requirePermission('platform_billing:manage'), async (re
     if (!PAYMENT_STATUSES.includes(status)) {
       return res.status(400).json({ message: 'status de pago invalido' });
     }
+    const totalsBefore = await Payment.aggregate([
+      { $match: { invoiceId: invoice._id, status: 'succeeded' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const paymentInput = validatePaymentInput({
+      invoice,
+      paidAmount: totalsBefore[0]?.total || 0,
+      amount: req.body.amount,
+      currency: req.body.currency
+    });
     const payment = await Payment.create({
       invoiceId: invoice._id,
       payerType: 'distributor',
       payerId: invoice.customerId,
-      amount: numberValue(req.body.amount, 'amount', { min: 0.01 }),
-      currency: cleanString(req.body.currency).toUpperCase() || invoice.currency,
+      amount: paymentInput.amount,
+      currency: paymentInput.currency,
       status,
       method: cleanString(req.body.method) || 'manual',
       paymentProvider: cleanString(req.body.paymentProvider) || 'manual',
@@ -725,11 +750,8 @@ router.post('/payments', requirePermission('platform_billing:manage'), async (re
     });
 
     if (status === 'succeeded') {
-      const result = await Payment.aggregate([
-        { $match: { invoiceId: invoice._id, status: 'succeeded' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]);
-      if ((result[0]?.total || 0) >= invoice.total) {
+      const paidTotal = Math.round((paymentInput.paidAmount + payment.amount) * 100) / 100;
+      if (paidTotal >= invoice.total) {
         invoice.status = 'paid';
         invoice.paidAt = payment.paidAt;
         await invoice.save();
@@ -748,7 +770,16 @@ router.post('/payments', requirePermission('platform_billing:manage'), async (re
         status: payment.status
       }
     });
-    res.status(201).json(await payment.populate('invoiceId', 'number total status customerId'));
+    const populatedPayment = await payment.populate(
+      'invoiceId',
+      'number total status customerId subscriptionId currency'
+    );
+    res.status(201).json({
+      ...populatedPayment.toObject(),
+      invoiceBalance: invoiceBalance(invoice, paymentInput.paidAmount + (
+        status === 'succeeded' ? payment.amount : 0
+      ))
+    });
   } catch (error) {
     next(error);
   }

@@ -20,6 +20,25 @@ export function CrmLoading({ label = 'Cargando CRM...' }) {
   );
 }
 
+export function CrmLoadError({ message, onRetry }) {
+  return (
+    <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-center">
+      <p className="text-sm font-medium text-rose-800">
+        {message || 'No se pudo cargar la informacion.'}
+      </p>
+      {onRetry ? (
+        <button
+          type="button"
+          className="mt-4 inline-flex min-h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+          onClick={onRetry}
+        >
+          Reintentar
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function money(value, currency = 'USD') {
   return new Intl.NumberFormat('es-EC', { style: 'currency', currency }).format(value || 0);
 }

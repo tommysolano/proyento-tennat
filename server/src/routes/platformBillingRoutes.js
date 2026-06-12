@@ -12,8 +12,23 @@ import {
   UsageRecord,
   User
 } from '../models/index.js';
+import { invoiceBalance } from '../utils/billing.js';
 
 const router = Router();
+
+async function addInvoiceBalances(invoices) {
+  const invoiceIds = invoices.map((invoice) => invoice._id);
+  if (!invoiceIds.length) return invoices;
+  const totals = await Payment.aggregate([
+    { $match: { invoiceId: { $in: invoiceIds }, status: 'succeeded' } },
+    { $group: { _id: '$invoiceId', total: { $sum: '$amount' } } }
+  ]);
+  const totalByInvoice = new Map(totals.map((item) => [String(item._id), item.total]));
+  return invoices.map((invoice) => ({
+    ...invoice,
+    ...invoiceBalance(invoice, totalByInvoice.get(String(invoice._id)) || 0)
+  }));
+}
 
 router.use(authMiddleware);
 router.use(roleMiddleware('DISTRIBUTOR'));
@@ -38,15 +53,15 @@ router.get('/my-platform-subscription', async (req, res, next) => {
 
 router.get('/my-platform-invoices', async (req, res, next) => {
   try {
-    res.json(
-      await Invoice.find({
+    const invoices = await Invoice.find({
         issuerType: 'platform',
         customerType: 'distributor',
         customerId: req.user.distributorId
       })
         .sort({ createdAt: -1 })
         .limit(250)
-    );
+        .lean();
+    res.json(await addInvoiceBalances(invoices));
   } catch (error) {
     next(error);
   }

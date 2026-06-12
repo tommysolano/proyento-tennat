@@ -11,7 +11,7 @@ const paymentSchema = new mongoose.Schema(
     payerType: { type: String, enum: ['distributor', 'company'], required: true },
     payerId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
     amount: { type: Number, required: true, min: 0.01 },
-    currency: { type: String, default: 'USD', uppercase: true },
+    currency: { type: String, default: 'USD', uppercase: true, match: /^[A-Z]{3}$/ },
     status: {
       type: String,
       enum: ['pending', 'succeeded', 'failed', 'refunded'],

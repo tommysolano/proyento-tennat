@@ -18,6 +18,10 @@ import {
   updatePlan
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import {
+  BillingPlanSummary,
+  CurrencySelect
+} from '../../components/BillingPlanSummary.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
@@ -25,6 +29,12 @@ import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { formatDate, idOf } from '../../utils/contacts.js';
+import {
+  addDaysDateTimeInput,
+  formatMoney,
+  localDateTimeInput,
+  subscriptionPayload
+} from '../../utils/billing.js';
 
 const cycleLabels = {
   monthly: 'Mensual',
@@ -35,12 +45,8 @@ function formatLimits(limits = {}) {
   return `${limits.users ?? 0} usuarios / ${limits.contacts ?? 0} contactos / ${limits.whatsappMessages ?? 0} WA / ${limits.mediaStorageMb ?? 0} MB media`;
 }
 
-function formatPrice(price) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2
-  }).format(Number(price) || 0);
+function formatPrice(price, currency = 'USD') {
+  return formatMoney(price, currency);
 }
 
 export function DistributorDashboard() {
@@ -60,6 +66,9 @@ export function DistributorDashboard() {
   const [submitting, setSubmitting] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [subscriptionStatus, setSubscriptionStatus] = useState('active');
+  const [subscriptionCompanyId, setSubscriptionCompanyId] = useState('');
 
   const loadDashboard = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -110,7 +119,7 @@ export function DistributorDashboard() {
       plans.map((plan) => ({
         ...plan,
         id: plan._id,
-        priceLabel: formatPrice(plan.price),
+        priceLabel: formatPrice(plan.price, plan.currency),
         cycleLabel: cycleLabels[plan.billingCycle] || plan.billingCycle,
         limitsLabel: formatLimits(plan.limits),
         featuresLabel: plan.features?.join(', ') || 'Sin funciones'
@@ -302,16 +311,22 @@ export function DistributorDashboard() {
     const created = await runMutation(
       'subscription',
       () =>
-        createSubscription({
+        createSubscription(subscriptionPayload({
           companyId: data.get('companyId'),
           planId: data.get('planId'),
           status: data.get('status'),
-          startsAt: data.get('startsAt') || new Date().toISOString(),
-          endsAt: data.get('endsAt') || null
-        }),
+          startsAt: data.get('startsAt'),
+          trialEndsAt: data.get('trialEndsAt'),
+          endsAt: data.get('endsAt')
+        })),
       'Suscripcion creada correctamente.'
     );
-    if (created) form.reset();
+    if (created) {
+      form.reset();
+      setSubscriptionCompanyId('');
+      setSelectedPlanId('');
+      setSubscriptionStatus('active');
+    }
   }
 
   async function handleEnterAdmin(company) {
@@ -410,15 +425,15 @@ export function DistributorDashboard() {
                 <option value="yearly">Anual</option>
               </select>
             </div>
-            <input name="currency" defaultValue="USD" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Moneda" />
+            <CurrencySelect name="currency" defaultValue="USD" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
             <div className="grid gap-3 sm:grid-cols-2">
               <input required min="0" type="number" name="users" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Usuarios" />
               <input required min="0" type="number" name="contacts" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contactos" />
-              <input required min="0" type="number" name="messages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Mensajes" />
+              <input required min="0" type="number" name="messages" title="Cantidad maxima de mensajes permitidos por el plan." className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Mensajes" />
               <input required min="0" type="number" name="storageMb" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Storage MB" />
               <input required min="0" type="number" name="whatsappMessages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Mensajes WhatsApp/mes" />
-              <input required min="0" type="number" name="mediaStorageMb" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Media MB/mes" />
-              <input required min="0" type="number" name="mediaFiles" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Archivos media/mes" />
+              <input required min="0" type="number" name="mediaStorageMb" title="Espacio maximo para archivos multimedia, medido en MB." className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Media MB/mes" />
+              <input required min="0" type="number" name="mediaFiles" title="Cantidad maxima de archivos multimedia permitidos." className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Archivos media/mes" />
               <input required min="0" type="number" name="conversations" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Conversaciones/mes" />
               <input required min="0" type="number" name="calendars" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Calendarios" />
               <input required min="0" type="number" name="appointments" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Citas/mes" />
@@ -427,13 +442,13 @@ export function DistributorDashboard() {
               <input required min="0" type="number" name="workflowRunsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Runs workflow/mes" />
               <input required min="0" type="number" name="workflowActionsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Acciones workflow/mes" />
               <input required min="0" type="number" name="forms" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Formularios" />
-              <input required min="0" type="number" name="formSubmissionsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Submissions/mes" />
+              <input required min="0" type="number" name="formSubmissionsPerMonth" title="Respuestas de formularios permitidas por mes." className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Submissions/mes" />
               <input required min="0" type="number" name="landingPages" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Landing pages" />
               <input required min="0" type="number" name="funnels" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funnels" />
               <input required min="0" type="number" name="funnelSteps" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Steps de funnel" />
               <input required min="0" type="number" name="pageViewsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Page views/mes" />
               <input required min="0" type="number" name="reviewRequestsPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Solicitudes review/mes" />
-              <input required min="0" type="number" name="reviews" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Reviews" />
+              <input required min="0" type="number" name="reviews" title="Cantidad maxima de reviews almacenadas." className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Reviews" />
               <input required min="0" type="number" name="reviewWidgets" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Widgets review" />
               <input required min="0" type="number" name="surveys" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Encuestas satisfaccion" />
               <input required min="0" type="number" name="surveyResponsesPerMonth" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Respuestas encuesta/mes" />
@@ -445,7 +460,15 @@ export function DistributorDashboard() {
             </div>
             <p className="text-xs text-slate-500">En limites operativos, 0 significa sin limite configurado.</p>
             <textarea name="description" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Descripcion" />
-            <input name="includedModules" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Modulos incluidos separados por coma" defaultValue="core,crm,contacts,conversations,inbox,whatsapp,media,notifications,realtime,calendar,bookings,automations,workflows,forms,surveys,landing_pages,funnels,reputation,reviews,testimonials,coupons,referrals,loyalty" />
+            <input
+              name="includedModules"
+              className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm"
+              placeholder="Modulos incluidos separados por coma"
+              defaultValue={(
+                platformSubscription?.platformPlanId?.includedModules || ['core', 'crm', 'contacts']
+              ).join(',')}
+              title="Solo se aceptan modulos autorizados por el plan de plataforma o por SUPERADMIN."
+            />
             <input name="features" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Funciones separadas por coma" />
             <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activo</option>
@@ -519,7 +542,7 @@ export function DistributorDashboard() {
         <Card id="admins">
           <CardHeader title="Crear administrador" description="Solo para una empresa propia sin admin activo." />
           <form className="space-y-4 p-5" onSubmit={handleCreateAdmin}>
-            <select required name="companyId" defaultValue="" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
+            <select required name="companyId" value={subscriptionCompanyId} onChange={(event) => setSubscriptionCompanyId(event.target.value)} className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="" disabled>Selecciona una empresa</option>
               {companiesWithoutAdmin.map((company) => (
                 <option key={company._id} value={company._id}>{company.name}</option>
@@ -544,27 +567,37 @@ export function DistributorDashboard() {
                 <option key={company._id} value={company._id}>{company.name}</option>
               ))}
             </select>
-            <select required name="planId" defaultValue="" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
+            <select required disabled={!subscriptionCompanyId} name="planId" value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)} className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="" disabled>Selecciona un plan</option>
-              {plans.filter((plan) => plan.status === 'active').map((plan) => (
-                <option key={plan._id} value={plan._id}>{plan.name} - {formatPrice(plan.price)}</option>
+              {(subscriptionCompanyId ? plans : []).filter((plan) => plan.status === 'active').map((plan) => (
+                <option key={plan._id} value={plan._id}>{plan.name} - {formatPrice(plan.price, plan.currency)}</option>
               ))}
             </select>
-            <select name="status" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
+            <select name="status" value={subscriptionStatus} onChange={(event) => setSubscriptionStatus(event.target.value)} className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
               <option value="active">Activa</option>
               <option value="trial">Prueba</option>
             </select>
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
                 <span className="mb-1 block text-xs font-semibold text-slate-500">Inicio</span>
-                <input type="datetime-local" name="startsAt" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
+                <input type="datetime-local" name="startsAt" defaultValue={localDateTimeInput()} className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
               </label>
               <label>
                 <span className="mb-1 block text-xs font-semibold text-slate-500">Fin opcional</span>
                 <input type="datetime-local" name="endsAt" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
               </label>
             </div>
-            <Button className="w-full" type="submit" disabled={Boolean(submitting) || !companiesWithoutSubscription.length || !plans.length}>
+            {subscriptionStatus === 'trial' ? (
+              <label title="Durante el trial no se pueden generar facturas.">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Fin de trial</span>
+                <input required type="datetime-local" name="trialEndsAt" defaultValue={addDaysDateTimeInput(14)} className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
+              </label>
+            ) : null}
+            <BillingPlanSummary
+              plan={plans.find((plan) => plan._id === selectedPlanId)}
+              trial={subscriptionStatus === 'trial'}
+            />
+            <Button className="w-full" type="submit" disabled={Boolean(submitting) || !companiesWithoutSubscription.length || !plans.some((plan) => plan.status === 'active')}>
               <Plus className="h-4 w-4" />
               {submitting === 'subscription' ? 'Creando...' : 'Crear suscripcion'}
             </Button>
@@ -610,7 +643,7 @@ export function DistributorDashboard() {
                       {platformSubscription.platformPlanId?.name}
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
-                      {formatPrice(platformSubscription.platformPlanId?.price)} / {platformSubscription.platformPlanId?.billingCycle}
+                      {formatPrice(platformSubscription.platformPlanId?.price, platformSubscription.platformPlanId?.currency)} / {platformSubscription.platformPlanId?.billingCycle}
                     </p>
                   </div>
                   <Badge tone={platformSubscription.status}>{platformSubscription.status}</Badge>
@@ -650,7 +683,7 @@ export function DistributorDashboard() {
                       <span className="font-semibold">{invoice.number}</span>
                       <Badge tone={invoice.status}>{invoice.status}</Badge>
                     </div>
-                    <p className="mt-2 text-slate-500">{formatPrice(invoice.total)}</p>
+                    <p className="mt-2 text-slate-500">{formatPrice(invoice.total, invoice.currency)}</p>
                   </div>
                 )) : <p className="text-sm text-slate-500">Sin facturas.</p>}
               </div>
@@ -664,7 +697,7 @@ export function DistributorDashboard() {
                       <span className="font-semibold">{payment.invoiceId?.number || 'Pago manual'}</span>
                       <Badge tone={payment.status}>{payment.status}</Badge>
                     </div>
-                    <p className="mt-2 text-slate-500">{formatPrice(payment.amount)}</p>
+                    <p className="mt-2 text-slate-500">{formatPrice(payment.amount, payment.currency)}</p>
                   </div>
                 )) : <p className="text-sm text-slate-500">Sin pagos.</p>}
               </div>

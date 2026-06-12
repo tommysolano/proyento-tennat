@@ -112,14 +112,26 @@ router.use(roleMiddleware('ADMIN', 'SUPERVISOR', 'CALLCENTER'));
 router.use(requireAnyPermission('opportunities:manage', 'opportunities:read_team', 'opportunities:read_assigned'));
 router.use(requireModule('crm'));
 router.use(requireModule('opportunities'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de oportunidad invalido' });
+  }
+  next();
+});
 
 router.get('/', async (req, res, next) => {
   try {
     const filter = await assignedResourceScope(req.user);
+    for (const field of ['pipelineId', 'stageId', 'contactId']) {
+      if (req.query[field] && !isValidObjectId(req.query[field])) {
+        throw badRequest(`${field} invalido`);
+      }
+    }
     for (const field of ['pipelineId', 'stageId', 'status', 'priority', 'contactId']) {
       if (req.query[field]) filter[field] = req.query[field];
     }
     if (req.query.assignedTo) {
+      if (!isValidObjectId(req.query.assignedTo)) throw badRequest('assignedTo invalido');
       const requested = String(req.query.assignedTo);
       const current = filter.assignedTo;
       const allowed = !current ||

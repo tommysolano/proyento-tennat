@@ -33,7 +33,12 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
-import { CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.jsx';
+import {
+  CrmLoadError,
+  CrmLoading,
+  CrmNotice,
+  inputClass
+} from '../../components/CrmCommon.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -105,6 +110,7 @@ export function FunnelsPage() {
   const [selected, setSelected] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -112,10 +118,13 @@ export function FunnelsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      setFunnels(await getFunnels());
+      const data = await getFunnels();
+      if (!Array.isArray(data)) throw new Error('La API devolvio una lista de funnels invalida.');
+      setFunnels(data);
     } catch (requestError) {
-      setError(requestError.message);
+      setLoadError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -166,7 +175,9 @@ export function FunnelsPage() {
     <PageShell eyebrow="Marketing" title="Funnels" description="Secuencias publicas medibles con pasos de landing, formulario, encuesta y booking.">
       <div>{canManage ? <Button disabled={busy} onClick={createNew}><Plus className="h-4 w-4" />Nuevo funnel</Button> : null}</div>
       <CrmNotice notice={notice} error={error} />
-      {loading ? <CrmLoading /> : (
+      {loading ? <CrmLoading label="Cargando funnels..." /> : loadError ? (
+        <CrmLoadError message={loadError} onRetry={load} />
+      ) : (
         <div className="grid gap-4">
           {funnels.map((funnel) => (
             <Card key={funnel._id} className="p-5">
@@ -201,7 +212,7 @@ export function FunnelsPage() {
           <Card>
             <CardHeader title={`Pasos: ${selected.name}`} />
             <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
-              {analytics.byStep.map((step) => <div key={step.stepId} className="rounded-lg border border-slate-200 p-4"><strong>{step.name}</strong><p className="mt-2 text-sm text-slate-500">{step.views} vistas · {step.conversions} conversiones · {step.conversionRate}%</p><p className="mt-1 text-xs text-slate-400">Abandono: {step.abandonment}</p></div>)}
+              {(analytics.byStep || []).map((step) => <div key={step.stepId} className="rounded-lg border border-slate-200 p-4"><strong>{step.name}</strong><p className="mt-2 text-sm text-slate-500">{step.views} vistas · {step.conversions} conversiones · {step.conversionRate}%</p><p className="mt-1 text-xs text-slate-400">Abandono: {step.abandonment}</p></div>)}
             </div>
           </Card>
         </>
@@ -222,12 +233,15 @@ export function FunnelBuilderPage() {
     satisfactionSurveys: []
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
-    const [funnelData, stepData, pages, forms, bookings, satisfactionSurveys] = await Promise.all([
+    setLoading(true);
+    setLoadError('');
+    const results = await Promise.allSettled([
       id ? getFunnel(id) : Promise.resolve(emptyFunnel),
       id ? getFunnelSteps(id) : Promise.resolve([]),
       getLandingPages({ status: 'published' }),
@@ -235,6 +249,34 @@ export function FunnelBuilderPage() {
       getBookingLinks({ status: 'active' }),
       getSatisfactionSurveys()
     ]);
+    const [
+      funnelResult,
+      stepsResult,
+      pagesResult,
+      formsResult,
+      bookingsResult,
+      satisfactionSurveysResult
+    ] = results;
+    const coreFailure = [funnelResult, stepsResult].find(
+      (result) => result.status === 'rejected'
+    );
+    if (coreFailure) {
+      setLoadError(coreFailure.reason?.message || 'No se pudo cargar el funnel.');
+      setLoading(false);
+      return;
+    }
+    if (!Array.isArray(stepsResult.value)) {
+      setLoadError('La API devolvio una lista de steps invalida.');
+      setLoading(false);
+      return;
+    }
+    if (!funnelResult.value || typeof funnelResult.value !== 'object' || (id && !funnelResult.value._id)) {
+      setLoadError('La API devolvio un funnel invalido.');
+      setLoading(false);
+      return;
+    }
+    const funnelData = funnelResult.value;
+    const stepData = stepsResult.value;
     setFunnel({
       ...emptyFunnel,
       ...funnelData,
@@ -245,17 +287,35 @@ export function FunnelBuilderPage() {
       }
     });
     setSteps(stepData.map(normalizeStep));
+    const optionalResults = [
+      ['landing pages', pagesResult],
+      ['formularios', formsResult],
+      ['booking links', bookingsResult],
+      ['encuestas de satisfaccion', satisfactionSurveysResult]
+    ];
+    const failed = optionalResults
+      .filter(([, result]) => result.status === 'rejected' || !Array.isArray(result.value))
+      .map(([label]) => label);
     setReferences({
-      pages,
-      forms,
-      bookings,
-      satisfactionSurveys: satisfactionSurveys.filter((survey) => survey.status === 'published')
+      pages: pagesResult.status === 'fulfilled' && Array.isArray(pagesResult.value) ? pagesResult.value : [],
+      forms: formsResult.status === 'fulfilled' && Array.isArray(formsResult.value) ? formsResult.value : [],
+      bookings: bookingsResult.status === 'fulfilled' && Array.isArray(bookingsResult.value) ? bookingsResult.value : [],
+      satisfactionSurveys:
+        satisfactionSurveysResult.status === 'fulfilled' &&
+        Array.isArray(satisfactionSurveysResult.value)
+          ? satisfactionSurveysResult.value.filter((survey) => survey.status === 'published')
+          : []
     });
+    setError(
+      failed.length
+        ? `El funnel cargo, pero no se pudieron cargar: ${failed.join(', ')}.`
+        : ''
+    );
+    setLoading(false);
   }, [id]);
 
   useEffect(() => {
-    load().catch((requestError) => setError(requestError.message))
-      .finally(() => setLoading(false));
+    load();
   }, [load]);
 
   function updateStep(index, patch) {
@@ -335,6 +395,13 @@ export function FunnelBuilderPage() {
   }
 
   if (loading) return <PageShell title="Constructor de funnel"><CrmLoading /></PageShell>;
+  if (loadError) {
+    return (
+      <PageShell title="Constructor de funnel">
+        <CrmLoadError message={loadError} onRetry={load} />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell eyebrow="Marketing" title={funnel.name || 'Nuevo funnel'} description="Constructor lineal de pasos con referencias verificadas por empresa.">
@@ -391,12 +458,20 @@ export function PublicFunnelPage() {
   const { funnelSlug, stepSlug } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setError('');
+    setData(null);
     getPublicFunnel(funnelSlug, stepSlug)
-      .then(setData)
+      .then((payload) => {
+        if (!payload?.funnel || !payload?.step || !payload?.company) {
+          throw new Error('La API devolvio un funnel publico invalido.');
+        }
+        setData(payload);
+      })
       .catch((requestError) => setError(requestError.message));
-  }, [funnelSlug, stepSlug]);
+  }, [funnelSlug, stepSlug, reloadKey]);
 
   useEffect(() => {
     if (data?.step.type === 'redirect' && data.step.redirectUrl) {
@@ -404,7 +479,18 @@ export function PublicFunnelPage() {
     }
   }, [data]);
 
-  if (error) return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-rose-700">{error}</main>;
+  if (error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="w-full max-w-xl">
+          <CrmLoadError
+            message={error}
+            onRetry={() => setReloadKey((current) => current + 1)}
+          />
+        </div>
+      </main>
+    );
+  }
   if (!data) return <main className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Cargando funnel...</main>;
   const source = { funnelSlug: data.funnel.slug, stepSlug: data.step.slug };
   const nextUrl = data.step.nextStepSlug ? `/f/${data.funnel.slug}/${data.step.nextStepSlug}` : '';

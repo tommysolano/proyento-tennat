@@ -26,6 +26,7 @@ import { ContactManager } from '../../components/ContactManager.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
+import { formatMoney } from '../../utils/billing.js';
 import { contactStatusLabel, formatDate } from '../../utils/contacts.js';
 
 export function AdminDashboard() {
@@ -328,7 +329,9 @@ export function AdminDashboard() {
                   </div>
                   <div className="rounded-lg border border-slate-200 p-4">
                     <p className="text-sm text-slate-500">Precio</p>
-                    <p className="mt-1 font-semibold text-slate-950">${subscription.planId?.price ?? 0}</p>
+                    <p className="mt-1 font-semibold text-slate-950">
+                      {formatMoney(subscription.planId?.price, subscription.planId?.currency)}
+                    </p>
                   </div>
                 </div>
               </>
@@ -362,10 +365,8 @@ export function AdminDashboard() {
               data={companyInvoices.map((invoice) => ({
                 ...invoice,
                 id: invoice._id,
-                totalLabel: new Intl.NumberFormat('en-US', {
-                  style: 'currency',
-                  currency: invoice.currency || 'USD'
-                }).format(invoice.total || 0),
+                totalLabel: formatMoney(invoice.total, invoice.currency),
+                balanceLabel: formatMoney(invoice.balanceDue ?? invoice.total, invoice.currency),
                 dueLabel: new Date(invoice.dueDate).toLocaleDateString('es-EC'),
                 paymentsLabel: `${invoice.payments?.length || 0} pago(s)`
               }))}
@@ -373,6 +374,7 @@ export function AdminDashboard() {
               columns={[
                 { key: 'number', header: 'Numero' },
                 { key: 'totalLabel', header: 'Total' },
+                { key: 'balanceLabel', header: 'Pendiente' },
                 { key: 'dueLabel', header: 'Vence' },
                 { key: 'paymentsLabel', header: 'Pagos' },
                 { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
@@ -387,10 +389,7 @@ export function AdminDashboard() {
               ...payment,
               id: payment._id,
               invoiceLabel: payment.invoiceId?.number || '-',
-              amountLabel: new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: payment.currency || 'USD'
-              }).format(payment.amount || 0),
+                amountLabel: formatMoney(payment.amount, payment.currency),
               paidLabel: payment.paidAt
                 ? new Date(payment.paidAt).toLocaleDateString('es-EC')
                 : '-'

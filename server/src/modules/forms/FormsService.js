@@ -17,7 +17,11 @@ import { checkPlatformLimit } from '../../utils/platformLimits.js';
 import { recordActivity } from '../../utils/activity.js';
 import { sanitizeError } from '../../utils/sanitize.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
-import { EMAIL_PATTERN } from '../../utils/validation.js';
+import {
+  EMAIL_PATTERN,
+  normalizeOptionalObjectId,
+  normalizeOptionalObjectIdArray
+} from '../../utils/validation.js';
 import {
   createSubmissionToken,
   isSafeMarketingKey,
@@ -69,6 +73,28 @@ const CUSTOM_FIELD_COMPATIBILITY = {
   consent: new Set(['boolean', 'text']),
   hidden: new Set(['text', 'textarea', 'number', 'date', 'boolean'])
 };
+const OPTIONAL_FORM_REFERENCE_FIELDS = [
+  'assignTo',
+  'pipelineId',
+  'stageId',
+  'bookingLinkId'
+];
+
+function normalizeFormSettings(settings = {}) {
+  const normalized = { ...settings };
+  for (const field of OPTIONAL_FORM_REFERENCE_FIELDS) {
+    if (field in normalized) {
+      normalized[field] = normalizeOptionalObjectId(normalized[field]);
+    }
+  }
+  if ('addTags' in normalized) {
+    normalized.addTags = normalizeOptionalObjectIdArray(normalized.addTags);
+  }
+  if ('notifyUsers' in normalized) {
+    normalized.notifyUsers = normalizeOptionalObjectIdArray(normalized.notifyUsers);
+  }
+  return normalized;
+}
 
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400, retryable: false });
@@ -134,7 +160,7 @@ export class FormsService {
         throw badRequest(`El campo ${field.key} requiere opciones`);
       }
     }
-    const settings = input.settings || {};
+    const settings = normalizeFormSettings(input.settings);
     if (
       settings.defaultContactStatus &&
       !CONTACT_STATUSES.includes(settings.defaultContactStatus)
@@ -219,7 +245,8 @@ export class FormsService {
   }
 
   static async createForm({ actor, body }) {
-    await this.validateConfiguration(actor.companyId, body);
+    const settings = normalizeFormSettings(body.settings);
+    await this.validateConfiguration(actor.companyId, { ...body, settings });
     await checkUsageLimit({
       companyId: actor.companyId,
       distributorId: actor.distributorId,
@@ -233,7 +260,7 @@ export class FormsService {
       description: body.description || '',
       type: body.type || 'lead_capture',
       fields: body.fields || [],
-      settings: body.settings || {},
+      settings,
       styling: body.styling || {},
       createdBy: actor._id,
       updatedBy: actor._id,
@@ -268,13 +295,14 @@ export class FormsService {
   }
 
   static async updateForm({ actor, form, body }) {
+    const settings = normalizeFormSettings({
+      ...form.settings.toObject(),
+      ...(body.settings || {})
+    });
     const definition = {
       type: body.type || form.type,
       fields: body.fields || form.fields.map(asPlain),
-      settings: {
-        ...form.settings.toObject(),
-        ...(body.settings || {})
-      }
+      settings
     };
     await this.validateConfiguration(form.companyId, definition);
     if ('name' in body) form.name = sanitizePlainText(body.name, 120);
@@ -285,7 +313,7 @@ export class FormsService {
       if (field in body) form[field] = body[field];
     }
     if ('settings' in body) {
-      form.settings = { ...form.settings.toObject(), ...body.settings };
+      form.settings = settings;
     }
     form.updatedBy = actor._id;
     await form.save();

@@ -30,7 +30,12 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
-import { CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.jsx';
+import {
+  CrmLoadError,
+  CrmLoading,
+  CrmNotice,
+  inputClass
+} from '../../components/CrmCommon.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { PublicFormRenderer } from './FormsPage.jsx';
@@ -118,6 +123,7 @@ export function LandingPagesPage() {
   const [analytics, setAnalytics] = useState(null);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -125,10 +131,13 @@ export function LandingPagesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      setPages(await getLandingPages());
+      const data = await getLandingPages();
+      if (!Array.isArray(data)) throw new Error('La API devolvio una lista de landings invalida.');
+      setPages(data);
     } catch (requestError) {
-      setError(requestError.message);
+      setLoadError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -180,7 +189,9 @@ export function LandingPagesPage() {
     <PageShell eyebrow="Marketing" title="Landing Pages" description="Paginas publicas basicas construidas por secciones seguras.">
       <div><Button disabled={busy} onClick={createNew}><Plus className="h-4 w-4" />Nueva landing</Button></div>
       <CrmNotice notice={notice} error={error} />
-      {loading ? <CrmLoading /> : (
+      {loading ? <CrmLoading label="Cargando landing pages..." /> : loadError ? (
+        <CrmLoadError message={loadError} onRetry={load} />
+      ) : (
         <div className="grid gap-4">
           {pages.map((page) => (
             <Card key={page._id} className="p-5">
@@ -188,7 +199,7 @@ export function LandingPagesPage() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">{page.name}</h2><Badge tone={tone(page.status)}>{page.status}</Badge></div>
                   <p className="mt-1 text-sm text-slate-500">{page.title}</p>
-                  <p className="mt-2 text-xs text-slate-400">/p/{page.slug} · {page.content.sections.length} secciones</p>
+                  <p className="mt-2 text-xs text-slate-400">/p/{page.slug} · {(page.content?.sections || []).length} secciones</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" onClick={() => inspect(page)}><BarChart3 className="h-4 w-4" />Analytics</Button>
@@ -222,26 +233,59 @@ export function LandingPageBuilderPage() {
   const [page, setPage] = useState(emptyPage);
   const [references, setReferences] = useState({ forms: [], bookings: [], widgets: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  useEffect(() => {
-    Promise.all([
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    const results = await Promise.allSettled([
       id ? getLandingPage(id) : Promise.resolve(emptyPage),
       getForms({ status: 'published' }),
       getBookingLinks({ status: 'active' }),
       getReviewWidgets()
-    ]).then(([pageData, forms, bookings, widgets]) => {
-      setPage(normalizePage(pageData));
-      setReferences({
-        forms,
-        bookings,
-        widgets: widgets.filter((widget) => widget.status === 'published')
-      });
-    }).catch((requestError) => setError(requestError.message))
-      .finally(() => setLoading(false));
+    ]);
+    const [pageResult, formsResult, bookingsResult, widgetsResult] = results;
+    if (pageResult.status === 'rejected') {
+      setLoadError(pageResult.reason?.message || 'No se pudo cargar la landing page.');
+      setLoading(false);
+      return;
+    }
+    if (!pageResult.value || typeof pageResult.value !== 'object' || (id && !pageResult.value._id)) {
+      setLoadError('La API devolvio una landing page invalida.');
+      setLoading(false);
+      return;
+    }
+
+    setPage(normalizePage(pageResult.value));
+    const optionalResults = [
+      ['formularios', formsResult],
+      ['booking links', bookingsResult],
+      ['widgets de resenas', widgetsResult]
+    ];
+    const failed = optionalResults
+      .filter(([, result]) => result.status === 'rejected' || !Array.isArray(result.value))
+      .map(([label]) => label);
+    setReferences({
+      forms: formsResult.status === 'fulfilled' && Array.isArray(formsResult.value) ? formsResult.value : [],
+      bookings: bookingsResult.status === 'fulfilled' && Array.isArray(bookingsResult.value) ? bookingsResult.value : [],
+      widgets: widgetsResult.status === 'fulfilled' && Array.isArray(widgetsResult.value)
+        ? widgetsResult.value.filter((widget) => widget.status === 'published')
+        : []
+    });
+    setError(
+      failed.length
+        ? `La landing cargo, pero no se pudieron cargar: ${failed.join(', ')}.`
+        : ''
+    );
+    setLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function updateSection(index, patch) {
     setPage({
@@ -315,6 +359,13 @@ export function LandingPageBuilderPage() {
   }
 
   if (loading) return <PageShell title="Constructor de landing"><CrmLoading /></PageShell>;
+  if (loadError) {
+    return (
+      <PageShell title="Constructor de landing">
+        <CrmLoadError message={loadError} onRetry={load} />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell eyebrow="Marketing" title={page.name || 'Nueva landing'} description="Builder MVP por secciones, sin editor visual complejo.">
@@ -408,15 +459,36 @@ function LandingSection({ section, pageSlug, primaryColor }) {
 export function PublicLandingRenderer({ slug, embedded = false }) {
   const [page, setPage] = useState(null);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
+    setError('');
+    setPage(null);
     getPublicLandingPage(slug)
       .then((data) => {
+        if (
+          !data ||
+          !Array.isArray(data.content?.sections) ||
+          !data.seo ||
+          !data.styling ||
+          !data.company
+        ) {
+          throw new Error('La API devolvio una landing publica invalida.');
+        }
         setPage(data);
         document.title = data.seo.title || data.title;
       })
       .catch((requestError) => setError(requestError.message));
-  }, [slug]);
-  if (error) return <div className="flex min-h-64 items-center justify-center p-6 text-rose-700">{error}</div>;
+  }, [slug, reloadKey]);
+  if (error) {
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <CrmLoadError
+          message={error}
+          onRetry={() => setReloadKey((current) => current + 1)}
+        />
+      </div>
+    );
+  }
   if (!page) return <div className="flex min-h-64 items-center justify-center text-sm text-slate-500">Cargando pagina...</div>;
   const content = <div style={{ backgroundColor: page.styling.backgroundColor, color: page.styling.textColor }}>{page.content.sections.map((section, index) => <LandingSection key={section.id || index} section={section} pageSlug={slug} primaryColor={page.styling.primaryColor} />)}</div>;
   return embedded ? content : <main className="min-h-screen">{content}</main>;

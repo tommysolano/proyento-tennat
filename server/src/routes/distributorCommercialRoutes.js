@@ -16,6 +16,14 @@ import {
 } from '../models/index.js';
 import { recordActivity } from '../utils/activity.js';
 import {
+  assertActivePlan,
+  assertBillableSubscription,
+  buildSubscriptionTerms,
+  invoiceBalance,
+  normalizeCurrency,
+  validatePaymentInput
+} from '../utils/billing.js';
+import {
   refreshCompanyOnboarding,
   refreshDistributorOnboarding
 } from '../utils/onboarding.js';
@@ -119,20 +127,21 @@ async function nextInvoiceNumber(distributorId) {
   return `${prefix}-${String(sequence).padStart(6, '0')}`;
 }
 
-function subscriptionDates(body) {
-  const data = {};
-  for (const field of [
-    'startsAt',
-    'endsAt',
-    'trialEndsAt',
-    'currentPeriodStart',
-    'currentPeriodEnd'
-  ]) {
-    if (field in body) data[field] = dateValue(body[field], field);
-  }
-  if ('cancelAtPeriodEnd' in body) data.cancelAtPeriodEnd = Boolean(body.cancelAtPeriodEnd);
-  if ('metadata' in body) data.metadata = body.metadata || {};
-  return data;
+async function addInvoiceBalances(invoices) {
+  const plainInvoices = invoices.map((invoice) =>
+    typeof invoice.toObject === 'function' ? invoice.toObject() : invoice
+  );
+  const invoiceIds = plainInvoices.map((invoice) => invoice._id);
+  if (!invoiceIds.length) return plainInvoices;
+  const totals = await Payment.aggregate([
+    { $match: { invoiceId: { $in: invoiceIds }, status: 'succeeded' } },
+    { $group: { _id: '$invoiceId', total: { $sum: '$amount' } } }
+  ]);
+  const totalByInvoice = new Map(totals.map((item) => [String(item._id), item.total]));
+  return plainInvoices.map((invoice) => ({
+    ...invoice,
+    ...invoiceBalance(invoice, totalByInvoice.get(String(invoice._id)) || 0)
+  }));
 }
 
 router.use(authMiddleware);
@@ -239,17 +248,14 @@ router.get('/companies', requirePermission('companies:manage'), async (req, res,
         .sort({ createdAt: -1 })
         .populate('planId', 'name code price currency billingCycle')
         .lean(),
-      Invoice.aggregate([
-        {
-          $match: {
-            issuerType: 'distributor',
-            issuerId: distributorId,
-            customerId: { $in: companyIds },
-            status: { $in: ['open', 'overdue'] }
-          }
-        },
-        { $group: { _id: '$customerId', count: { $sum: 1 }, total: { $sum: '$total' } } }
-      ]),
+      Invoice.find({
+        issuerType: 'distributor',
+        issuerId: distributorId,
+        customerId: { $in: companyIds },
+        status: { $in: ['open', 'overdue'] }
+      })
+        .select('customerId total')
+        .lean(),
       Payment.find({ payerType: 'company', payerId: { $in: companyIds }, status: 'succeeded' })
         .sort({ paidAt: -1, createdAt: -1 })
         .lean()
@@ -260,9 +266,19 @@ router.get('/companies', requirePermission('companies:manage'), async (req, res,
       const key = subscription.companyId.toString();
       if (!subscriptionByCompany.has(key)) subscriptionByCompany.set(key, subscription);
     });
-    const pendingByCompany = new Map(
-      pendingInvoices.map((item) => [item._id.toString(), item])
-    );
+    const paidByInvoice = new Map();
+    payments.forEach((payment) => {
+      const key = String(payment.invoiceId);
+      paidByInvoice.set(key, (paidByInvoice.get(key) || 0) + payment.amount);
+    });
+    const pendingByCompany = new Map();
+    pendingInvoices.forEach((invoice) => {
+      const key = String(invoice.customerId);
+      const current = pendingByCompany.get(key) || { count: 0, total: 0 };
+      current.count += 1;
+      current.total += Math.max(invoice.total - (paidByInvoice.get(String(invoice._id)) || 0), 0);
+      pendingByCompany.set(key, current);
+    });
     const paymentByCompany = new Map();
     payments.forEach((payment) => {
       const key = payment.payerId.toString();
@@ -389,20 +405,24 @@ router.put(
         status: { $in: CURRENT_SUBSCRIPTION_STATUSES }
       }).sort({ createdAt: -1 });
       const activityType = subscription ? 'subscription_updated' : 'subscription_created';
+      if (!subscription || String(subscription.planId) !== String(plan._id)) {
+        assertActivePlan(plan);
+      }
+      const terms = buildSubscriptionTerms(req.body, plan, {
+        current: subscription,
+        defaultStatus: status
+      });
 
       if (subscription) {
         subscription.planId = plan._id;
-        subscription.status = status;
-        Object.assign(subscription, subscriptionDates(req.body));
+        Object.assign(subscription, terms);
         await subscription.save();
       } else {
         subscription = await Subscription.create({
           companyId: company._id,
           planId: plan._id,
           distributorId,
-          status,
-          paymentProvider: 'manual',
-          ...subscriptionDates(req.body)
+          ...terms
         });
       }
 
@@ -449,7 +469,8 @@ router.get(
         await ownedCompany(req.user.distributorId, req.query.companyId);
         filter.customerId = req.query.companyId;
       }
-      res.json(await Invoice.find(filter).sort({ createdAt: -1 }).limit(500));
+      const invoices = await Invoice.find(filter).sort({ createdAt: -1 }).limit(500);
+      res.json(await addInvoiceBalances(invoices));
     } catch (error) {
       next(error);
     }
@@ -464,17 +485,26 @@ router.post(
     try {
       const distributorId = req.user.distributorId;
       const company = await ownedCompany(distributorId, req.body.companyId);
-      let subscriptionId = null;
-      if (req.body.subscriptionId) {
-        const subscription = await Subscription.findOne({
-          _id: req.body.subscriptionId,
-          companyId: company._id,
-          distributorId
+      if (!isValidObjectId(req.body.subscriptionId)) {
+        return res.status(400).json({ message: 'subscriptionId valido es requerido' });
+      }
+      const subscription = await Subscription.findOne({
+        _id: req.body.subscriptionId,
+        companyId: company._id,
+        distributorId
+      }).populate('planId', 'name price currency billingCycle status');
+      if (!subscription) {
+        return res.status(400).json({ message: 'La suscripcion no pertenece a la empresa' });
+      }
+      assertBillableSubscription(subscription);
+      if (!subscription.planId) {
+        return res.status(400).json({ message: 'El plan de la suscripcion no existe' });
+      }
+      const currency = normalizeCurrency(req.body.currency, subscription.planId.currency);
+      if (currency !== normalizeCurrency(subscription.planId.currency)) {
+        return res.status(400).json({
+          message: 'La moneda de la factura debe coincidir con la moneda del plan'
         });
-        if (!subscription) {
-          return res.status(400).json({ message: 'La suscripcion no pertenece a la empresa' });
-        }
-        subscriptionId = subscription._id;
       }
 
       const distributor = await Distributor.findById(distributorId).select('billingSettings');
@@ -498,12 +528,9 @@ router.post(
         customerType: 'company',
         customerId: company._id,
         subscriptionType: 'company',
-        subscriptionId,
+        subscriptionId: subscription._id,
         number: await nextInvoiceNumber(distributorId),
-        currency:
-          cleanString(req.body.currency).toUpperCase() ||
-          distributor.billingSettings?.currency ||
-          'USD',
+        currency,
         subtotal,
         tax,
         total,
@@ -544,7 +571,8 @@ router.get(
         payerType: 'company',
         payerId: invoice.customerId
       }).sort({ createdAt: -1 });
-      res.json({ invoice, payments });
+      const [invoiceWithBalance] = await addInvoiceBalances([invoice]);
+      res.json({ invoice: invoiceWithBalance, payments });
     } catch (error) {
       next(error);
     }
@@ -643,18 +671,22 @@ router.post(
       if (!PAYMENT_STATUSES.includes(status)) {
         return res.status(400).json({ message: 'status de pago invalido' });
       }
-      const currency = cleanString(req.body.currency).toUpperCase() || invoice.currency;
-      if (currency !== invoice.currency) {
-        return res.status(400).json({
-          message: 'La moneda del pago debe coincidir con la moneda de la factura'
-        });
-      }
+      const totalsBefore = await Payment.aggregate([
+        { $match: { invoiceId: invoice._id, status: 'succeeded' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]);
+      const paymentInput = validatePaymentInput({
+        invoice,
+        paidAmount: totalsBefore[0]?.total || 0,
+        amount: req.body.amount,
+        currency: req.body.currency
+      });
       const payment = await Payment.create({
         invoiceId: invoice._id,
         payerType: 'company',
         payerId: invoice.customerId,
-        amount: numberValue(req.body.amount, 'amount', { min: 0.01 }),
-        currency,
+        amount: paymentInput.amount,
+        currency: paymentInput.currency,
         status,
         method: cleanString(req.body.method) || 'manual',
         paymentProvider: cleanString(req.body.paymentProvider) || 'manual',
@@ -669,11 +701,8 @@ router.post(
       });
 
       if (status === 'succeeded') {
-        const totals = await Payment.aggregate([
-          { $match: { invoiceId: invoice._id, status: 'succeeded' } },
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        if ((totals[0]?.total || 0) >= invoice.total) {
+        const paidTotal = Math.round((paymentInput.paidAmount + payment.amount) * 100) / 100;
+        if (paidTotal >= invoice.total) {
           invoice.status = 'paid';
           invoice.paidAt = payment.paidAt;
           await invoice.save();
@@ -693,7 +722,16 @@ router.post(
           invoiceBecamePaid: !invoiceWasPaid && invoice.status === 'paid'
         }
       });
-      res.status(201).json(await payment.populate('invoiceId', 'number total status customerId'));
+      const populatedPayment = await payment.populate(
+        'invoiceId',
+        'number total status customerId subscriptionId currency'
+      );
+      res.status(201).json({
+        ...populatedPayment.toObject(),
+        invoiceBalance: invoiceBalance(invoice, paymentInput.paidAmount + (
+          status === 'succeeded' ? payment.amount : 0
+        ))
+      });
     } catch (error) {
       next(error);
     }

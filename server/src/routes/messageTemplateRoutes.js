@@ -10,7 +10,7 @@ import {
   TEMPLATE_TYPES
 } from '../models/MessageTemplate.js';
 import { recordActivity } from '../utils/activity.js';
-import { cleanString } from '../utils/validation.js';
+import { cleanString, isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 
@@ -25,11 +25,30 @@ router.use(
 );
 router.use(requireModule('conversations'));
 
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de plantilla invalido' });
+  }
+  next();
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const filter = { companyId: req.user.companyId };
     if (req.user.role !== 'ADMIN') filter.status = 'active';
     if (req.query.channel) filter.channel = req.query.channel;
+    if (req.query.type) {
+      if (!TEMPLATE_TYPES.includes(req.query.type)) {
+        return res.status(400).json({ message: 'type invalido' });
+      }
+      filter.type = req.query.type;
+    }
+    if (req.user.role === 'ADMIN' && req.query.status) {
+      if (!TEMPLATE_STATUSES.includes(req.query.status)) {
+        return res.status(400).json({ message: 'status invalido' });
+      }
+      filter.status = req.query.status;
+    }
     res.json(await MessageTemplate.find(filter).populate('createdBy', 'name role').sort({ name: 1 }));
   } catch (error) {
     next(error);

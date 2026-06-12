@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireModule } from '../middleware/moduleMiddleware.js';
 import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
+import { Contact } from '../models/Contact.js';
 import { Conversation } from '../models/Conversation.js';
 import { Message } from '../models/Message.js';
 import { Job } from '../models/Job.js';
@@ -10,12 +11,20 @@ import { JobService } from '../modules/jobs/JobService.js';
 import { ConversationService } from '../modules/conversations/ConversationService.js';
 import { conversationScope } from '../modules/conversations/conversationScope.js';
 import { getStorageProvider } from '../modules/storage/index.js';
+import { assertOutboundAllowed } from '../modules/conversations/conversationValidation.js';
+import { isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 router.use(authMiddleware);
 router.use(roleMiddleware('ADMIN', 'SUPERVISOR', 'CALLCENTER'));
 router.use(requireModule('conversations'));
 router.use(requireModule('inbox'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de mensaje invalido' });
+  }
+  next();
+});
 
 router.post(
   '/:id/retry',
@@ -39,6 +48,20 @@ router.post(
       archivedAt: null
     });
     if (!conversation) return res.status(404).json({ message: 'Conversacion no encontrada' });
+    const contact = await Contact.findOne({
+      _id: original.contactId,
+      companyId: req.user.companyId,
+      archivedAt: null
+    }).select('_id metadata');
+    if (!contact) return res.status(404).json({ message: 'Contacto no encontrado' });
+    assertOutboundAllowed({
+      conversation,
+      contact,
+      text: original.text,
+      type: original.type,
+      template: original.metadata?.providerTemplate || null,
+      media: original.media || {}
+    });
     const existingJob = await Job.findOne({
       type: 'message.whatsapp.send',
       status: { $in: ['pending', 'processing', 'failed'] },

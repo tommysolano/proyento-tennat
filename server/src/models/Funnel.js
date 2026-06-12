@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { safePublicUrl, sanitizePlainText } from '../modules/marketing/marketingSecurity.js';
 import { sanitize } from '../utils/sanitize.js';
+import { normalizeOptionalObjectId } from '../utils/validation.js';
 
 export const FUNNEL_STATUSES = ['draft', 'published', 'paused', 'archived'];
 
@@ -23,7 +24,12 @@ const funnelSchema = new mongoose.Schema(
       defaultRedirectUrl: { type: String, default: '', maxlength: 1000 },
       trackingEnabled: { type: Boolean, default: true },
       customDomainPlaceholder: { type: String, default: '', maxlength: 255 },
-      entryStepId: { type: mongoose.Schema.Types.ObjectId, ref: 'FunnelStep', default: null }
+      entryStepId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'FunnelStep',
+        default: null,
+        set: normalizeOptionalObjectId
+      }
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

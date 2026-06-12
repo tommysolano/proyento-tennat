@@ -5,6 +5,7 @@ import {
   sanitizePlainText
 } from '../modules/marketing/marketingSecurity.js';
 import { sanitize } from '../utils/sanitize.js';
+import { normalizeOptionalObjectId } from '../utils/validation.js';
 
 export const LANDING_PAGE_STATUSES = ['draft', 'published', 'paused', 'archived'];
 export const LANDING_SECTION_TYPES = [
@@ -72,11 +73,17 @@ const landingPageSchema = new mongoose.Schema(
     settings: {
       redirectUrl: { type: String, default: '', maxlength: 1000 },
       trackingEnabled: { type: Boolean, default: true },
-      associatedFormId: { type: mongoose.Schema.Types.ObjectId, ref: 'Form', default: null },
+      associatedFormId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Form',
+        default: null,
+        set: normalizeOptionalObjectId
+      },
       associatedBookingLinkId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'BookingLink',
-        default: null
+        default: null,
+        set: normalizeOptionalObjectId
       }
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

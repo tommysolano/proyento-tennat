@@ -44,7 +44,13 @@ const platformPlanSchema = new mongoose.Schema(
     code: { type: String, required: true, unique: true, lowercase: true, trim: true },
     description: { type: String, default: '', trim: true },
     price: { type: Number, required: true, min: 0 },
-    currency: { type: String, default: 'USD', uppercase: true, trim: true },
+    currency: {
+      type: String,
+      default: 'USD',
+      uppercase: true,
+      trim: true,
+      match: /^[A-Z]{3}$/
+    },
     billingCycle: {
       type: String,
       enum: ['monthly', 'yearly'],

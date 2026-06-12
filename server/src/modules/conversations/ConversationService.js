@@ -13,6 +13,7 @@ import { RoutingService } from '../routing/RoutingService.js';
 import { getChannelAdapter, canonicalChannel } from './adapters/index.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 import { OperationalAlertService } from '../ops/OperationalAlertService.js';
+import { assertOutboundAllowed } from './conversationValidation.js';
 
 function safePreview(text, fallback = '') {
   return String(text || fallback).slice(0, 500);
@@ -283,9 +284,15 @@ export class ConversationService {
     template = null,
     media = {}
   }) {
-    if (type === 'text' && !String(text).trim()) {
-      throw Object.assign(new Error('text es requerido para mensajes de texto'), { status: 400 });
+    const contact = await Contact.findOne({
+      _id: conversation.contactId,
+      companyId: conversation.companyId,
+      archivedAt: null
+    }).select('_id metadata');
+    if (!contact) {
+      throw Object.assign(new Error('Contacto no disponible para envio'), { status: 404 });
     }
+    assertOutboundAllowed({ conversation, contact, text, type, template, media });
     const canonical = canonicalChannel(conversation.channel);
     if (canonical === 'whatsapp_cloud') {
       await checkUsageLimit({
@@ -374,6 +381,14 @@ export class ConversationService {
         retryable: false
       });
     }
+    assertOutboundAllowed({
+      conversation,
+      contact,
+      text: message.text,
+      type: message.type,
+      template,
+      media: message.media || {}
+    });
     const channelConfig = conversation.channelConfigId
       ? await ChannelConfig.findOne({
           _id: conversation.channelConfigId,

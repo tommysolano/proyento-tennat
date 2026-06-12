@@ -5,6 +5,7 @@ import {
   safePublicUrl,
   sanitizePlainText
 } from '../modules/marketing/marketingSecurity.js';
+import { normalizeOptionalObjectId } from '../utils/validation.js';
 
 export const FORM_TYPES = [
   'lead_capture',
@@ -105,19 +106,47 @@ const formSchema = new mongoose.Schema(
       updateExistingContact: { type: Boolean, default: true },
       defaultContactStatus: { type: String, default: 'nuevo' },
       defaultLifecycleStage: { type: String, default: 'lead' },
-      assignTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-      addTags: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Tag' }],
+      assignTo: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+        set: normalizeOptionalObjectId
+      },
+      addTags: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Tag',
+        set: normalizeOptionalObjectId
+      }],
       createOpportunity: { type: Boolean, default: false },
-      pipelineId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pipeline', default: null },
-      stageId: { type: mongoose.Schema.Types.ObjectId, ref: 'PipelineStage', default: null },
-      bookingLinkId: { type: mongoose.Schema.Types.ObjectId, ref: 'BookingLink', default: null },
+      pipelineId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Pipeline',
+        default: null,
+        set: normalizeOptionalObjectId
+      },
+      stageId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'PipelineStage',
+        default: null,
+        set: normalizeOptionalObjectId
+      },
+      bookingLinkId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'BookingLink',
+        default: null,
+        set: normalizeOptionalObjectId
+      },
       successMessage: {
         type: String,
         default: 'Gracias. Tu informacion fue recibida.',
         maxlength: 1000
       },
       redirectUrl: { type: String, default: '', maxlength: 1000 },
-      notifyUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      notifyUsers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        set: normalizeOptionalObjectId
+      }],
       spamProtection: { type: Boolean, default: true },
       honeypotField: { type: String, default: 'website', maxlength: 64 },
       minimumSubmitTimeMs: { type: Number, min: 0, max: 600000, default: 1500 },

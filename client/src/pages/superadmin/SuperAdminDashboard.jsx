@@ -25,17 +25,28 @@ import {
   getSuperAdminOverview,
   updateDistributor,
   updateModuleEntitlement,
-  updatePlatformInvoice,
   updatePlatformPlan,
   updatePlatformSubscription
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import {
+  BillingPlanSummary,
+  CurrencySelect
+} from '../../components/BillingPlanSummary.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import {
+  addDaysDateTimeInput,
+  addDaysInput,
+  localDateInput,
+  localDateTimeInput,
+  paymentDefaults,
+  subscriptionPayload
+} from '../../utils/billing.js';
 
 const inputClass = 'w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm';
 const PLATFORM_MODULES = [
@@ -77,6 +88,19 @@ export function SuperAdminDashboard({ section = 'all' }) {
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [selectedPlatformPlanId, setSelectedPlatformPlanId] = useState('');
+  const [platformSubscriptionStatus, setPlatformSubscriptionStatus] = useState('trial');
+  const [invoiceSubscriptionId, setInvoiceSubscriptionId] = useState('');
+  const [invoiceCurrency, setInvoiceCurrency] = useState('USD');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceDescription, setInvoiceDescription] = useState('');
+  const [invoiceDueDate, setInvoiceDueDate] = useState(addDaysInput(15));
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentCurrency, setPaymentCurrency] = useState('USD');
+  const [paymentDescription, setPaymentDescription] = useState('');
+  const [paymentDate, setPaymentDate] = useState(localDateInput());
+  const [platformPlanModules, setPlatformPlanModules] = useState(PLATFORM_MODULES);
 
   const show = (name) => section === 'all' || section === name;
 
@@ -125,6 +149,13 @@ export function SuperAdminDashboard({ section = 'all' }) {
   const distributorNames = useMemo(
     () => new Map(distributors.map((item) => [item._id, item.name])),
     [distributors]
+  );
+  const selectedPlatformPlan = plans.find((plan) => plan._id === selectedPlatformPlanId);
+  const selectedInvoiceSubscription = subscriptions.find(
+    (subscription) => subscription._id === invoiceSubscriptionId
+  );
+  const selectedPaymentInvoice = invoices.find(
+    (invoice) => invoice._id === paymentInvoiceId
   );
 
   async function mutate(key, action, successMessage) {
@@ -252,12 +283,15 @@ export function SuperAdminDashboard({ section = 'all' }) {
             referralPrograms: Number(data.get('referralPrograms')),
             referralsPerMonth: Number(data.get('referralsPerMonth'))
           },
-          includedModules: PLATFORM_MODULES,
+          includedModules: platformPlanModules,
           status: 'active'
         }),
       `Plan "${name}" creado.`
     );
-    if (created) form.reset();
+    if (created) {
+      form.reset();
+      setPlatformPlanModules(PLATFORM_MODULES);
+    }
   }
 
   async function handleEditPlan(plan) {
@@ -285,30 +319,72 @@ export function SuperAdminDashboard({ section = 'all' }) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    let terms;
+    try {
+      terms = subscriptionPayload({
+        planId: data.get('platformPlanId'),
+        status: data.get('status'),
+        startsAt: data.get('startsAt'),
+        trialEndsAt: data.get('trialEndsAt')
+      });
+    } catch (validationError) {
+      setError(validationError.message);
+      return;
+    }
     const created = await mutate(
       'subscription-create',
       () =>
         createPlatformSubscription({
           distributorId: data.get('distributorId'),
-          platformPlanId: data.get('platformPlanId'),
-          status: data.get('status'),
-          startsAt: data.get('startsAt') || new Date().toISOString(),
-          trialEndsAt: data.get('trialEndsAt') || null,
-          currentPeriodEnd: data.get('currentPeriodEnd') || null,
+          platformPlanId: terms.planId,
+          status: terms.status,
+          startsAt: terms.startsAt,
+          ...(terms.trialEndsAt ? { trialEndsAt: terms.trialEndsAt } : {}),
           paymentProvider: 'manual'
         }),
       'Suscripcion de plataforma creada.'
     );
-    if (created) form.reset();
+    if (created) {
+      form.reset();
+      setSelectedPlatformPlanId('');
+      setPlatformSubscriptionStatus('trial');
+    }
   }
 
   async function handleSubscriptionStatus(subscription) {
-    const status = subscription.status === 'suspended' ? 'active' : 'suspended';
+    const status =
+      subscription.status === 'trial' || subscription.status === 'suspended'
+        ? 'active'
+        : 'suspended';
     await mutate(
       `subscription-status-${subscription._id}`,
       () => updatePlatformSubscription(subscription._id, { status }),
       `Suscripcion ${status}.`
     );
+  }
+
+  function handleInvoiceSubscription(subscriptionId) {
+    setInvoiceSubscriptionId(subscriptionId);
+    const subscription = subscriptions.find((item) => item._id === subscriptionId);
+    const plan = subscription?.platformPlanId;
+    setInvoiceCurrency(plan?.currency || 'USD');
+    setInvoiceAmount(plan?.price === undefined ? '' : String(plan.price));
+    setInvoiceDescription(
+      plan ? `Suscripcion ${plan.name} - ${plan.billingCycle}` : ''
+    );
+  }
+
+  function handlePaymentInvoice(invoiceId) {
+    setPaymentInvoiceId(invoiceId);
+    const invoice = invoices.find((item) => item._id === invoiceId);
+    const defaults = paymentDefaults(
+      invoice,
+      distributorNames.get(String(invoice?.customerId)) || ''
+    );
+    setPaymentAmount(defaults.amount);
+    setPaymentCurrency(defaults.currency);
+    setPaymentDescription(defaults.description);
+    setPaymentDate(defaults.paidAt);
   }
 
   async function handleCreateInvoice(event) {
@@ -319,23 +395,30 @@ export function SuperAdminDashboard({ section = 'all' }) {
       'invoice-create',
       () =>
         createPlatformInvoice({
-          distributorId: data.get('distributorId'),
-          subscriptionId: data.get('subscriptionId') || null,
-          currency: data.get('currency'),
+          distributorId: selectedInvoiceSubscription?.distributorId?._id,
+          subscriptionId: invoiceSubscriptionId,
+          currency: invoiceCurrency,
           tax: Number(data.get('tax') || 0),
           dueDate: data.get('dueDate'),
           status: 'open',
           lineItems: [
             {
-              description: data.get('description'),
+              description: invoiceDescription,
               quantity: 1,
-              unitPrice: Number(data.get('amount'))
+              unitPrice: Number(invoiceAmount)
             }
           ]
         }),
       'Factura manual creada.'
     );
-    if (created) form.reset();
+    if (created) {
+      form.reset();
+      setInvoiceSubscriptionId('');
+      setInvoiceCurrency('USD');
+      setInvoiceAmount('');
+      setInvoiceDescription('');
+      setInvoiceDueDate(addDaysInput(15));
+    }
   }
 
   async function handleCreatePayment(event) {
@@ -350,19 +433,20 @@ export function SuperAdminDashboard({ section = 'all' }) {
           amount: Number(data.get('amount')),
           currency: data.get('currency'),
           method: data.get('method'),
-          status: 'succeeded'
+          paidAt: data.get('paidAt'),
+          status: 'succeeded',
+          metadata: { description: data.get('description') }
         }),
       'Pago manual registrado.'
     );
-    if (created) form.reset();
-  }
-
-  async function handleMarkInvoicePaid(invoice) {
-    await mutate(
-      `invoice-paid-${invoice._id}`,
-      () => updatePlatformInvoice(invoice._id, { status: 'paid' }),
-      `Factura ${invoice.number} marcada como pagada.`
-    );
+    if (created) {
+      form.reset();
+      setPaymentInvoiceId('');
+      setPaymentAmount('');
+      setPaymentCurrency('USD');
+      setPaymentDescription('');
+      setPaymentDate(localDateInput());
+    }
   }
 
   async function handleEntitlement(event) {
@@ -536,22 +620,22 @@ export function SuperAdminDashboard({ section = 'all' }) {
               <textarea name="description" className={inputClass} placeholder="Descripcion" />
               <div className="grid grid-cols-2 gap-3">
                 <input required min="0" step="0.01" type="number" name="price" className={inputClass} placeholder="Precio" />
-                <input name="currency" className={inputClass} defaultValue="USD" />
+                <CurrencySelect name="currency" className={inputClass} defaultValue="USD" />
               </div>
               <select name="billingCycle" className={inputClass}>
                 <option value="monthly">Mensual</option>
                 <option value="yearly">Anual</option>
               </select>
               <div className="grid grid-cols-2 gap-3">
-                <input required min="0" type="number" name="companies" className={inputClass} placeholder="Empresas" />
+                <input required min="0" type="number" name="companies" title="Cantidad maxima de empresas permitidas al distribuidor." className={inputClass} placeholder="Empresas" />
                 <input required min="0" type="number" name="users" className={inputClass} placeholder="Usuarios" />
                 <input required min="0" type="number" name="contacts" className={inputClass} placeholder="Contactos" />
                 <input required min="0" type="number" name="modules" className={inputClass} placeholder="Modulos" />
                 <input required min="0" type="number" name="storageMb" className={inputClass} placeholder="Storage MB" />
-                <input required min="0" type="number" name="messages" className={inputClass} placeholder="Mensajes" />
+                <input required min="0" type="number" name="messages" title="Cantidad maxima de mensajes permitidos." className={inputClass} placeholder="Mensajes" />
                 <input required min="0" type="number" name="whatsappMessages" className={inputClass} placeholder="Mensajes WhatsApp" />
-                <input required min="0" type="number" name="mediaStorageMb" className={inputClass} placeholder="Media MB" />
-                <input required min="0" type="number" name="mediaFiles" className={inputClass} placeholder="Archivos media" />
+                <input required min="0" type="number" name="mediaStorageMb" title="Espacio maximo para archivos multimedia, medido en MB." className={inputClass} placeholder="Media MB" />
+                <input required min="0" type="number" name="mediaFiles" title="Cantidad maxima de archivos multimedia." className={inputClass} placeholder="Archivos media" />
                 <input required min="0" type="number" name="conversations" className={inputClass} placeholder="Conversaciones" />
                 <input required min="0" type="number" name="calendars" className={inputClass} placeholder="Calendarios" />
                 <input required min="0" type="number" name="appointments" className={inputClass} placeholder="Citas/mes" />
@@ -560,13 +644,13 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <input required min="0" type="number" name="workflowRunsPerMonth" className={inputClass} placeholder="Runs workflow/mes" />
                 <input required min="0" type="number" name="workflowActionsPerMonth" className={inputClass} placeholder="Acciones workflow/mes" />
                 <input required min="0" type="number" name="forms" className={inputClass} placeholder="Formularios" />
-                <input required min="0" type="number" name="formSubmissionsPerMonth" className={inputClass} placeholder="Submissions/mes" />
+                <input required min="0" type="number" name="formSubmissionsPerMonth" title="Respuestas de formularios permitidas por mes." className={inputClass} placeholder="Submissions/mes" />
                 <input required min="0" type="number" name="landingPages" className={inputClass} placeholder="Landing pages" />
                 <input required min="0" type="number" name="funnels" className={inputClass} placeholder="Funnels" />
                 <input required min="0" type="number" name="funnelSteps" className={inputClass} placeholder="Steps de funnel" />
                 <input required min="0" type="number" name="pageViewsPerMonth" className={inputClass} placeholder="Page views/mes" />
                 <input required min="0" type="number" name="reviewRequestsPerMonth" className={inputClass} placeholder="Solicitudes review/mes" />
-                <input required min="0" type="number" name="reviews" className={inputClass} placeholder="Reviews" />
+                <input required min="0" type="number" name="reviews" title="Cantidad maxima de reviews almacenadas." className={inputClass} placeholder="Reviews" />
                 <input required min="0" type="number" name="reviewWidgets" className={inputClass} placeholder="Widgets review" />
                 <input required min="0" type="number" name="surveys" className={inputClass} placeholder="Encuestas satisfaccion" />
                 <input required min="0" type="number" name="surveyResponsesPerMonth" className={inputClass} placeholder="Respuestas encuesta/mes" />
@@ -575,6 +659,29 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <input required min="0" type="number" name="referralPrograms" className={inputClass} placeholder="Programas referidos" />
                 <input required min="0" type="number" name="referralsPerMonth" className={inputClass} placeholder="Referidos/mes" />
               </div>
+              <fieldset className="rounded-lg border border-slate-200 p-3">
+                <legend className="px-1 text-xs font-semibold text-slate-600">
+                  Modulos incluidos
+                </legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {PLATFORM_MODULES.map((moduleKey) => (
+                    <label key={moduleKey} className="flex items-center gap-2 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={platformPlanModules.includes(moduleKey)}
+                        onChange={(event) =>
+                          setPlatformPlanModules((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, moduleKey])]
+                              : current.filter((item) => item !== moduleKey)
+                          )
+                        }
+                      />
+                      {moduleKey}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
             </form>
           </Card>
@@ -604,7 +711,7 @@ export function SuperAdminDashboard({ section = 'all' }) {
                   header: 'Acciones',
                   render: (row) => (
                     <Button className="px-3" variant="secondary" onClick={() => handleSubscriptionStatus(row)}>
-                      {row.status === 'suspended' ? 'Reactivar' : 'Suspender'}
+                      {row.status === 'trial' ? 'Activar' : row.status === 'suspended' ? 'Reactivar' : 'Suspender'}
                     </Button>
                   )
                 }
@@ -618,17 +725,19 @@ export function SuperAdminDashboard({ section = 'all' }) {
                 <option value="" disabled>Selecciona distribuidor</option>
                 {distributors.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
               </select>
-              <select required name="platformPlanId" defaultValue="" className={inputClass}>
+              <select required name="platformPlanId" value={selectedPlatformPlanId} onChange={(event) => setSelectedPlatformPlanId(event.target.value)} className={inputClass}>
                 <option value="" disabled>Selecciona plan</option>
                 {plans.filter((item) => item.status === 'active').map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
               </select>
-              <select name="status" className={inputClass}>
+              <select name="status" value={platformSubscriptionStatus} onChange={(event) => setPlatformSubscriptionStatus(event.target.value)} className={inputClass}>
                 <option value="trial">Trial</option>
                 <option value="active">Activa</option>
               </select>
-              <label className="block text-xs font-semibold text-slate-500">Inicio<input type="datetime-local" name="startsAt" className={`${inputClass} mt-1`} /></label>
-              <label className="block text-xs font-semibold text-slate-500">Fin de trial<input type="datetime-local" name="trialEndsAt" className={`${inputClass} mt-1`} /></label>
-              <label className="block text-xs font-semibold text-slate-500">Fin del periodo<input type="datetime-local" name="currentPeriodEnd" className={`${inputClass} mt-1`} /></label>
+              <label className="block text-xs font-semibold text-slate-500">Inicio<input type="datetime-local" name="startsAt" defaultValue={localDateTimeInput()} className={`${inputClass} mt-1`} /></label>
+              {platformSubscriptionStatus === 'trial' ? (
+                <label title="Durante el trial no se pueden generar facturas." className="block text-xs font-semibold text-slate-500">Fin de trial<input required type="datetime-local" name="trialEndsAt" defaultValue={addDaysDateTimeInput(14)} className={`${inputClass} mt-1`} /></label>
+              ) : null}
+              <BillingPlanSummary plan={selectedPlatformPlan} trial={platformSubscriptionStatus === 'trial'} />
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear suscripcion</Button>
             </form>
           </Card>
@@ -646,6 +755,7 @@ export function SuperAdminDashboard({ section = 'all' }) {
                   id: invoice._id,
                   distributorLabel: distributorNames.get(String(invoice.customerId)) || String(invoice.customerId),
                   totalLabel: money(invoice.total, invoice.currency),
+                  balanceLabel: money(invoice.balanceDue ?? invoice.total, invoice.currency),
                   dueLabel: dateLabel(invoice.dueDate)
                 }))}
                 emptyText="No hay facturas"
@@ -653,14 +763,14 @@ export function SuperAdminDashboard({ section = 'all' }) {
                   { key: 'number', header: 'Numero' },
                   { key: 'distributorLabel', header: 'Distribuidor' },
                   { key: 'totalLabel', header: 'Total' },
+                  { key: 'balanceLabel', header: 'Pendiente' },
                   { key: 'dueLabel', header: 'Vence' },
                   { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
                   {
                     key: 'actions',
                     header: 'Accion',
-                    render: (row) => row.status !== 'paid' ? (
-                      <Button className="px-3" variant="secondary" onClick={() => handleMarkInvoicePaid(row)}>Marcar pagada</Button>
-                    ) : '-'
+                    render: (row) =>
+                      ['open', 'overdue'].includes(row.status) ? 'Registrar pago abajo' : '-'
                   }
                 ]}
               />
@@ -692,37 +802,40 @@ export function SuperAdminDashboard({ section = 'all' }) {
             <Card>
               <CardHeader title="Crear factura manual" description="Subtotal y total se calculan en servidor." />
               <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={handleCreateInvoice}>
-                <select required name="distributorId" defaultValue="" className={inputClass}>
-                  <option value="" disabled>Distribuidor</option>
-                  {distributors.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                <select required name="subscriptionId" value={invoiceSubscriptionId} onChange={(event) => handleInvoiceSubscription(event.target.value)} className={inputClass}>
+                  <option value="" disabled>Suscripcion activa</option>
+                  {subscriptions.filter((item) => item.status === 'active').map((item) => <option key={item._id} value={item._id}>{item.distributorId?.name} - {item.platformPlanId?.name}</option>)}
                 </select>
-                <select name="subscriptionId" defaultValue="" className={inputClass}>
-                  <option value="">Sin suscripcion</option>
-                  {subscriptions.map((item) => <option key={item._id} value={item._id}>{item.distributorId?.name} - {item.platformPlanId?.name}</option>)}
-                </select>
-                <input required name="description" className={inputClass} placeholder="Concepto" />
-                <input required min="0" step="0.01" type="number" name="amount" className={inputClass} placeholder="Monto" />
+                <input value={selectedInvoiceSubscription?.distributorId?.name || ''} readOnly className={inputClass} placeholder="Distribuidor vinculado" />
+                <input required name="description" value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} className={inputClass} placeholder="Concepto" />
+                <input required min="0" step="0.01" type="number" name="amount" value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} className={inputClass} placeholder="Monto" />
                 <input min="0" step="0.01" type="number" name="tax" className={inputClass} placeholder="Impuesto" defaultValue="0" />
-                <input name="currency" className={inputClass} defaultValue="USD" />
-                <input required type="date" name="dueDate" className={inputClass} />
-                <Button type="submit" disabled={Boolean(busy)}>Crear factura</Button>
+                <input name="currency" className={inputClass} value={invoiceCurrency} readOnly title="La moneda proviene del plan." />
+                <input required type="date" name="dueDate" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} className={inputClass} />
+                <Button type="submit" disabled={Boolean(busy) || !selectedInvoiceSubscription}>Crear factura</Button>
               </form>
             </Card>
             <Card>
               <CardHeader title="Registrar pago manual" description="Marca la factura pagada al cubrir su total." />
               <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={handleCreatePayment}>
-                <select required name="invoiceId" defaultValue="" className={inputClass}>
+                <select required name="invoiceId" value={paymentInvoiceId} onChange={(event) => handlePaymentInvoice(event.target.value)} className={inputClass}>
                   <option value="" disabled>Factura pendiente</option>
-                  {invoices.filter((item) => !['paid', 'void'].includes(item.status)).map((item) => <option key={item._id} value={item._id}>{item.number} - {money(item.total, item.currency)}</option>)}
+                  {invoices.filter((item) => ['open', 'overdue'].includes(item.status)).map((item) => <option key={item._id} value={item._id}>{item.number} - {money(item.balanceDue ?? item.total, item.currency)}</option>)}
                 </select>
-                <input required min="0.01" step="0.01" type="number" name="amount" className={inputClass} placeholder="Monto" />
-                <input name="currency" className={inputClass} defaultValue="USD" />
+                <input required min="0.01" max={selectedPaymentInvoice?.balanceDue ?? selectedPaymentInvoice?.total} step="0.01" type="number" name="amount" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className={inputClass} placeholder="Monto pendiente" />
+                <input name="currency" className={inputClass} value={paymentCurrency} readOnly />
                 <select name="method" className={inputClass}>
                   <option value="transfer">Transferencia</option>
                   <option value="cash">Efectivo</option>
                   <option value="manual">Manual</option>
                 </select>
-                <Button className="md:col-span-2" type="submit" disabled={Boolean(busy)}>Registrar pago</Button>
+                <input name="description" value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} className={inputClass} placeholder="Descripcion del pago" />
+                <input required type="date" name="paidAt" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className={inputClass} />
+                <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600 md:col-span-2">
+                  Distribuidor: {distributorNames.get(String(selectedPaymentInvoice?.customerId)) || '-'}
+                  {' | '}Suscripcion: {selectedPaymentInvoice?.subscriptionId || '-'}
+                </div>
+                <Button className="md:col-span-2" type="submit" disabled={Boolean(busy) || !selectedPaymentInvoice}>Registrar pago</Button>
               </form>
             </Card>
           </div>

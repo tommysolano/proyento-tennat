@@ -15,6 +15,7 @@ import { PageView } from '../src/models/PageView.js';
 import { Plan } from '../src/models/Plan.js';
 import { PlatformPlan } from '../src/models/PlatformPlan.js';
 import { FormsService } from '../src/modules/forms/FormsService.js';
+import { FunnelService } from '../src/modules/funnels/FunnelService.js';
 import {
   createSubmissionToken,
   hashPublicValue,
@@ -29,6 +30,10 @@ import {
   PLANNED_ACTIONS,
   WORKFLOW_TRIGGERS
 } from '../src/modules/workflows/workflowCatalog.js';
+import {
+  normalizeOptionalObjectId,
+  normalizeOptionalObjectIdArray
+} from '../src/utils/validation.js';
 
 const objectId = () => new mongoose.Types.ObjectId();
 
@@ -150,6 +155,84 @@ test('forms validate dynamic fields and normalize safe public submissions', asyn
     ]
   });
   await assert.rejects(duplicate.validate(), /Campo duplicado/);
+});
+
+test('optional marketing ObjectIds normalize blank strings before validation', async () => {
+  assert.equal(normalizeOptionalObjectId(''), null);
+  assert.equal(normalizeOptionalObjectId('   '), null);
+  assert.deepEqual(
+    normalizeOptionalObjectIdArray(['', '507f1f77bcf86cd799439011', null]),
+    ['507f1f77bcf86cd799439011']
+  );
+
+  const form = formDocument({
+    settings: {
+      assignTo: '',
+      pipelineId: '',
+      stageId: '',
+      bookingLinkId: ''
+    }
+  });
+  await form.validate();
+  assert.equal(form.settings.assignTo, null);
+  assert.equal(form.settings.pipelineId, null);
+  assert.equal(form.settings.stageId, null);
+  assert.equal(form.settings.bookingLinkId, null);
+
+  const companyId = objectId();
+  const userId = objectId();
+  const page = new LandingPage({
+    companyId,
+    name: 'Landing',
+    slug: 'landing-vacia',
+    title: 'Landing',
+    createdBy: userId,
+    settings: { associatedFormId: '', associatedBookingLinkId: '' }
+  });
+  await page.validate();
+  assert.equal(page.settings.associatedFormId, null);
+  assert.equal(page.settings.associatedBookingLinkId, null);
+
+  const funnel = new Funnel({
+    companyId,
+    name: 'Ventas',
+    slug: 'ventas-vacio',
+    createdBy: userId,
+    settings: { entryStepId: '' }
+  });
+  await funnel.validate();
+  assert.equal(funnel.settings.entryStepId, null);
+
+  const step = new FunnelStep({
+    companyId,
+    funnelId: funnel._id,
+    name: 'Inicio',
+    slug: 'inicio',
+    createdBy: userId,
+    landingPageId: '',
+    formId: '',
+    bookingLinkId: '',
+    satisfactionSurveyId: '',
+    settings: { nextStepId: '' }
+  });
+  await step.validate();
+  assert.equal(step.landingPageId, null);
+  assert.equal(step.formId, null);
+  assert.equal(step.bookingLinkId, null);
+  assert.equal(step.satisfactionSurveyId, null);
+  assert.equal(step.settings.nextStepId, null);
+
+  await assert.rejects(
+    FunnelService.createFunnel({
+      actor: { _id: userId, companyId, distributorId: null },
+      body: {
+        name: 'Invalido',
+        slug: 'invalido',
+        settings: { entryStepId: objectId() }
+      }
+    }),
+    /despues de crear steps/
+  );
 });
 
 test('landing, funnel, tracking and conversion schemas sanitize and enforce public identifiers', async () => {

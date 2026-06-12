@@ -21,7 +21,7 @@ const invoiceSchema = new mongoose.Schema(
     subscriptionType: { type: String, enum: ['platform', 'company'], required: true },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, default: null },
     number: { type: String, required: true, trim: true },
-    currency: { type: String, default: 'USD', uppercase: true },
+    currency: { type: String, default: 'USD', uppercase: true, match: /^[A-Z]{3}$/ },
     subtotal: { type: Number, required: true, min: 0 },
     tax: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },

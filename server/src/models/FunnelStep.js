@@ -5,6 +5,7 @@ import {
   sanitizePlainText
 } from '../modules/marketing/marketingSecurity.js';
 import { sanitize } from '../utils/sanitize.js';
+import { normalizeOptionalObjectId } from '../utils/validation.js';
 
 export const FUNNEL_STEP_TYPES = [
   'landing',
@@ -33,13 +34,29 @@ const funnelStepSchema = new mongoose.Schema(
     type: { type: String, enum: FUNNEL_STEP_TYPES, default: 'landing' },
     order: { type: Number, min: 0, default: 0 },
     status: { type: String, enum: FUNNEL_STEP_STATUSES, default: 'draft' },
-    landingPageId: { type: mongoose.Schema.Types.ObjectId, ref: 'LandingPage', default: null },
-    formId: { type: mongoose.Schema.Types.ObjectId, ref: 'Form', default: null },
-    bookingLinkId: { type: mongoose.Schema.Types.ObjectId, ref: 'BookingLink', default: null },
+    landingPageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LandingPage',
+      default: null,
+      set: normalizeOptionalObjectId
+    },
+    formId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Form',
+      default: null,
+      set: normalizeOptionalObjectId
+    },
+    bookingLinkId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'BookingLink',
+      default: null,
+      set: normalizeOptionalObjectId
+    },
     satisfactionSurveyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SatisfactionSurvey',
-      default: null
+      default: null,
+      set: normalizeOptionalObjectId
     },
     content: {
       title: { type: String, default: '', maxlength: 180 },
@@ -48,7 +65,12 @@ const funnelStepSchema = new mongoose.Schema(
     },
     settings: {
       redirectUrl: { type: String, default: '', maxlength: 1000 },
-      nextStepId: { type: mongoose.Schema.Types.ObjectId, ref: 'FunnelStep', default: null }
+      nextStepId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'FunnelStep',
+        default: null,
+        set: normalizeOptionalObjectId
+      }
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

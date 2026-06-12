@@ -29,12 +29,21 @@ import {
   updateDistributorSettings
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { BillingPlanSummary } from '../../components/BillingPlanSummary.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import {
+  addDaysDateTimeInput,
+  addDaysInput,
+  localDateInput,
+  localDateTimeInput,
+  paymentDefaults,
+  subscriptionPayload
+} from '../../utils/billing.js';
 
 const inputClass = 'w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm';
 
@@ -80,6 +89,21 @@ export function DistributorCommercePage({ section = 'finance' }) {
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [subscriptionStatus, setSubscriptionStatus] = useState('active');
+  const [subscriptionStartsAt, setSubscriptionStartsAt] = useState(localDateTimeInput());
+  const [subscriptionTrialEndsAt, setSubscriptionTrialEndsAt] = useState(
+    addDaysDateTimeInput(14)
+  );
+  const [invoiceSubscriptionId, setInvoiceSubscriptionId] = useState('');
+  const [invoiceCurrency, setInvoiceCurrency] = useState('USD');
+  const [invoiceDueDate, setInvoiceDueDate] = useState(addDaysInput(15));
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentCurrency, setPaymentCurrency] = useState('USD');
+  const [paymentDescription, setPaymentDescription] = useState('');
+  const [paymentDate, setPaymentDate] = useState(localDateInput());
 
   const loadPage = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -144,6 +168,13 @@ export function DistributorCommercePage({ section = 'finance' }) {
       ),
     [payments, paymentStatusFilter, paymentCompanyFilter]
   );
+  const selectedPlan = plans.find((plan) => plan._id === selectedPlanId);
+  const invoiceCompany = companies.find(
+    (company) => company.subscription?._id === invoiceSubscriptionId
+  );
+  const selectedPaymentInvoice = invoices.find(
+    (invoice) => invoice._id === paymentInvoiceId
+  );
 
   async function mutate(key, action, successMessage, refreshBranding = false) {
     setBusy(key);
@@ -179,14 +210,67 @@ export function DistributorCommercePage({ section = 'finance' }) {
     const ok = await mutate(
       'subscription',
       () =>
-        setCompanySubscription(data.get('companyId'), {
+        setCompanySubscription(data.get('companyId'), subscriptionPayload({
           planId: data.get('planId'),
           status: data.get('status'),
-          currentPeriodEnd: data.get('currentPeriodEnd') || null
-        }),
+          startsAt: data.get('startsAt'),
+          trialEndsAt: data.get('trialEndsAt')
+        })),
       'Plan asignado a la empresa.'
     );
-    if (ok) form.reset();
+    if (ok) {
+      form.reset();
+      setSelectedCompanyId('');
+      setSelectedPlanId('');
+      setSubscriptionStatus('active');
+      setSubscriptionStartsAt(localDateTimeInput());
+      setSubscriptionTrialEndsAt(addDaysDateTimeInput(14));
+    }
+  }
+
+  function handleSubscriptionCompany(companyId) {
+    setSelectedCompanyId(companyId);
+    const company = companies.find((item) => item._id === companyId);
+    setSelectedPlanId(company?.subscription?.planId?._id || '');
+    setSubscriptionStatus(company?.subscription?.status || 'active');
+    setSubscriptionStartsAt(
+      company?.subscription?.startsAt
+        ? localDateTimeInput(new Date(company.subscription.startsAt))
+        : localDateTimeInput()
+    );
+    setSubscriptionTrialEndsAt(
+      company?.subscription?.trialEndsAt
+        ? localDateTimeInput(new Date(company.subscription.trialEndsAt))
+        : addDaysDateTimeInput(14)
+    );
+  }
+
+  function handleInvoiceSubscription(subscriptionId) {
+    setInvoiceSubscriptionId(subscriptionId);
+    const company = companies.find((item) => item.subscription?._id === subscriptionId);
+    const plan = company?.subscription?.planId;
+    setInvoiceCurrency(plan?.currency || 'USD');
+    setLineItems([
+      {
+        description: plan ? `Suscripcion ${plan.name} - ${plan.billingCycle}` : '',
+        quantity: 1,
+        unitPrice: Number(plan?.price || 0),
+        moduleKey: ''
+      }
+    ]);
+  }
+
+  function handlePaymentInvoice(invoiceId) {
+    setPaymentInvoiceId(invoiceId);
+    const invoice = invoices.find((item) => item._id === invoiceId);
+    const defaults = paymentDefaults(
+      invoice,
+      companyNames.get(String(invoice?.customerId)) || ''
+    );
+    setPaymentAmount(defaults.amount);
+    setPaymentCurrency(defaults.currency);
+    setPaymentDescription(defaults.description);
+    setPaymentDate(defaults.paidAt);
   }
 
   function updateLineItem(index, field, value) {
@@ -210,9 +294,9 @@ export function DistributorCommercePage({ section = 'finance' }) {
       'invoice',
       () =>
         createDistributorInvoice({
-          companyId: data.get('companyId'),
-          subscriptionId: data.get('subscriptionId') || null,
-          currency: data.get('currency'),
+          companyId: invoiceCompany?._id,
+          subscriptionId: invoiceSubscriptionId,
+          currency: invoiceCurrency,
           taxRate: Number(data.get('taxRate') || 0),
           dueDate: data.get('dueDate'),
           status: data.get('status'),
@@ -222,6 +306,9 @@ export function DistributorCommercePage({ section = 'finance' }) {
     );
     if (ok) {
       form.reset();
+      setInvoiceSubscriptionId('');
+      setInvoiceCurrency('USD');
+      setInvoiceDueDate(addDaysInput(15));
       setLineItems([{ description: '', quantity: 1, unitPrice: 0, moduleKey: '' }]);
     }
   }
@@ -246,11 +333,20 @@ export function DistributorCommercePage({ section = 'finance' }) {
           amount: Number(data.get('amount')),
           currency: data.get('currency'),
           method: data.get('method'),
-          status: 'succeeded'
+          paidAt: data.get('paidAt'),
+          status: 'succeeded',
+          metadata: { description: data.get('description') }
         }),
       'Pago manual registrado.'
     );
-    if (ok) form.reset();
+    if (ok) {
+      form.reset();
+      setPaymentInvoiceId('');
+      setPaymentAmount('');
+      setPaymentCurrency('USD');
+      setPaymentDescription('');
+      setPaymentDate(localDateInput());
+    }
   }
 
   async function handleSettings(event) {
@@ -447,21 +543,29 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="Asignar o cambiar plan" description="Actualiza la suscripcion vigente de una empresa propia." />
             <form className="grid gap-3 p-5 md:grid-cols-4" onSubmit={handleSubscription}>
-              <select required name="companyId" defaultValue="" className={inputClass}>
+              <select required name="companyId" value={selectedCompanyId} onChange={(event) => handleSubscriptionCompany(event.target.value)} className={inputClass}>
                 <option value="" disabled>Empresa</option>
                 {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
               </select>
-              <select required name="planId" defaultValue="" className={inputClass}>
+              <select required disabled={!selectedCompanyId} name="planId" value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)} className={inputClass}>
                 <option value="" disabled>Plan</option>
-                {plans.filter((plan) => plan.status === 'active').map((plan) => <option key={plan._id} value={plan._id}>{plan.name}</option>)}
+                {(selectedCompanyId ? plans : [])
+                  .filter((plan) => plan.status === 'active' || plan._id === selectedPlanId)
+                  .map((plan) => <option key={plan._id} value={plan._id}>{plan.name}</option>)}
               </select>
-              <select name="status" className={inputClass}>
+              <select name="status" value={subscriptionStatus} onChange={(event) => setSubscriptionStatus(event.target.value)} className={inputClass}>
                 <option value="active">Activa</option>
                 <option value="trial">Trial</option>
                 <option value="past_due">Past due</option>
                 <option value="suspended">Suspendida</option>
               </select>
-              <input type="date" name="currentPeriodEnd" className={inputClass} />
+              <input type="datetime-local" name="startsAt" value={subscriptionStartsAt} onChange={(event) => setSubscriptionStartsAt(event.target.value)} className={inputClass} title="Fecha de inicio de la suscripcion." />
+              {subscriptionStatus === 'trial' ? (
+                <input required type="datetime-local" name="trialEndsAt" value={subscriptionTrialEndsAt} onChange={(event) => setSubscriptionTrialEndsAt(event.target.value)} className={inputClass} title="Fin obligatorio del trial. Durante este periodo no se puede facturar." />
+              ) : null}
+              <div className="md:col-span-4">
+                <BillingPlanSummary plan={selectedPlan} trial={subscriptionStatus === 'trial'} />
+              </div>
               <Button className="md:col-span-4" type="submit" disabled={Boolean(busy)}>Guardar suscripcion</Button>
             </form>
           </Card>
@@ -488,6 +592,7 @@ export function DistributorCommercePage({ section = 'finance' }) {
                 id: invoice._id,
                 companyLabel: companyNames.get(String(invoice.customerId)) || '-',
                 totalLabel: money(invoice.total, invoice.currency),
+                balanceLabel: money(invoice.balanceDue ?? invoice.total, invoice.currency),
                 dueLabel: dateLabel(invoice.dueDate)
               }))}
               emptyText="No hay facturas para este filtro"
@@ -495,6 +600,7 @@ export function DistributorCommercePage({ section = 'finance' }) {
                 { key: 'number', header: 'Numero' },
                 { key: 'companyLabel', header: 'Empresa' },
                 { key: 'totalLabel', header: 'Total' },
+                { key: 'balanceLabel', header: 'Pendiente' },
                 { key: 'dueLabel', header: 'Vence' },
                 { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
                 {
@@ -511,17 +617,14 @@ export function DistributorCommercePage({ section = 'finance' }) {
             <CardHeader title="Crear factura manual" description="Subtotal, impuesto, total y numero se calculan en backend." />
             <form className="space-y-4 p-5" onSubmit={handleInvoice}>
               <div className="grid gap-3 md:grid-cols-4">
-                <select required name="companyId" defaultValue="" className={inputClass}>
-                  <option value="" disabled>Empresa</option>
-                  {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
+                <select required name="subscriptionId" value={invoiceSubscriptionId} onChange={(event) => handleInvoiceSubscription(event.target.value)} className={inputClass}>
+                  <option value="" disabled>Suscripcion activa</option>
+                  {companies.filter((company) => company.subscription?.status === 'active').map((company) => <option key={company.subscription._id} value={company.subscription._id}>{company.name} - {company.subscription.planId?.name}</option>)}
                 </select>
-                <select name="subscriptionId" defaultValue="" className={inputClass}>
-                  <option value="">Sin suscripcion</option>
-                  {companies.filter((company) => company.subscription).map((company) => <option key={company.subscription._id} value={company.subscription._id}>{company.name} - {company.subscription.planId?.name}</option>)}
-                </select>
-                <input required type="date" name="dueDate" className={inputClass} />
+                <input value={invoiceCompany?.name || ''} readOnly className={inputClass} placeholder="Empresa vinculada" />
+                <input required type="date" name="dueDate" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} className={inputClass} />
                 <select name="status" className={inputClass}><option value="open">Open</option><option value="draft">Draft</option></select>
-                <input name="currency" className={inputClass} defaultValue={billingSettings.currency || 'USD'} />
+                <input name="currency" className={inputClass} value={invoiceCurrency} readOnly title="La moneda proviene del plan de la suscripcion." />
                 <input min="0" step="0.01" type="number" name="taxRate" className={inputClass} defaultValue={billingSettings.taxRate || 0} placeholder="Impuesto %" />
               </div>
               <div className="space-y-3">
@@ -583,14 +686,21 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="Registrar pago" description="La factura cambia a paid cuando la suma cubre el total." />
             <form className="grid gap-3 p-5 md:grid-cols-4" onSubmit={handlePayment}>
-              <select required name="invoiceId" defaultValue="" className={inputClass}>
+              <select required name="invoiceId" value={paymentInvoiceId} onChange={(event) => handlePaymentInvoice(event.target.value)} className={inputClass}>
                 <option value="" disabled>Factura pendiente</option>
-                {pendingInvoices.map((invoice) => <option key={invoice._id} value={invoice._id}>{invoice.number} - {companyNames.get(String(invoice.customerId))} - {money(invoice.total, invoice.currency)}</option>)}
+                {pendingInvoices.map((invoice) => <option key={invoice._id} value={invoice._id}>{invoice.number} - {companyNames.get(String(invoice.customerId))} - {money(invoice.balanceDue ?? invoice.total, invoice.currency)}</option>)}
               </select>
-              <input required min="0.01" step="0.01" type="number" name="amount" className={inputClass} placeholder="Monto" />
-              <input name="currency" className={inputClass} defaultValue={billingSettings.currency || 'USD'} />
+              <input required min="0.01" max={selectedPaymentInvoice?.balanceDue ?? selectedPaymentInvoice?.total} step="0.01" type="number" name="amount" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className={inputClass} placeholder="Monto pendiente" />
+              <input name="currency" className={inputClass} value={paymentCurrency} readOnly />
               <select name="method" className={inputClass}><option value="transfer">Transferencia</option><option value="cash">Efectivo</option><option value="manual">Manual</option></select>
-              <Button className="md:col-span-4" type="submit" disabled={Boolean(busy)}>Registrar pago</Button>
+              <input name="description" value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} className={`${inputClass} md:col-span-2`} placeholder="Descripcion del pago" />
+              <input required type="date" name="paidAt" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className={inputClass} />
+              <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Empresa: {companyNames.get(String(selectedPaymentInvoice?.customerId)) || '-'}
+                <br />
+                Suscripcion: {selectedPaymentInvoice?.subscriptionId || '-'}
+              </div>
+              <Button className="md:col-span-4" type="submit" disabled={Boolean(busy) || !selectedPaymentInvoice}>Registrar pago</Button>
             </form>
           </Card>
         </>

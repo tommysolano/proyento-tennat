@@ -1,4 +1,5 @@
 import { buildApiUrl, normalizeApiBaseUrl } from './apiUrl.js';
+import { normalizeMarketingPayload } from './utils/marketingPayload.js';
 
 const API_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL, {
   dev: import.meta.env.DEV
@@ -47,6 +48,7 @@ export async function apiRequest(path, options = {}) {
   });
 
   const data = await parseResponse(response);
+  const contentType = response.headers.get('content-type') || '';
 
   if (!response.ok) {
     if (response.status === 401 && token && path !== '/auth/login') {
@@ -57,6 +59,17 @@ export async function apiRequest(path, options = {}) {
       ? `${response.status} ${response.statusText}`
       : String(response.status);
     const error = new Error(data.message || `La API respondio HTTP ${statusLabel}`);
+    error.status = response.status;
+    error.url = url;
+    throw error;
+  }
+
+  if (response.status !== 204 && !contentType.includes('application/json')) {
+    const error = new Error(
+      contentType.includes('text/html')
+        ? 'La URL de la API devolvio una pagina HTML. Verifica VITE_API_URL o el proxy de /api.'
+        : 'La API devolvio una respuesta con formato inesperado.'
+    );
     error.status = response.status;
     error.url = url;
     throw error;
@@ -657,9 +670,15 @@ export const getWorkflowRun = (id) => apiRequest(`/workflow-runs/${id}`);
 export const getForms = (filters = {}) => apiRequest(`/forms${queryString(filters)}`);
 export const getForm = (id) => apiRequest(`/forms/${id}`);
 export const createFormDefinition = (payload) =>
-  apiRequest('/forms', { method: 'POST', body: JSON.stringify(payload) });
+  apiRequest('/forms', {
+    method: 'POST',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const updateFormDefinition = (id, payload) =>
-  apiRequest(`/forms/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  apiRequest(`/forms/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const publishForm = (id) =>
   apiRequest(`/forms/${id}/publish`, { method: 'PATCH', body: '{}' });
 export const pauseForm = (id) =>
@@ -681,9 +700,15 @@ export const getLandingPages = (filters = {}) =>
   apiRequest(`/landing-pages${queryString(filters)}`);
 export const getLandingPage = (id) => apiRequest(`/landing-pages/${id}`);
 export const createLandingPage = (payload) =>
-  apiRequest('/landing-pages', { method: 'POST', body: JSON.stringify(payload) });
+  apiRequest('/landing-pages', {
+    method: 'POST',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const updateLandingPage = (id, payload) =>
-  apiRequest(`/landing-pages/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  apiRequest(`/landing-pages/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const publishLandingPage = (id) =>
   apiRequest(`/landing-pages/${id}/publish`, { method: 'PATCH', body: '{}' });
 export const pauseLandingPage = (id) =>
@@ -703,9 +728,15 @@ export const trackLandingPageEvent = (slug, payload) =>
 export const getFunnels = (filters = {}) => apiRequest(`/funnels${queryString(filters)}`);
 export const getFunnel = (id) => apiRequest(`/funnels/${id}`);
 export const createFunnel = (payload) =>
-  apiRequest('/funnels', { method: 'POST', body: JSON.stringify(payload) });
+  apiRequest('/funnels', {
+    method: 'POST',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const updateFunnel = (id, payload) =>
-  apiRequest(`/funnels/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  apiRequest(`/funnels/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const publishFunnel = (id) =>
   apiRequest(`/funnels/${id}/publish`, { method: 'PATCH', body: '{}' });
 export const pauseFunnel = (id) =>
@@ -714,9 +745,15 @@ export const archiveFunnel = (id) =>
   apiRequest(`/funnels/${id}/archive`, { method: 'PATCH', body: '{}' });
 export const getFunnelSteps = (id) => apiRequest(`/funnels/${id}/steps`);
 export const createFunnelStep = (id, payload) =>
-  apiRequest(`/funnels/${id}/steps`, { method: 'POST', body: JSON.stringify(payload) });
+  apiRequest(`/funnels/${id}/steps`, {
+    method: 'POST',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const updateFunnelStep = (id, payload) =>
-  apiRequest(`/funnel-steps/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  apiRequest(`/funnel-steps/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
 export const publishFunnelStep = (id) =>
   apiRequest(`/funnel-steps/${id}/publish`, { method: 'PATCH', body: '{}' });
 export const archiveFunnelStep = (id) =>

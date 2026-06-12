@@ -34,6 +34,18 @@ const platformSubscriptionSchema = new mongoose.Schema(
 
 platformSubscriptionSchema.index({ distributorId: 1, createdAt: -1 });
 
+platformSubscriptionSchema.pre('validate', function validateTrial(next) {
+  if (this.status === 'trial') {
+    if (!this.startsAt) this.invalidate('startsAt', 'startsAt es requerido para trial');
+    if (!this.trialEndsAt) {
+      this.invalidate('trialEndsAt', 'trialEndsAt es requerido para trial');
+    } else if (this.startsAt && this.trialEndsAt <= this.startsAt) {
+      this.invalidate('trialEndsAt', 'trialEndsAt debe ser posterior a startsAt');
+    }
+  }
+  next();
+});
+
 export const PlatformSubscription = mongoose.model(
   'PlatformSubscription',
   platformSubscriptionSchema

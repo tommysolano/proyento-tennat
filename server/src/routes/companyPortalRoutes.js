@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company, Invoice, Payment } from '../models/index.js';
 import { recordActivity } from '../utils/activity.js';
+import { invoiceBalance } from '../utils/billing.js';
 import { refreshCompanyOnboarding } from '../utils/onboarding.js';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.get(
     try {
       const invoices = await Invoice.find({
         issuerType: 'distributor',
+        issuerId: req.user.distributorId,
         customerType: 'company',
         customerId: req.user.companyId
       })
@@ -44,7 +46,13 @@ router.get(
       res.json(
         invoices.map((invoice) => ({
           ...invoice,
-          payments: paymentsByInvoice.get(invoice._id.toString()) || []
+          payments: paymentsByInvoice.get(invoice._id.toString()) || [],
+          ...invoiceBalance(
+            invoice,
+            (paymentsByInvoice.get(invoice._id.toString()) || [])
+              .filter((payment) => payment.status === 'succeeded')
+              .reduce((sum, payment) => sum + payment.amount, 0)
+          )
         }))
       );
     } catch (error) {

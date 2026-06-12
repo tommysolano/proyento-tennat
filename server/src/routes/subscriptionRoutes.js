@@ -5,6 +5,7 @@ import { Company } from '../models/Company.js';
 import { Plan } from '../models/Plan.js';
 import { Subscription } from '../models/Subscription.js';
 import { recordActivity } from '../utils/activity.js';
+import { assertActivePlan, buildSubscriptionTerms } from '../utils/billing.js';
 import { isValidObjectId } from '../utils/validation.js';
 import { refreshDistributorOnboarding } from '../utils/onboarding.js';
 
@@ -25,39 +26,6 @@ function populateSubscription(query) {
       'name code price currency billingCycle status limits includedModules features'
     )
     .populate('distributorId', 'name');
-}
-
-function subscriptionDates(body) {
-  const data = {};
-
-  for (const field of [
-    'startsAt',
-    'endsAt',
-    'trialEndsAt',
-    'currentPeriodStart',
-    'currentPeriodEnd'
-  ]) {
-    if (field in body) {
-      if (body[field] === null && field === 'endsAt') {
-        data[field] = null;
-        continue;
-      }
-
-      const date = new Date(body[field]);
-      if (Number.isNaN(date.getTime())) {
-        throw Object.assign(new Error(`${field} debe ser una fecha valida`), { status: 400 });
-      }
-      data[field] = date;
-    }
-  }
-
-  if ('cancelAtPeriodEnd' in body) data.cancelAtPeriodEnd = Boolean(body.cancelAtPeriodEnd);
-  for (const field of ['paymentProvider', 'providerCustomerId', 'providerSubscriptionId']) {
-    if (field in body) data[field] = typeof body[field] === 'string' ? body[field].trim() : '';
-  }
-  if ('metadata' in body) data.metadata = body.metadata || {};
-
-  return data;
 }
 
 async function validateTenantReferences(companyId, planId, distributorId) {
@@ -117,11 +85,12 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       return res.status(403).json({ message: 'El distribuidor autenticado no tiene distributorId' });
     }
 
-    await validateTenantReferences(
+    const { company, plan } = await validateTenantReferences(
       req.body.companyId,
       req.body.planId,
       req.user.distributorId
     );
+    assertActivePlan(plan);
 
     const existingSubscription = await Subscription.findOne({
       companyId: req.body.companyId,
@@ -139,11 +108,10 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     }
 
     const subscription = await Subscription.create({
-      companyId: req.body.companyId,
-      planId: req.body.planId,
+      companyId: company._id,
+      planId: plan._id,
       distributorId: req.user.distributorId,
-      status: req.body.status || 'active',
-      ...subscriptionDates(req.body)
+      ...buildSubscriptionTerms(req.body, plan, { defaultStatus: 'active' })
     });
     await recordActivity({
       user: req.user,
@@ -182,7 +150,8 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
 
     const companyId = req.body.companyId || current.companyId;
     const planId = req.body.planId || current.planId;
-    await validateTenantReferences(companyId, planId, req.user.distributorId);
+    const { plan } = await validateTenantReferences(companyId, planId, req.user.distributorId);
+    if (String(planId) !== String(current.planId)) assertActivePlan(plan);
 
     if ('status' in req.body && !SUBSCRIPTION_STATUSES.includes(req.body.status)) {
       return res.status(400).json({ message: 'status de suscripcion invalido' });
@@ -190,9 +159,8 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
 
     current.companyId = companyId;
     current.planId = planId;
-    if ('status' in req.body) current.status = req.body.status;
-
-    if (CURRENT_SUBSCRIPTION_STATUSES.includes(current.status)) {
+    const terms = buildSubscriptionTerms(req.body, plan, { current });
+    if (CURRENT_SUBSCRIPTION_STATUSES.includes(terms.status)) {
       const duplicate = await Subscription.exists({
         _id: { $ne: current._id },
         companyId,
@@ -206,7 +174,7 @@ router.put('/:id', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       }
     }
 
-    Object.assign(current, subscriptionDates(req.body));
+    Object.assign(current, terms);
     await current.save();
     await recordActivity({
       user: req.user,

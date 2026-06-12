@@ -12,6 +12,7 @@ import { User } from '../../models/User.js';
 import { WorkflowEventEmitter } from '../workflows/WorkflowEventEmitter.js';
 import { recordActivity } from '../../utils/activity.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
+import { normalizeOptionalObjectId } from '../../utils/validation.js';
 import {
   safePublicUrl,
   sanitizeLimitedHtml,
@@ -22,6 +23,51 @@ import {
 
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400, retryable: false });
+}
+
+function normalizeReferenceFields(input = {}, fields = []) {
+  const normalized = { ...input };
+  for (const field of fields) {
+    if (field in normalized) {
+      normalized[field] = normalizeOptionalObjectId(normalized[field]);
+    }
+  }
+  return normalized;
+}
+
+function normalizeLandingInput(input = {}) {
+  const settings = normalizeReferenceFields(input.settings, [
+    'associatedFormId',
+    'associatedBookingLinkId'
+  ]);
+  const content = {
+    ...(input.content || {}),
+    sections: (input.content?.sections || []).map((section) => ({
+      ...section,
+      content: normalizeReferenceFields(section.content, [
+        'formId',
+        'bookingLinkId',
+        'reviewWidgetId'
+      ])
+    }))
+  };
+  return { ...input, settings, content };
+}
+
+function normalizeFunnelSettings(settings = {}) {
+  return normalizeReferenceFields(settings, ['entryStepId']);
+}
+
+function normalizeStepInput(input = {}) {
+  return {
+    ...normalizeReferenceFields(input, [
+      'landingPageId',
+      'formId',
+      'bookingLinkId',
+      'satisfactionSurveyId'
+    ]),
+    settings: normalizeReferenceFields(input.settings, ['nextStepId'])
+  };
 }
 
 async function uniqueSlug(Model, value, fallback, excludeId = null) {
@@ -76,12 +122,13 @@ function safeSection(section) {
 
 export class FunnelService {
   static async validateLandingReferences(companyId, input) {
-    const settings = input.settings || {};
+    const normalized = normalizeLandingInput(input);
+    const settings = normalized.settings;
     await Promise.all([
       tenantReference(Form, settings.associatedFormId, companyId),
       tenantReference(BookingLink, settings.associatedBookingLinkId, companyId)
     ]);
-    for (const section of input.content?.sections || []) {
+    for (const section of normalized.content.sections) {
       if (section.type === 'form_embed' && section.content?.formId) {
         await tenantReference(Form, section.content.formId, companyId);
       }
@@ -95,7 +142,8 @@ export class FunnelService {
   }
 
   static async createLandingPage({ actor, body }) {
-    await this.validateLandingReferences(actor.companyId, body);
+    const normalized = normalizeLandingInput(body);
+    await this.validateLandingReferences(actor.companyId, normalized);
     await checkUsageLimit({
       companyId: actor.companyId,
       distributorId: actor.distributorId,
@@ -108,10 +156,10 @@ export class FunnelService {
       slug: await uniqueSlug(LandingPage, body.slug || body.name, 'pagina'),
       title: sanitizePlainText(body.title || body.name, 180),
       description: body.description || '',
-      content: body.content || {},
-      seo: body.seo || {},
-      styling: body.styling || {},
-      settings: body.settings || {},
+      content: normalized.content,
+      seo: normalized.seo || {},
+      styling: normalized.styling || {},
+      settings: normalized.settings,
       createdBy: actor._id,
       updatedBy: actor._id,
       metadata: body.metadata || {}
@@ -134,10 +182,10 @@ export class FunnelService {
   }
 
   static async updateLandingPage({ actor, page, body }) {
-    const merged = {
+    const merged = normalizeLandingInput({
       content: body.content || page.content.toObject(),
       settings: { ...page.settings.toObject(), ...(body.settings || {}) }
-    };
+    });
     await this.validateLandingReferences(page.companyId, merged);
     if ('slug' in body && slugifyPublic(body.slug) !== page.slug) {
       page.slug = await uniqueSlug(LandingPage, body.slug, 'pagina', page._id);
@@ -146,14 +194,14 @@ export class FunnelService {
       'name',
       'title',
       'description',
-      'content',
       'seo',
       'styling',
       'metadata'
     ]) {
       if (field in body) page[field] = body[field];
     }
-    if ('settings' in body) page.settings = { ...page.settings.toObject(), ...body.settings };
+    if ('content' in body) page.content = merged.content;
+    if ('settings' in body) page.settings = merged.settings;
     page.updatedBy = actor._id;
     await page.save();
     await recordActivity({
@@ -206,19 +254,20 @@ export class FunnelService {
   }
 
   static async validateStepReferences(companyId, funnelId, input) {
-    if (input.type && !FUNNEL_STEP_TYPES.includes(input.type)) throw badRequest('type de step invalido');
+    const normalized = normalizeStepInput(input);
+    if (normalized.type && !FUNNEL_STEP_TYPES.includes(normalized.type)) throw badRequest('type de step invalido');
     const [, form] = await Promise.all([
-      tenantReference(LandingPage, input.landingPageId, companyId),
-      tenantReference(Form, input.formId, companyId),
-      tenantReference(BookingLink, input.bookingLinkId, companyId),
-      tenantReference(SatisfactionSurvey, input.satisfactionSurveyId, companyId)
+      tenantReference(LandingPage, normalized.landingPageId, companyId),
+      tenantReference(Form, normalized.formId, companyId),
+      tenantReference(BookingLink, normalized.bookingLinkId, companyId),
+      tenantReference(SatisfactionSurvey, normalized.satisfactionSurveyId, companyId)
     ]);
-    if (input.type === 'survey' && form && form.type !== 'survey') {
+    if (normalized.type === 'survey' && form && form.type !== 'survey') {
       throw badRequest('Un step survey requiere un formulario de tipo survey');
     }
-    if (input.settings?.nextStepId) {
+    if (normalized.settings.nextStepId) {
       const next = await FunnelStep.findOne({
-        _id: input.settings.nextStepId,
+        _id: normalized.settings.nextStepId,
         companyId,
         funnelId
       });
@@ -227,6 +276,10 @@ export class FunnelService {
   }
 
   static async createFunnel({ actor, body }) {
+    const settings = normalizeFunnelSettings(body.settings);
+    if (settings.entryStepId) {
+      throw badRequest('entryStepId solo puede configurarse despues de crear steps');
+    }
     await checkUsageLimit({
       companyId: actor.companyId,
       distributorId: actor.distributorId,
@@ -238,7 +291,7 @@ export class FunnelService {
       name: sanitizePlainText(body.name, 120),
       slug: await uniqueSlug(Funnel, body.slug || body.name, 'funnel'),
       description: body.description || '',
-      settings: body.settings || {},
+      settings,
       createdBy: actor._id,
       updatedBy: actor._id,
       metadata: body.metadata || {}
@@ -268,7 +321,10 @@ export class FunnelService {
       if (field in body) funnel[field] = body[field];
     }
     if ('settings' in body) {
-      const settings = { ...funnel.settings.toObject(), ...body.settings };
+      const settings = normalizeFunnelSettings({
+        ...funnel.settings.toObject(),
+        ...body.settings
+      });
       if (settings.entryStepId) {
         await this.validateStepReferences(funnel.companyId, funnel._id, {
           settings: { nextStepId: settings.entryStepId }
@@ -288,7 +344,8 @@ export class FunnelService {
   }
 
   static async createFunnelStep({ actor, funnel, body }) {
-    await this.validateStepReferences(funnel.companyId, funnel._id, body);
+    const normalized = normalizeStepInput(body);
+    await this.validateStepReferences(funnel.companyId, funnel._id, normalized);
     await checkUsageLimit({
       companyId: funnel.companyId,
       distributorId: funnel.distributorId,
@@ -298,16 +355,16 @@ export class FunnelService {
       companyId: funnel.companyId,
       distributorId: funnel.distributorId,
       funnelId: funnel._id,
-      name: sanitizePlainText(body.name, 120),
-      slug: await uniqueStepSlug(funnel._id, body.slug || body.name),
-      type: body.type || 'landing',
-      order: Number(body.order) || 0,
-      landingPageId: body.landingPageId || null,
-      formId: body.formId || null,
-      bookingLinkId: body.bookingLinkId || null,
-      satisfactionSurveyId: body.satisfactionSurveyId || null,
-      content: body.content || {},
-      settings: body.settings || {},
+      name: sanitizePlainText(normalized.name, 120),
+      slug: await uniqueStepSlug(funnel._id, normalized.slug || normalized.name),
+      type: normalized.type || 'landing',
+      order: Number(normalized.order) || 0,
+      landingPageId: normalized.landingPageId || null,
+      formId: normalized.formId || null,
+      bookingLinkId: normalized.bookingLinkId || null,
+      satisfactionSurveyId: normalized.satisfactionSurveyId || null,
+      content: normalized.content || {},
+      settings: normalized.settings,
       createdBy: actor._id,
       updatedBy: actor._id,
       metadata: body.metadata || {}
@@ -334,11 +391,12 @@ export class FunnelService {
   }
 
   static async updateFunnelStep({ actor, step, body }) {
-    await this.validateStepReferences(step.companyId, step.funnelId, {
+    const normalized = normalizeStepInput({
       ...step.toObject(),
       ...body,
       settings: { ...step.settings.toObject(), ...(body.settings || {}) }
     });
+    await this.validateStepReferences(step.companyId, step.funnelId, normalized);
     for (const field of [
       'name',
       'type',
@@ -350,12 +408,12 @@ export class FunnelService {
       'content',
       'metadata'
     ]) {
-      if (field in body) step[field] = body[field];
+      if (field in body) step[field] = normalized[field];
     }
     if ('slug' in body && slugifyPublic(body.slug) !== step.slug) {
       step.slug = await uniqueStepSlug(step.funnelId, body.slug, step._id);
     }
-    if ('settings' in body) step.settings = { ...step.settings.toObject(), ...body.settings };
+    if ('settings' in body) step.settings = normalized.settings;
     step.updatedBy = actor._id;
     await step.save();
     await recordActivity({

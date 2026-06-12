@@ -40,7 +40,11 @@ function parseDate(value, field) {
 
 function populateConversation(query) {
   return query
-    .populate('contactId', 'name fullName phone email source status assignedTo')
+    .populate({
+      path: 'contactId',
+      select: 'name fullName phone email source status lifecycleStage assignedTo tags metadata',
+      populate: { path: 'tags', select: 'name color' }
+    })
     .populate('assignedTo', 'name email role supervisorId')
     .populate('channelConfigId', 'displayName channel status phoneNumberId')
     .populate('closedBy createdBy updatedBy', 'name email role')
@@ -66,6 +70,12 @@ router.use(
 );
 router.use(requireModule('conversations'));
 router.use(requireModule('inbox'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'id de conversacion invalido' });
+  }
+  next();
+});
 
 router.get('/metrics', async (req, res, next) => {
   try {
@@ -220,6 +230,12 @@ router.get('/metrics', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const filter = await conversationScope(req.user);
+    if (req.query.assignedTo && !isValidObjectId(req.query.assignedTo)) {
+      throw badRequest('assignedTo invalido');
+    }
+    if (req.query.contactId && !isValidObjectId(req.query.contactId)) {
+      throw badRequest('contactId invalido');
+    }
     preserveAssignedScope(filter, req.query.assignedTo);
     for (const field of ['status', 'channel', 'contactId', 'priority']) {
       if (req.query[field]) filter[field] = req.query[field];
@@ -264,6 +280,9 @@ router.post('/', roleMiddleware('ADMIN', 'SUPERVISOR'), async (req, res, next) =
       : contact.assignedTo;
     let channelConfigId = null;
     if (req.body.channelConfigId) {
+      if (!isValidObjectId(req.body.channelConfigId)) {
+        throw badRequest('channelConfigId invalido');
+      }
       const config = await ChannelConfig.findOne({
         _id: req.body.channelConfigId,
         companyId: req.user.companyId,
@@ -318,6 +337,9 @@ router.post(
   try {
     const conversation = await accessibleConversation(req.user, req.params.id);
     if (!conversation) return res.status(404).json({ message: 'Conversacion no encontrada' });
+    if (req.body.templateId && !isValidObjectId(req.body.templateId)) {
+      throw badRequest('templateId invalido');
+    }
     const template = req.body.templateId
       ? await MessageTemplate.findOne({
           _id: req.body.templateId,

@@ -32,7 +32,8 @@ const planSchema = new mongoose.Schema(
       type: String,
       default: 'USD',
       uppercase: true,
-      trim: true
+      trim: true,
+      match: /^[A-Z]{3}$/
     },
     billingCycle: {
       type: String,
