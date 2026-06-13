@@ -10,7 +10,9 @@ const OPTIONAL_OBJECT_ID_FIELDS = new Set([
   'landingPageId',
   'satisfactionSurveyId',
   'nextStepId',
-  'entryStepId'
+  'entryStepId',
+  'campaignId',
+  'integrationId'
 ]);
 
 const OPTIONAL_OBJECT_ID_ARRAY_FIELDS = new Set([

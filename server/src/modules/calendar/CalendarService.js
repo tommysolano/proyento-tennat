@@ -3,11 +3,21 @@ import { ActivityLog } from '../../models/ActivityLog.js';
 import { Appointment, APPOINTMENT_STATUSES } from '../../models/Appointment.js';
 import { AvailabilityException } from '../../models/AvailabilityException.js';
 import { AvailabilityRule } from '../../models/AvailabilityRule.js';
+import { BookingLink } from '../../models/BookingLink.js';
+import { Campaign } from '../../models/Campaign.js';
 import { Calendar } from '../../models/Calendar.js';
 import { Contact } from '../../models/Contact.js';
+import { Conversation } from '../../models/Conversation.js';
+import { Form } from '../../models/Form.js';
+import { Funnel } from '../../models/Funnel.js';
+import { FunnelStep } from '../../models/FunnelStep.js';
+import { Integration } from '../../models/Integration.js';
+import { LandingPage } from '../../models/LandingPage.js';
 import { Opportunity } from '../../models/Opportunity.js';
 import { User } from '../../models/User.js';
+import { normalizeMarketingAttribution } from '../marketing/marketingAttribution.js';
 import { sanitize } from '../../utils/sanitize.js';
+import { cleanString, normalizeOptionalObjectId } from '../../utils/validation.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 import { JobService } from '../jobs/JobService.js';
 import { NotificationService } from '../notifications/NotificationService.js';
@@ -21,9 +31,24 @@ import {
   parseDate,
   zonedDateTimeToUtc
 } from './calendarTime.js';
+import {
+  assertProfileOverwriteConfirmed,
+  CALENDAR_PROFILES,
+  getCalendarProfile,
+  profileCalendarPayload
+} from './calendarProfiles.js';
 
 const BLOCKING_STATUSES = ['scheduled', 'confirmed'];
 const PUBLIC_FIELDS = ['name', 'email', 'phone', 'notes'];
+const CLIENT_FIELD_TYPES = ['text', 'textarea', 'number', 'email', 'tel'];
+const ATTRIBUTION_MODELS = {
+  campaignId: Campaign,
+  landingPageId: LandingPage,
+  formId: Form,
+  funnelId: Funnel,
+  funnelStepId: FunnelStep,
+  integrationId: Integration
+};
 
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400 });
@@ -107,6 +132,9 @@ function populatedAppointment(query) {
     .populate('calendarId', 'name slug color timezone settings')
     .populate('contactId', 'name phone email status')
     .populate('opportunityId', 'title status value currency')
+    .populate('conversationId', 'channel status createdAt')
+    .populate('bookingLinkId', 'title slug status')
+    .populate('attribution.campaignId', 'name status')
     .populate('assignedTo createdBy updatedBy cancelledBy', 'name email role supervisorId');
 }
 
@@ -114,6 +142,66 @@ function normalizeLocation(calendar, location = {}) {
   return {
     type: location.type || calendar.settings.locationType,
     value: location.value ?? calendar.settings.locationValue
+  };
+}
+
+function sanitizeClientFields(fields = []) {
+  if (!Array.isArray(fields)) throw badRequest('clientFields debe ser un arreglo');
+  const seen = new Set();
+  return fields.slice(0, 30).flatMap((field) => {
+    const key = cleanString(field?.key);
+    const label = cleanString(field?.label);
+    if (!/^[a-z][a-zA-Z0-9]{1,63}$/.test(key) || !label || seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      key,
+      label: label.slice(0, 120),
+      type: CLIENT_FIELD_TYPES.includes(field.type) ? field.type : 'text',
+      required: Boolean(field.required),
+      enabled: field.enabled !== false
+    }];
+  });
+}
+
+function normalizeCalendarSettings(settings = {}) {
+  const output = { ...settings };
+  if ('clientFields' in output) output.clientFields = sanitizeClientFields(output.clientFields);
+  for (const field of ['locationValue', 'internalNotesTemplate']) {
+    if (field in output) output[field] = cleanString(output[field]);
+  }
+  return output;
+}
+
+async function validateAppointmentAttribution(companyId, input = {}) {
+  const attribution = normalizeMarketingAttribution(input);
+  for (const [field, Model] of Object.entries(ATTRIBUTION_MODELS)) {
+    if (attribution[field] && !await Model.exists({ _id: attribution[field], companyId })) {
+      throw badRequest(`${field} no pertenece a la empresa`);
+    }
+  }
+  return attribution;
+}
+
+export function slotCapacityState(appointments, slot, calendar, assignedTo) {
+  const capacity = Number(calendar.settings?.capacityPerSlot || 1);
+  const calendarConflicts = appointments.filter(
+    (appointment) =>
+      String(asId(appointment.calendarId)) === String(calendar._id) &&
+      overlaps(slot.startAt, slot.endAt, appointment.startAt, appointment.endAt)
+  ).length;
+  const assignedElsewhere = appointments.some(
+    (appointment) =>
+      String(asId(appointment.calendarId)) !== String(calendar._id) &&
+      String(asId(appointment.assignedTo)) === String(asId(assignedTo)) &&
+      overlaps(slot.startAt, slot.endAt, appointment.startAt, appointment.endAt)
+  );
+  return {
+    capacity,
+    used: calendarConflicts,
+    available: Math.max(0, capacity - calendarConflicts),
+    blocked:
+      calendarConflicts >= capacity ||
+      (calendar.settings?.preventOverlaps !== false && assignedElsewhere)
   };
 }
 
@@ -192,6 +280,9 @@ export class CalendarService {
 
   static async createCalendar({ actor, body }) {
     const timezone = assertTimeZone(body.timezone || 'America/Guayaquil');
+    const profile = body.configurationProfile
+      ? profileCalendarPayload(body.configurationProfile)
+      : null;
     const users = await validateCalendarUsers(
       actor.companyId,
       body.ownerUserId || actor._id,
@@ -208,15 +299,33 @@ export class CalendarService {
       name: body.name,
       slug: await uniqueCalendarSlug(actor.companyId, body.slug || body.name),
       description: body.description || '',
-      type: body.type || 'personal',
+      type: body.type || profile?.type || 'personal',
       ...users,
       timezone,
       color: body.color || '#2563eb',
-      settings: body.settings || {},
+      configurationProfile: profile?.configurationProfile || null,
+      settings: normalizeCalendarSettings({
+        ...(profile?.settings || {}),
+        ...(body.settings || {})
+      }),
       createdBy: actor._id,
       updatedBy: actor._id,
-      metadata: body.metadata || {}
+      metadata: sanitize(body.metadata || {})
     });
+    if (profile?.availability?.length) {
+      await AvailabilityRule.insertMany(
+        profile.availability.map((rule) => ({
+          companyId: calendar.companyId,
+          distributorId: calendar.distributorId,
+          calendarId: calendar._id,
+          userId: null,
+          timezone: calendar.timezone,
+          enabled: true,
+          metadata: { configurationProfile: profile.configurationProfile },
+          ...rule
+        }))
+      );
+    }
     await Promise.all([
       trackUsage({
         companyId: actor.companyId,
@@ -260,10 +369,10 @@ export class CalendarService {
     if ('settings' in body) {
       calendar.settings = {
         ...calendar.settings.toObject(),
-        ...body.settings
+        ...normalizeCalendarSettings(body.settings)
       };
     }
-    if ('metadata' in body) calendar.metadata = body.metadata || {};
+    if ('metadata' in body) calendar.metadata = sanitize(body.metadata || {});
     calendar.updatedBy = actor._id;
     await calendar.save();
     await activity({
@@ -273,6 +382,53 @@ export class CalendarService {
       type: calendar.status === 'archived' ? 'calendar_archived' : 'calendar_updated',
       summary: `Calendario actualizado: ${calendar.name}`,
       metadata: { calendarId: calendar._id, fields: Object.keys(body) }
+    });
+    return Calendar.findById(calendar._id).populate(
+      'ownerUserId teamUserIds createdBy updatedBy',
+      'name email role supervisorId'
+    );
+  }
+
+  static profiles() {
+    return CALENDAR_PROFILES;
+  }
+
+  static async applyProfile({ actor, calendar, profileKey, confirmOverwrite }) {
+    assertProfileOverwriteConfirmed(confirmOverwrite);
+    const profile = getCalendarProfile(profileKey);
+    if (!profile) throw badRequest('Perfil de calendario invalido');
+    calendar.type = profile.calendarType;
+    calendar.configurationProfile = profile.key;
+    calendar.settings = {
+      ...calendar.settings.toObject(),
+      ...normalizeCalendarSettings(profile.settings)
+    };
+    calendar.updatedBy = actor._id;
+    await calendar.save();
+    await AvailabilityRule.deleteMany({
+      companyId: calendar.companyId,
+      calendarId: calendar._id,
+      userId: null
+    });
+    await AvailabilityRule.insertMany(
+      profile.availability.map((rule) => ({
+        companyId: calendar.companyId,
+        distributorId: calendar.distributorId,
+        calendarId: calendar._id,
+        userId: null,
+        timezone: calendar.timezone,
+        enabled: true,
+        metadata: { configurationProfile: profile.key },
+        ...rule
+      }))
+    );
+    await activity({
+      actor,
+      companyId: calendar.companyId,
+      distributorId: calendar.distributorId,
+      type: 'calendar_profile_applied',
+      summary: `Perfil ${profile.name} aplicado a ${calendar.name}`,
+      metadata: { calendarId: calendar._id, profileKey: profile.key }
     });
     return Calendar.findById(calendar._id).populate(
       'ownerUserId teamUserIds createdBy updatedBy',
@@ -362,23 +518,30 @@ export class CalendarService {
         ...(ignoreAppointmentId ? { _id: { $ne: ignoreAppointmentId } } : {}),
         $or: [{ calendarId: calendar._id }, { assignedTo: asId(assignee) }]
       })
-        .select('startAt endAt')
+        .select('calendarId assignedTo startAt endAt')
         .lean()
     ]);
     const beforeMs = calendar.settings.bufferBeforeMinutes * 60 * 1000;
     const afterMs = calendar.settings.bufferAfterMinutes * 60 * 1000;
     return buildCandidateSlots(rules, exceptions, start, end, calendar, assignee, duration)
-      .filter(
-        (slot) =>
-          !appointments.some((appointment) =>
-            overlaps(
-              new Date(slot.startAt.getTime() - beforeMs),
-              new Date(slot.endAt.getTime() + afterMs),
-              appointment.startAt,
-              appointment.endAt
-            )
-          )
-      )
+      .map((slot) => {
+        const capacity = slotCapacityState(
+          appointments,
+          {
+            startAt: new Date(slot.startAt.getTime() - beforeMs),
+            endAt: new Date(slot.endAt.getTime() + afterMs)
+          },
+          calendar,
+          assignee
+        );
+        return {
+          ...slot,
+          remainingCapacity: capacity.available,
+          blocked: capacity.blocked
+        };
+      })
+      .filter((slot) => !slot.blocked)
+      .map(({ blocked, ...slot }) => slot)
       .sort((a, b) => a.startAt - b.startAt)
       .filter(
         (slot, index, array) =>
@@ -394,25 +557,33 @@ export class CalendarService {
     endAt,
     ignoreAppointmentId = null
   }) {
-    if (!calendar.settings.preventOverlaps) return;
     const start = new Date(
       startAt.getTime() - calendar.settings.bufferBeforeMinutes * 60 * 1000
     );
     const end = new Date(
       endAt.getTime() + calendar.settings.bufferAfterMinutes * 60 * 1000
     );
-    const conflict = await Appointment.findOne({
+    const appointments = await Appointment.find({
       companyId: calendar.companyId,
       status: { $in: BLOCKING_STATUSES },
       startAt: { $lt: end },
       endAt: { $gt: start },
       ...(ignoreAppointmentId ? { _id: { $ne: ignoreAppointmentId } } : {}),
       $or: [{ calendarId: calendar._id }, { assignedTo }]
-    }).select('_id startAt endAt');
-    if (conflict) {
+    }).select('_id calendarId assignedTo startAt endAt').lean();
+    const capacity = slotCapacityState(
+      appointments,
+      { startAt: start, endAt: end },
+      calendar,
+      assignedTo
+    );
+    if (capacity.blocked) {
       throw Object.assign(new Error('El horario ya no esta disponible'), {
         status: 409,
-        code: 'APPOINTMENT_OVERLAP'
+        code:
+          capacity.used >= capacity.capacity
+            ? 'APPOINTMENT_CAPACITY_REACHED'
+            : 'APPOINTMENT_OVERLAP'
       });
     }
   }
@@ -420,6 +591,12 @@ export class CalendarService {
   static async validateRelations(companyId, contactId, opportunityId) {
     let contact = null;
     let opportunity = null;
+    if (contactId && !mongoose.isValidObjectId(contactId)) {
+      throw badRequest('contactId invalido');
+    }
+    if (opportunityId && !mongoose.isValidObjectId(opportunityId)) {
+      throw badRequest('opportunityId invalido');
+    }
     if (opportunityId) {
       opportunity = await Opportunity.findOne({ _id: opportunityId, companyId });
       if (!opportunity) throw badRequest('opportunityId no pertenece a la empresa');
@@ -465,8 +642,11 @@ export class CalendarService {
     distributorId = null,
     body,
     source = 'manual',
-    enforceAvailability = false
+    enforceAvailability = true
   }) {
+    if (!mongoose.isValidObjectId(body.calendarId)) {
+      throw badRequest('calendarId invalido');
+    }
     const calendar = await Calendar.findOne({
       _id: body.calendarId,
       companyId,
@@ -487,15 +667,16 @@ export class CalendarService {
         );
     if (endAt <= startAt) throw badRequest('endAt debe ser posterior a startAt');
     if (startAt <= new Date()) throw badRequest('startAt debe estar en el futuro');
-    const initialStatus = body.status || 'scheduled';
+    const initialStatus =
+      body.status || calendar.settings.initialAppointmentStatus || 'scheduled';
     if (!['scheduled', 'confirmed'].includes(initialStatus)) {
       throw badRequest('Una cita nueva debe iniciar como scheduled o confirmed');
     }
     assertTimeZone(body.timezone || calendar.timezone);
     const { contact, opportunity } = await this.validateRelations(
       companyId,
-      body.contactId,
-      body.opportunityId
+      normalizeOptionalObjectId(body.contactId),
+      normalizeOptionalObjectId(body.opportunityId)
     );
     if (calendar.settings.requireContact && !contact) {
       throw badRequest('contactId es requerido para este calendario');
@@ -524,12 +705,51 @@ export class CalendarService {
       type: body.locationType,
       value: body.locationValue
     });
+    const bookingLinkId = normalizeOptionalObjectId(body.bookingLinkId);
+    if (bookingLinkId && !mongoose.isValidObjectId(bookingLinkId)) {
+      throw badRequest('bookingLinkId invalido');
+    }
+    if (
+      bookingLinkId &&
+      !await BookingLink.exists({ _id: bookingLinkId, companyId, calendarId: calendar._id })
+    ) {
+      throw badRequest('bookingLinkId no pertenece al calendario o empresa');
+    }
+    const conversationId = normalizeOptionalObjectId(
+      body.conversationId || body.metadata?.conversationId
+    );
+    if (conversationId && !mongoose.isValidObjectId(conversationId)) {
+      throw badRequest('conversationId invalido');
+    }
+    if (
+      conversationId &&
+      !await Conversation.exists({
+        _id: conversationId,
+        companyId,
+        ...(contact ? { contactId: contact._id } : {})
+      })
+    ) {
+      throw badRequest('conversationId no pertenece al contacto o empresa');
+    }
+    const attribution = await validateAppointmentAttribution(companyId, body.attribution || {});
+    const rescheduledFrom = normalizeOptionalObjectId(body.rescheduledFrom);
+    if (
+      rescheduledFrom &&
+      (
+        !mongoose.isValidObjectId(rescheduledFrom) ||
+        !await Appointment.exists({ _id: rescheduledFrom, companyId })
+      )
+    ) {
+      throw badRequest('rescheduledFrom no pertenece a la empresa');
+    }
     const appointment = await Appointment.create({
       companyId,
       distributorId,
       calendarId: calendar._id,
       contactId: contact?._id || null,
       opportunityId: opportunity?._id || null,
+      conversationId,
+      bookingLinkId,
       assignedTo,
       title: body.title || `Cita con ${contact?.name || 'contacto'}`,
       description: body.description || '',
@@ -544,8 +764,9 @@ export class CalendarService {
       notes: body.notes || '',
       createdBy: actor._id,
       updatedBy: actor._id,
-      rescheduledFrom: body.rescheduledFrom || null,
-      metadata: body.metadata || {}
+      rescheduledFrom,
+      attribution,
+      metadata: sanitize(body.metadata || {})
     });
     await Promise.all([
       trackUsage({
@@ -609,9 +830,13 @@ export class CalendarService {
     }
     if ('contactId' in body || 'opportunityId' in body) {
       const contactId =
-        'contactId' in body ? body.contactId : appointment.contactId;
+        'contactId' in body
+          ? normalizeOptionalObjectId(body.contactId)
+          : appointment.contactId;
       const opportunityId =
-        'opportunityId' in body ? body.opportunityId : appointment.opportunityId;
+        'opportunityId' in body
+          ? normalizeOptionalObjectId(body.opportunityId)
+          : appointment.opportunityId;
       const relations = await this.validateRelations(
         appointment.companyId,
         contactId,
@@ -625,6 +850,19 @@ export class CalendarService {
       nextEnd.getTime() !== appointment.endAt.getTime() ||
       String(nextAssignee) !== String(appointment.assignedTo)
     ) {
+      const slots = await this.availability({
+        calendar,
+        from: nextStart,
+        to: nextEnd,
+        durationMinutes: Math.round((nextEnd - nextStart) / 60000),
+        assignedTo: nextAssignee,
+        ignoreAppointmentId: appointment._id
+      });
+      if (!slots.some((slot) => slot.startAt.getTime() === nextStart.getTime())) {
+        throw Object.assign(new Error('El horario seleccionado no esta disponible'), {
+          status: 409
+        });
+      }
       await this.assertNoOverlap({
         calendar,
         assignedTo: nextAssignee,
@@ -633,8 +871,30 @@ export class CalendarService {
         ignoreAppointmentId: appointment._id
       });
     }
-    for (const field of ['title', 'description', 'timezone', 'metadata']) {
+    for (const field of ['title', 'description', 'timezone']) {
       if (field in body) appointment[field] = body[field];
+    }
+    if ('metadata' in body) {
+      const metadata = sanitize(body.metadata || {});
+      const suppliedConversationId = normalizeOptionalObjectId(metadata.conversationId);
+      if (
+        suppliedConversationId &&
+        String(suppliedConversationId) !== String(appointment.conversationId || '')
+      ) {
+        throw badRequest('metadata.conversationId no puede cambiar la relacion de la cita');
+      }
+      appointment.metadata = {
+        ...metadata,
+        ...(appointment.conversationId
+          ? { conversationId: String(appointment.conversationId) }
+          : {})
+      };
+    }
+    if ('attribution' in body) {
+      appointment.attribution = await validateAppointmentAttribution(
+        appointment.companyId,
+        body.attribution
+      );
     }
     if ('timezone' in body) assertTimeZone(body.timezone);
     if (
@@ -703,6 +963,24 @@ export class CalendarService {
     if (!transitions[appointment.status]?.includes(status)) {
       throw badRequest(`No se puede cambiar una cita ${appointment.status} a ${status}`);
     }
+    if (status === 'cancelled') {
+      const calendar = await Calendar.findOne({
+        _id: appointment.calendarId,
+        companyId: appointment.companyId
+      }).select('settings.allowCancel settings.cancellationMinNoticeMinutes');
+      if (calendar?.settings?.allowCancel === false) {
+        throw badRequest('Este calendario no permite cancelar citas');
+      }
+      const minimum = Number(calendar?.settings?.cancellationMinNoticeMinutes || 0);
+      if (
+        minimum > 0 &&
+        appointment.startAt.getTime() - Date.now() < minimum * 60000
+      ) {
+        throw badRequest(
+          `La cancelacion requiere al menos ${minimum} minutos de anticipacion`
+        );
+      }
+    }
     appointment.status = status;
     appointment.updatedBy = actor._id;
     if (status === 'cancelled') {
@@ -755,6 +1033,22 @@ export class CalendarService {
     if (!BLOCKING_STATUSES.includes(appointment.status)) {
       throw badRequest('Solo se pueden reprogramar citas scheduled o confirmed');
     }
+    const calendar = await Calendar.findOne({
+      _id: appointment.calendarId,
+      companyId: appointment.companyId
+    }).select('settings.allowReschedule settings.rescheduleMinNoticeMinutes');
+    if (calendar?.settings?.allowReschedule === false) {
+      throw badRequest('Este calendario no permite reprogramar citas');
+    }
+    const minimum = Number(calendar?.settings?.rescheduleMinNoticeMinutes || 0);
+    if (
+      minimum > 0 &&
+      appointment.startAt.getTime() - Date.now() < minimum * 60000
+    ) {
+      throw badRequest(
+        `La reprogramacion requiere al menos ${minimum} minutos de anticipacion`
+      );
+    }
     const durationMs = appointment.endAt.getTime() - appointment.startAt.getTime();
     const nextStartAt = parseDate(body.startAt, 'startAt');
     const nextEndAt = body.endAt
@@ -774,6 +1068,8 @@ export class CalendarService {
           calendarId: appointment.calendarId,
           contactId: appointment.contactId,
           opportunityId: appointment.opportunityId,
+          conversationId: appointment.conversationId,
+          bookingLinkId: appointment.bookingLinkId,
           assignedTo: body.assignedTo || appointment.assignedTo,
           title: body.title || appointment.title,
           description:
@@ -784,6 +1080,7 @@ export class CalendarService {
           location: body.location || appointment.location?.toObject?.() || appointment.location,
           status: 'scheduled',
           rescheduledFrom: appointment._id,
+          attribution: appointment.attribution?.toObject?.() || appointment.attribution,
           metadata: {
             ...(appointment.metadata || {}),
             ...(body.metadata || {}),

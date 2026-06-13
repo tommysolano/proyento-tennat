@@ -6,6 +6,10 @@ import {
   getPublicBookingAvailability,
   getPublicBookingLink
 } from '../../api.js';
+import {
+  publicMarketingContext,
+  publicMarketingQuery
+} from '../../utils/publicMarketing.js';
 
 function dateKey(value, timeZone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -28,6 +32,7 @@ export function PublicBookingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -38,10 +43,11 @@ export function PublicBookingPage() {
         const from = new Date();
         const to = new Date(from.getTime() + 14 * 24 * 60 * 60 * 1000);
         const [linkData, availability] = await Promise.all([
-          getPublicBookingLink(slug),
+          getPublicBookingLink(slug, publicMarketingQuery(searchParams.toString())),
           getPublicBookingAvailability(slug, {
             from: from.toISOString(),
-            to: to.toISOString()
+            to: to.toISOString(),
+            ...publicMarketingQuery(searchParams.toString())
           })
         ]);
         if (!active) return;
@@ -55,7 +61,7 @@ export function PublicBookingPage() {
     }
     load();
     return () => { active = false; };
-  }, [slug]);
+  }, [slug, retryKey, searchParams]);
 
   const grouped = useMemo(() => {
     const groups = new Map();
@@ -74,6 +80,13 @@ export function PublicBookingPage() {
       return;
     }
     const data = new FormData(event.currentTarget);
+    const marketing = publicMarketingContext(searchParams.toString());
+    const fields = Object.fromEntries(
+      (link.calendar.clientFields || []).map((field) => [
+        field.key,
+        data.get(`field_${field.key}`)
+      ])
+    );
     setBusy(true);
     setError('');
     try {
@@ -82,6 +95,13 @@ export function PublicBookingPage() {
         email: data.get('email'),
         phone: data.get('phone'),
         notes: data.get('notes'),
+        fields,
+        consents: Object.fromEntries(
+          (link.consentRequests || []).map((request) => [
+            request.channel,
+            data.get(`consent_${request.channel}`) === 'on'
+          ])
+        ),
         startAt: selected,
         sessionId: sessionStorage.getItem('tenantdesk_session_id') || '',
         visitorId: localStorage.getItem('tenantdesk_visitor_id') || '',
@@ -89,7 +109,8 @@ export function PublicBookingPage() {
           landingSlug: searchParams.get('landingSlug') || '',
           funnelSlug: searchParams.get('funnelSlug') || '',
           stepSlug: searchParams.get('stepSlug') || ''
-        }
+        },
+        ...marketing
       });
       setResult(response);
       if (response.redirectUrl) {
@@ -107,7 +128,7 @@ export function PublicBookingPage() {
   }
 
   if (error && !link) {
-    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6"><div className="max-w-md rounded-xl border border-rose-200 bg-white p-8 text-center"><h1 className="text-xl font-semibold">Reserva no disponible</h1><p className="mt-3 text-sm text-rose-700">{error}</p></div></main>;
+    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6"><div className="max-w-md rounded-xl border border-rose-200 bg-white p-8 text-center"><h1 className="text-xl font-semibold">Reserva no disponible</h1><p className="mt-3 text-sm text-rose-700">{error}</p><button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Reintentar</button></div></main>;
   }
 
   if (result) {
@@ -136,7 +157,7 @@ export function PublicBookingPage() {
           <div className="mt-8 space-y-4 text-sm text-slate-200">
             <p className="flex items-center gap-3"><Clock3 className="h-5 w-5 text-cyan-300" />{link.calendar.durationMinutes} minutos</p>
             <p className="flex items-center gap-3"><CalendarDays className="h-5 w-5 text-cyan-300" />Zona horaria: {link.calendar.timezone}</p>
-            <p className="flex items-center gap-3"><MapPin className="h-5 w-5 text-cyan-300" />{link.calendar.locationType.replaceAll('_', ' ')}</p>
+            <p className="flex items-center gap-3"><MapPin className="h-5 w-5 text-cyan-300" />{link.calendar.locationType.replaceAll('_', ' ')}{link.calendar.locationValue ? ` - ${link.calendar.locationValue}` : ''}</p>
           </div>
           {link.requireApproval ? <p className="mt-8 rounded-lg bg-amber-300/10 p-3 text-xs text-amber-200">La empresa confirmara la cita despues de recibir tu solicitud.</p> : null}
         </aside>
@@ -156,6 +177,7 @@ export function PublicBookingPage() {
                       className={`rounded-lg border px-3 py-2 text-sm font-semibold ${selected === slot.startAt ? 'border-cyan-700 bg-cyan-700 text-white' : 'border-slate-200 text-slate-700 hover:border-cyan-400'}`}
                     >
                       {new Date(slot.startAt).toLocaleTimeString([], { timeZone: link.calendar.timezone, hour: '2-digit', minute: '2-digit' })}
+                      {slot.remainingCapacity > 1 ? ` (${slot.remainingCapacity} cupos)` : ''}
                     </button>
                   ))}
                 </div>
@@ -169,6 +191,43 @@ export function PublicBookingPage() {
             {allowed.has('email') ? <label className="text-xs font-semibold text-slate-600">Email<input type="email" name="email" maxLength="180" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" /></label> : null}
             {allowed.has('phone') ? <label className="text-xs font-semibold text-slate-600">Telefono<input name="phone" maxLength="40" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" /></label> : null}
             {allowed.has('notes') ? <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Notas<textarea name="notes" maxLength="1000" className="mt-1 min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" /></label> : null}
+            {(link.calendar.clientFields || []).map((field) => (
+              <label
+                key={field.key}
+                className={`text-xs font-semibold text-slate-600 ${
+                  field.type === 'textarea' ? 'sm:col-span-2' : ''
+                }`}
+              >
+                {field.label}
+                {field.type === 'textarea' ? (
+                  <textarea
+                    name={`field_${field.key}`}
+                    required={field.required}
+                    maxLength="2000"
+                    className="mt-1 min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"
+                  />
+                ) : (
+                  <input
+                    name={`field_${field.key}`}
+                    required={field.required}
+                    type={field.type}
+                    maxLength={field.type === 'number' ? undefined : 500}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"
+                  />
+                )}
+              </label>
+            ))}
+            {(link.consentRequests || []).map((request) => (
+              <label key={request.channel} className="flex items-start gap-2 text-sm text-slate-600 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  name={`consent_${request.channel}`}
+                  required={request.required}
+                  className="mt-1"
+                />
+                <span>{request.label}</span>
+              </label>
+            ))}
             {error ? <p className="text-sm font-medium text-rose-700 sm:col-span-2">{error}</p> : null}
             <button disabled={busy || !selected} className="rounded-lg bg-cyan-700 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-50 sm:col-span-2">
               {busy ? 'Registrando...' : 'Confirmar reserva'}

@@ -1,4 +1,5 @@
 import { LoaderCircle } from 'lucide-react';
+import { ErrorState } from './AsyncState.jsx';
 
 export const inputClass = 'w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100';
 
@@ -21,22 +22,7 @@ export function CrmLoading({ label = 'Cargando CRM...' }) {
 }
 
 export function CrmLoadError({ message, onRetry }) {
-  return (
-    <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-center">
-      <p className="text-sm font-medium text-rose-800">
-        {message || 'No se pudo cargar la informacion.'}
-      </p>
-      {onRetry ? (
-        <button
-          type="button"
-          className="mt-4 inline-flex min-h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
-          onClick={onRetry}
-        >
-          Reintentar
-        </button>
-      ) : null}
-    </div>
-  );
+  return <ErrorState description={message || 'No se pudo cargar la informacion.'} onAction={onRetry} />;
 }
 
 export function money(value, currency = 'USD') {
@@ -58,20 +44,21 @@ export function dateTimeLocal(value) {
 
 export function CustomFieldInput({ field, defaultValue }) {
   const name = `custom_${field.key}`;
+  const id = `custom-field-${field.key}`;
   if (field.type === 'boolean') {
-    return <label className="flex items-center gap-2 text-sm"><input type="checkbox" name={name} defaultChecked={Boolean(defaultValue)} />{field.label}</label>;
+    return <label htmlFor={id} className="flex items-center gap-2 text-sm"><input id={id} type="checkbox" name={name} defaultChecked={Boolean(defaultValue)} />{field.label}</label>;
   }
   if (field.type === 'select') {
-    return <label className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<select name={name} required={field.required} defaultValue={defaultValue ?? ''} className={inputClass}><option value="">Seleccionar</option>{field.options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+    return <label htmlFor={id} className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<select id={id} name={name} required={field.required} defaultValue={defaultValue ?? ''} className={inputClass}><option value="">Seleccionar</option>{field.options.map((option) => <option key={option}>{option}</option>)}</select></label>;
   }
   if (field.type === 'multiselect') {
-    return <label className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<select multiple name={name} required={field.required} defaultValue={Array.isArray(defaultValue) ? defaultValue : []} className={inputClass}>{field.options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+    return <label htmlFor={id} className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<select id={id} multiple name={name} required={field.required} defaultValue={Array.isArray(defaultValue) ? defaultValue : []} className={inputClass}>{field.options.map((option) => <option key={option}>{option}</option>)}</select></label>;
   }
   if (field.type === 'textarea') {
-    return <label className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<textarea name={name} required={field.required} defaultValue={defaultValue ?? ''} className={inputClass} /></label>;
+    return <label htmlFor={id} className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<textarea id={id} name={name} required={field.required} defaultValue={defaultValue ?? ''} className={inputClass} /></label>;
   }
   const type = { number: 'number', date: 'date', email: 'email', phone: 'tel', url: 'url' }[field.type] || 'text';
-  return <label className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<input type={type} name={name} required={field.required} defaultValue={defaultValue ?? ''} className={inputClass} /></label>;
+  return <label htmlFor={id} className="space-y-1 text-xs font-semibold text-slate-600">{field.label}<input id={id} type={type} name={name} required={field.required} defaultValue={defaultValue ?? ''} className={inputClass} /></label>;
 }
 
 export function customFieldsFromForm(formData, definitions) {

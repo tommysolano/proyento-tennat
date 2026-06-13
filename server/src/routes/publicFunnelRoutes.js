@@ -10,6 +10,7 @@ import { SatisfactionSurvey } from '../models/SatisfactionSurvey.js';
 import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { FunnelService } from '../modules/funnels/FunnelService.js';
 import { safeTrackingContext, slugifyPublic } from '../modules/marketing/marketingSecurity.js';
+import { mergeMarketingAttribution } from '../modules/marketing/marketingAttribution.js';
 
 const router = Router();
 const limiter = rateLimit({
@@ -124,7 +125,11 @@ async function render(req, res, next) {
           funnelId: context.funnel._id,
           funnelStepId: context.step._id,
           landingPageId: context.step.landingPageId,
-          formId: context.step.formId
+          formId: context.step.formId,
+          attribution: mergeMarketingAttribution(
+            context.funnel.attribution,
+            context.step.attribution
+          )
         },
         tracking: safeTrackingContext(req),
         path: req.originalUrl
@@ -146,7 +151,7 @@ router.post('/:funnelSlug/:stepSlug/events', async (req, res, next) => {
   try {
     const context = await resolve(req.params.funnelSlug, req.params.stepSlug);
     if (!context) return res.status(404).json({ message: 'Funnel no disponible' });
-    if (req.body.type !== 'button_click') {
+    if (!['button_click', 'funnel_step_completed'].includes(req.body.type)) {
       return res.status(400).json({ message: 'Tipo de evento no permitido' });
     }
     const event = await FunnelService.recordConversion({
@@ -156,9 +161,13 @@ router.post('/:funnelSlug/:stepSlug/events', async (req, res, next) => {
         funnelId: context.funnel._id,
         funnelStepId: context.step._id,
         landingPageId: context.step.landingPageId,
-        formId: context.step.formId
+        formId: context.step.formId,
+        attribution: mergeMarketingAttribution(
+          context.funnel.attribution,
+          context.step.attribution
+        )
       },
-      type: 'button_click',
+      type: req.body.type,
       tracking: safeTrackingContext(req),
       metadata: { label: req.body.label || '' }
     });

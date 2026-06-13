@@ -8,7 +8,7 @@ import { Calendar } from '../models/Calendar.js';
 import { CalendarService } from '../modules/calendar/CalendarService.js';
 import { recordActivity } from '../utils/activity.js';
 import { checkUsageLimit, trackUsage } from '../utils/usage.js';
-import { cleanString } from '../utils/validation.js';
+import { cleanString, isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 
@@ -56,18 +56,58 @@ function optionalBoolean(body, field, fallback) {
   return body[field];
 }
 
+function consentRequests(values) {
+  if (values === undefined) return undefined;
+  if (!Array.isArray(values) || values.length > 4) {
+    throw Object.assign(new Error('consentRequests debe ser un arreglo de hasta 4 canales'), {
+      status: 400
+    });
+  }
+  const seen = new Set();
+  return values.map((item) => {
+    const channel = cleanString(item?.channel);
+    if (!['whatsapp', 'sms', 'email', 'call'].includes(channel) || seen.has(channel)) {
+      throw Object.assign(new Error('Canal de consentimiento invalido o duplicado'), {
+        status: 400
+      });
+    }
+    seen.add(channel);
+    const label = cleanString(item.label);
+    if (!label) {
+      throw Object.assign(new Error('Cada consentimiento requiere label'), { status: 400 });
+    }
+    return {
+      channel,
+      label,
+      required: Boolean(item.required),
+      version: cleanString(item.version)
+    };
+  });
+}
+
 router.use(authMiddleware);
 router.use(roleMiddleware('ADMIN'));
 router.use(requirePermission('booking_links:manage'));
 router.use(requireModule('calendar'));
 router.use(requireModule('bookings'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'bookingLinkId invalido' });
+  }
+  next();
+});
 
 router.get('/', async (req, res, next) => {
   try {
     const filter = { companyId: req.user.companyId };
     if (req.query.status) filter.status = req.query.status;
     else filter.status = { $ne: 'archived' };
-    if (req.query.calendarId) filter.calendarId = req.query.calendarId;
+    if (req.query.calendarId) {
+      if (!isValidObjectId(req.query.calendarId)) {
+        return res.status(400).json({ message: 'calendarId invalido' });
+      }
+      filter.calendarId = req.query.calendarId;
+    }
     res.json(await populate(BookingLink.find(filter).sort({ createdAt: -1 })));
   } catch (error) {
     next(error);
@@ -103,6 +143,7 @@ router.post('/', async (req, res, next) => {
       publicEnabled: optionalBoolean(req.body, 'publicEnabled', true),
       requireApproval: optionalBoolean(req.body, 'requireApproval', false),
       allowedFields,
+      consentRequests: consentRequests(req.body.consentRequests) || [],
       thankYouMessage:
         cleanString(req.body.thankYouMessage) ||
         'Tu cita fue registrada correctamente.',
@@ -181,6 +222,9 @@ router.patch('/:id', async (req, res, next) => {
       }
       link.allowedFields = CalendarService.sanitizeAllowedFields(req.body.allowedFields);
       if (!link.allowedFields.includes('name')) link.allowedFields.unshift('name');
+    }
+    if ('consentRequests' in req.body) {
+      link.consentRequests = consentRequests(req.body.consentRequests);
     }
     if ('metadata' in req.body) link.metadata = req.body.metadata || {};
     link.updatedBy = req.user._id;

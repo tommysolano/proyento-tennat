@@ -149,6 +149,7 @@ export async function handleJob(job) {
         job.payload.payload
       );
     case 'message.whatsapp.send':
+    case 'message.outbound.send':
       return ConversationService.processOutboundMessage({
         messageId: job.payload.messageId,
         template: job.payload.template || null,
@@ -173,7 +174,7 @@ export async function handleTerminalJobFailure(job, error) {
   if (job.type === 'workflow.run') {
     await WorkflowService.markTerminalFailure(job.payload.runId, error);
   }
-  if (job.type === 'message.whatsapp.send') {
+  if (['message.whatsapp.send', 'message.outbound.send'].includes(job.type)) {
     const message = await Message.findById(job.payload.messageId);
     if (!message || message.status === 'failed') return;
     message.status = 'failed';

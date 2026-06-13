@@ -36,8 +36,13 @@ import {
   CrmNotice,
   inputClass
 } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
+import {
+  publicMarketingContext,
+  publicMarketingQuery
+} from '../../utils/publicMarketing.js';
 import { PublicFormRenderer } from './FormsPage.jsx';
 import { PublicReviewWidgetPage } from '../reputation/PublicReputationPages.jsx';
 
@@ -372,21 +377,33 @@ export function LandingPageBuilderPage() {
       <div><Button as={Link} to="/marketing/landing-pages" variant="secondary">Volver</Button></div>
       <CrmNotice notice={notice} error={error} />
       <Card>
-        <CardHeader title="Pagina y SEO" />
+        <CardHeader title="1. Pagina y SEO" description="Define la identidad publica y la informacion para buscadores." />
         <div className="grid gap-4 p-5 md:grid-cols-2">
-          <label className="text-xs font-semibold">Nombre<input className={inputClass} value={page.name} onChange={(event) => setPage({ ...page, name: event.target.value })} /></label>
-          <label className="text-xs font-semibold">Slug<input className={inputClass} value={page.slug} onChange={(event) => setPage({ ...page, slug: event.target.value })} /></label>
-          <label className="text-xs font-semibold">Titulo publico<input className={inputClass} value={page.title} onChange={(event) => setPage({ ...page, title: event.target.value })} /></label>
-          <label className="text-xs font-semibold">SEO title<input className={inputClass} value={page.seo.title} onChange={(event) => setPage({ ...page, seo: { ...page.seo, title: event.target.value } })} /></label>
-          <label className="text-xs font-semibold md:col-span-2">Descripcion<textarea className={`${inputClass} min-h-20`} value={page.description} onChange={(event) => setPage({ ...page, description: event.target.value })} /></label>
-          <label className="text-xs font-semibold md:col-span-2">SEO description<textarea className={`${inputClass} min-h-20`} value={page.seo.description} onChange={(event) => setPage({ ...page, seo: { ...page.seo, description: event.target.value } })} /></label>
+          <FormField label="Nombre" htmlFor="landing-builder-name">
+            <input id="landing-builder-name" className={inputClass} value={page.name} onChange={(event) => setPage({ ...page, name: event.target.value })} />
+          </FormField>
+          <FormField label="Slug" htmlFor="landing-builder-slug" hint="Identificador tecnico usado en la URL publica.">
+            <input id="landing-builder-slug" className={inputClass} value={page.slug} onChange={(event) => setPage({ ...page, slug: event.target.value })} />
+          </FormField>
+          <FormField label="Titulo publico" htmlFor="landing-builder-title">
+            <input id="landing-builder-title" className={inputClass} value={page.title} onChange={(event) => setPage({ ...page, title: event.target.value })} />
+          </FormField>
+          <FormField label="Titulo SEO" htmlFor="landing-builder-seo-title">
+            <input id="landing-builder-seo-title" className={inputClass} value={page.seo.title} onChange={(event) => setPage({ ...page, seo: { ...page.seo, title: event.target.value } })} />
+          </FormField>
+          <FormField label="Descripcion" htmlFor="landing-builder-description" className="md:col-span-2">
+            <textarea id="landing-builder-description" className={`${inputClass} min-h-20`} value={page.description} onChange={(event) => setPage({ ...page, description: event.target.value })} />
+          </FormField>
+          <FormField label="Descripcion SEO" htmlFor="landing-builder-seo-description" className="md:col-span-2">
+            <textarea id="landing-builder-seo-description" className={`${inputClass} min-h-20`} value={page.seo.description} onChange={(event) => setPage({ ...page, seo: { ...page.seo, description: event.target.value } })} />
+          </FormField>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={page.settings.trackingEnabled} onChange={(event) => setPage({ ...page, settings: { ...page.settings, trackingEnabled: event.target.checked } })} />Tracking habilitado</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={page.seo.noIndex} onChange={(event) => setPage({ ...page, seo: { ...page.seo, noIndex: event.target.checked } })} />No index</label>
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="Secciones" action={<div className="flex gap-2"><select id="new-section-type" className={inputClass}>{sectionTypes.map((type) => <option key={type}>{type}</option>)}</select><Button variant="secondary" onClick={() => addSection(document.getElementById('new-section-type').value)}><Plus className="h-4 w-4" />Agregar</Button></div>} />
+        <CardHeader title="2. Secciones" description="Agrega contenido y ordenalo segun el recorrido de la pagina." action={<div className="flex gap-2"><select id="new-section-type" aria-label="Tipo de nueva seccion" className={inputClass}>{sectionTypes.map((type) => <option key={type}>{type}</option>)}</select><Button variant="secondary" onClick={() => addSection(document.getElementById('new-section-type').value)}><Plus className="h-4 w-4" />Agregar</Button></div>} />
         <div className="space-y-4 p-5">
           {page.content.sections.map((section, index) => (
             <div key={section._id || index} className="rounded-lg border border-slate-200 p-4">
@@ -424,7 +441,7 @@ export function LandingPageBuilderPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Asociaciones y estilo" />
+        <CardHeader title="3. Asociaciones y estilo" description="Relaciona recursos existentes y aplica la apariencia principal." />
         <div className="grid gap-4 p-5 md:grid-cols-2">
           <label className="text-xs font-semibold">Formulario asociado<select className={inputClass} value={page.settings.associatedFormId} onChange={(event) => setPage({ ...page, settings: { ...page.settings, associatedFormId: event.target.value } })}><option value="">Ninguno</option>{references.forms.map((form) => <option key={form._id} value={form._id}>{form.name}</option>)}</select></label>
           <label className="text-xs font-semibold">Booking asociado<select className={inputClass} value={page.settings.associatedBookingLinkId} onChange={(event) => setPage({ ...page, settings: { ...page.settings, associatedBookingLinkId: event.target.value } })}><option value="">Ninguno</option>{references.bookings.map((booking) => <option key={booking._id} value={booking._id}>{booking.title}</option>)}</select></label>
@@ -440,15 +457,15 @@ export function LandingPageBuilderPage() {
   );
 }
 
-function LandingSection({ section, pageSlug, primaryColor }) {
+function LandingSection({ section, pageSlug, primaryColor, source = {} }) {
   const content = section.content || {};
   if (section.type === 'hero') {
     return <section className="bg-slate-950 px-6 py-20 text-center text-white"><p className="text-xs font-bold uppercase tracking-widest text-cyan-300">{content.eyebrow}</p><h1 className="mx-auto mt-4 max-w-4xl text-4xl font-semibold sm:text-6xl">{content.title}</h1><p className="mx-auto mt-5 max-w-2xl text-slate-300">{content.text}</p>{content.buttonLabel ? <a href={content.href || '#contenido'} className="mt-8 inline-flex rounded-lg px-5 py-3 font-semibold text-white" style={{ backgroundColor: primaryColor }}>{content.buttonLabel}</a> : null}</section>;
   }
   if (section.type === 'text') return <section id="contenido" className="mx-auto max-w-4xl px-6 py-14"><h2 className="text-3xl font-semibold">{content.title}</h2><p className="mt-4 whitespace-pre-wrap leading-7 text-slate-600">{content.text}</p></section>;
   if (section.type === 'image') return <section className="mx-auto max-w-5xl px-6 py-10"><img className="w-full rounded-2xl object-cover shadow-xl" src={content.imageUrl} alt={content.alt || ''} /></section>;
-  if (section.type === 'button') return <section className="px-6 py-10 text-center"><a href={content.href || '/'} onClick={() => trackLandingPageEvent(pageSlug, { type: 'button_click', label: content.label || '' }).catch(() => {})} className="inline-flex rounded-lg px-6 py-3 font-semibold text-white" style={{ backgroundColor: primaryColor }}>{content.label || 'Continuar'}</a></section>;
-  if (section.type === 'form_embed' && content.formSlug) return <section className="mx-auto max-w-xl px-4 py-12"><PublicFormRenderer slug={content.formSlug} source={{ landingSlug: pageSlug }} embedded /></section>;
+  if (section.type === 'button') return <section className="px-6 py-10 text-center"><a href={content.href || '/'} onClick={() => trackLandingPageEvent(pageSlug, { type: 'button_click', label: content.label || '', ...publicMarketingContext() }).catch(() => {})} className="inline-flex rounded-lg px-6 py-3 font-semibold text-white" style={{ backgroundColor: primaryColor }}>{content.label || 'Continuar'}</a></section>;
+  if (section.type === 'form_embed' && content.formSlug) return <section className="mx-auto max-w-xl px-4 py-12"><PublicFormRenderer slug={content.formSlug} source={{ landingSlug: pageSlug, ...source }} embedded /></section>;
   if (section.type === 'booking_embed' && content.bookingLinkSlug) return <section className="px-6 py-12 text-center"><Link className="inline-flex rounded-lg px-6 py-3 font-semibold text-white" style={{ backgroundColor: primaryColor }} to={`/book/${content.bookingLinkSlug}?landingSlug=${encodeURIComponent(pageSlug)}`}>{content.label || 'Reservar una cita'}</Link></section>;
   if (section.type === 'review_widget_embed' && content.reviewWidgetSlug) return <section className="px-4 py-12"><PublicReviewWidgetPage slug={content.reviewWidgetSlug} embedded /></section>;
   if (section.type === 'faq') return <section className="mx-auto max-w-4xl space-y-3 px-6 py-14">{(content.items || []).map((item, index) => <details key={index} className="rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer font-semibold">{item.question}</summary><p className="mt-3 text-slate-600">{item.answer}</p></details>)}</section>;
@@ -456,14 +473,14 @@ function LandingSection({ section, pageSlug, primaryColor }) {
   return null;
 }
 
-export function PublicLandingRenderer({ slug, embedded = false }) {
+export function PublicLandingRenderer({ slug, embedded = false, source = {} }) {
   const [page, setPage] = useState(null);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     setError('');
     setPage(null);
-    getPublicLandingPage(slug)
+    getPublicLandingPage(slug, publicMarketingQuery())
       .then((data) => {
         if (
           !data ||
@@ -490,7 +507,7 @@ export function PublicLandingRenderer({ slug, embedded = false }) {
     );
   }
   if (!page) return <div className="flex min-h-64 items-center justify-center text-sm text-slate-500">Cargando pagina...</div>;
-  const content = <div style={{ backgroundColor: page.styling.backgroundColor, color: page.styling.textColor }}>{page.content.sections.map((section, index) => <LandingSection key={section.id || index} section={section} pageSlug={slug} primaryColor={page.styling.primaryColor} />)}</div>;
+  const content = <div style={{ backgroundColor: page.styling.backgroundColor, color: page.styling.textColor }}>{page.content.sections.map((section, index) => <LandingSection key={section.id || index} section={section} pageSlug={slug} primaryColor={page.styling.primaryColor} source={source} />)}</div>;
   return embedded ? content : <main className="min-h-screen">{content}</main>;
 }
 

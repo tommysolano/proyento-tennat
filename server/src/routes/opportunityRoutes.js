@@ -7,18 +7,32 @@ import { ActivityLog } from '../models/ActivityLog.js';
 import { Contact, CRM_PRIORITIES } from '../models/Contact.js';
 import { Note } from '../models/Note.js';
 import { Opportunity, OPPORTUNITY_STATUSES } from '../models/Opportunity.js';
+import { CrmList } from '../models/CrmList.js';
 import { Pipeline } from '../models/Pipeline.js';
 import { PipelineStage } from '../models/PipelineStage.js';
+import { Tag } from '../models/Tag.js';
 import { Task } from '../models/Task.js';
 import { Appointment } from '../models/Appointment.js';
 import { recordActivity } from '../utils/activity.js';
 import { assignedResourceScope, tenantFields, validateCrmAssignee } from '../utils/crmScope.js';
 import { validateCustomFieldValues } from '../utils/customFields.js';
 import { cleanString, isValidObjectId } from '../utils/validation.js';
+import { tagScopeFilter } from '../utils/crmOrganization.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
 
 const router = Router();
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const attributionPermissions = [
+  'attribution:read',
+  'attribution:read_team',
+  'attribution:read_assigned',
+  'attribution:read_all'
+];
+
+function canReadAttribution(user) {
+  return attributionPermissions.some((permission) => hasUserPermission(user, permission));
+}
 
 function dateValue(value, field) {
   if (value === null || value === '') return null;
@@ -64,6 +78,20 @@ async function validateRelations(user, body, current = null) {
   return data;
 }
 
+async function validateTags(companyId, values) {
+  if (!Array.isArray(values)) throw badRequest('tags debe ser un arreglo');
+  if (values.some((id) => !isValidObjectId(id))) throw badRequest('tag invalido');
+  const unique = [...new Set(values.map(String))];
+  const count = await Tag.countDocuments({
+    _id: { $in: unique },
+    companyId,
+    status: 'active',
+    ...tagScopeFilter('opportunity')
+  });
+  if (count !== unique.length) throw badRequest('Uno o mas tags no pertenecen a oportunidades');
+  return unique;
+}
+
 async function payload(user, body, current = null) {
   const data = await validateRelations(user, body, current);
   if (!current || 'title' in body) {
@@ -88,6 +116,7 @@ async function payload(user, body, current = null) {
     if (!Number.isFinite(data.probability) || data.probability < 0 || data.probability > 100) throw badRequest('probability debe estar entre 0 y 100');
   }
   if ('assignedTo' in body) data.assignedTo = await validateCrmAssignee(user, body.assignedTo);
+  if ('tags' in body) data.tags = await validateTags(user.companyId, body.tags);
   for (const field of ['expectedCloseDate', 'nextFollowUpAt']) if (field in body) data[field] = dateValue(body[field], field);
   if ('customFields' in body) {
     data.customFields = await validateCustomFieldValues(user.companyId, 'opportunity', body.customFields, { requireAll: true });
@@ -99,12 +128,23 @@ async function payload(user, body, current = null) {
   return data;
 }
 
-function populate(query) {
+function populate(query, user = null) {
+  if (user && !canReadAttribution(user)) {
+    query.select('-attribution');
+  }
   return query
     .populate('contactId', 'name phone email status')
     .populate('pipelineId', 'name status')
     .populate('stageId', 'name order probability color')
-    .populate('assignedTo createdBy updatedBy', 'name email role supervisorId');
+    .populate('assignedTo createdBy updatedBy', 'name email role supervisorId')
+    .populate('tags', 'name color status scope')
+    .populate('lists', 'name description entityType status')
+    .populate('attribution.campaignId', 'name status channel source')
+    .populate('attribution.integrationId', 'name provider status')
+    .populate('attribution.formId', 'name slug status')
+    .populate('attribution.landingPageId', 'name slug status')
+    .populate('attribution.funnelId', 'name slug status')
+    .populate('attribution.funnelStepId', 'name slug status');
 }
 
 router.use(authMiddleware);
@@ -122,7 +162,7 @@ router.param('id', (req, res, next, id) => {
 router.get('/', async (req, res, next) => {
   try {
     const filter = await assignedResourceScope(req.user);
-    for (const field of ['pipelineId', 'stageId', 'contactId']) {
+    for (const field of ['pipelineId', 'stageId', 'contactId', 'tag', 'list']) {
       if (req.query[field] && !isValidObjectId(req.query[field])) {
         throw badRequest(`${field} invalido`);
       }
@@ -139,9 +179,92 @@ router.get('/', async (req, res, next) => {
         current.$in?.some((id) => id.toString() === requested);
       filter.assignedTo = allowed ? requested : { $in: [] };
     }
+    if (req.query.tag) {
+      const tag = await Tag.exists({
+        _id: req.query.tag,
+        companyId: req.user.companyId,
+        status: 'active',
+        ...tagScopeFilter('opportunity')
+      });
+      if (!tag) throw badRequest('El tag no pertenece a oportunidades');
+      filter.tags = req.query.tag;
+    }
+    if (req.query.list) {
+      const list = await CrmList.findOne({
+        _id: req.query.list,
+        companyId: req.user.companyId,
+        entityType: 'opportunity',
+        status: 'active'
+      }).select('memberIds');
+      if (!list) throw badRequest('La lista no pertenece a oportunidades');
+      filter.lists = list._id;
+    }
+    if (req.query.source) filter.source = cleanString(req.query.source);
+    const hasMarketingFilter = [
+      'channel',
+      'campaign',
+      'consultedProduct',
+      'purchasedProduct'
+    ].some((field) => cleanString(req.query[field]));
+    if (hasMarketingFilter && !canReadAttribution(req.user)) {
+      throw Object.assign(new Error('No tienes permiso para filtrar por atribucion'), {
+        status: 403
+      });
+    }
+    if (req.query.channel) {
+      const channel = cleanString(req.query.channel);
+      filter.$and = [...(filter.$and || []), {
+        $or: [
+          { 'attribution.entryChannel': channel },
+          { 'attribution.channel': channel },
+          { 'metadata.channel': channel }
+        ]
+      }];
+    }
+    if (req.query.campaign) {
+      const campaign = new RegExp(
+        escapeRegExp(cleanString(req.query.campaign)),
+        'i'
+      );
+      filter.$and = [...(filter.$and || []), {
+        $or: [
+          { 'attribution.campaignName': campaign },
+          { 'attribution.utmCampaign': campaign },
+          { 'attribution.externalCampaignId': campaign },
+          { 'metadata.campaign': campaign }
+        ]
+      }];
+    }
+    if (req.query.consultedProduct) {
+      filter['attribution.consultedProduct'] = new RegExp(
+        escapeRegExp(cleanString(req.query.consultedProduct)),
+        'i'
+      );
+    }
+    if (req.query.purchasedProduct) {
+      filter['attribution.purchasedProduct'] = new RegExp(
+        escapeRegExp(cleanString(req.query.purchasedProduct)),
+        'i'
+      );
+    }
     if (req.query.search) {
-      const expression = new RegExp(escapeRegExp(cleanString(req.query.search)), 'i');
-      filter.title = expression;
+      const search = cleanString(req.query.search);
+      const expression = new RegExp(escapeRegExp(search), 'i');
+      const contactIds = await Contact.find({
+        ...(await assignedResourceScope(req.user)),
+        archivedAt: null,
+        $or: [
+          { name: expression },
+          { fullName: expression },
+          { phone: expression },
+          { email: expression }
+        ]
+      }).distinct('_id');
+      filter.$or = [
+        { title: expression },
+        { contactId: { $in: contactIds } },
+        ...(isValidObjectId(search) ? [{ _id: search }] : [])
+      ];
     }
     if (req.query.closeFrom || req.query.closeTo) {
       filter.expectedCloseDate = {};
@@ -149,12 +272,20 @@ router.get('/', async (req, res, next) => {
       if (req.query.closeTo) filter.expectedCloseDate.$lte = dateValue(req.query.closeTo, 'closeTo');
     }
     if (req.query.followUp === 'overdue') filter.nextFollowUpAt = { $lt: new Date() };
-    const items = await populate(Opportunity.find(filter).sort({ updatedAt: -1 }).limit(500));
+    const items = await populate(
+      Opportunity.find(filter).sort({ updatedAt: -1 }).limit(500),
+      req.user
+    );
     res.json(items);
   } catch (error) { next(error); }
 });
 
-router.post('/', roleMiddleware('ADMIN', 'SUPERVISOR'), async (req, res, next) => {
+router.post(
+  '/',
+  roleMiddleware('ADMIN', 'SUPERVISOR'),
+  requireAnyPermission('opportunities:manage', 'opportunities:update_team'),
+  requireModule('contacts'),
+  async (req, res, next) => {
   try {
     const item = await Opportunity.create({
       ...(await payload(req.user, req.body)),
@@ -163,9 +294,10 @@ router.post('/', roleMiddleware('ADMIN', 'SUPERVISOR'), async (req, res, next) =
       updatedBy: req.user._id
     });
     await recordActivity({ user: req.user, type: 'opportunity_created', summary: `Oportunidad creada: ${item.title}`, metadata: { opportunityId: item._id, contactId: item.contactId, pipelineId: item.pipelineId, stageId: item.stageId } });
-    res.status(201).json(await populate(Opportunity.findById(item._id)));
+    res.status(201).json(await populate(Opportunity.findById(item._id), req.user));
   } catch (error) { next(error); }
-});
+  }
+);
 
 router.get('/:id/timeline', async (req, res, next) => {
   try {
@@ -192,7 +324,10 @@ router.get('/:id/timeline', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const item = await populate(Opportunity.findOne({ _id: req.params.id, ...(await assignedResourceScope(req.user)) }));
+    const item = await populate(
+      Opportunity.findOne({ _id: req.params.id, ...(await assignedResourceScope(req.user)) }),
+      req.user
+    );
     if (!item) return res.status(404).json({ message: 'Oportunidad no encontrada' });
     res.json(item);
   } catch (error) { next(error); }
@@ -230,16 +365,21 @@ async function update(req, res, next) {
     if (previous.nextFollowUpAt !== (item.nextFollowUpAt?.toISOString() || null)) {
       await recordActivity({ user: req.user, type: 'follow_up_updated', summary: `Seguimiento de oportunidad actualizado: ${item.title}`, metadata: { opportunityId: item._id, contactId: item.contactId, from: previous.nextFollowUpAt, to: item.nextFollowUpAt } });
     }
-    res.json(await populate(Opportunity.findById(item._id)));
+    res.json(await populate(Opportunity.findById(item._id), req.user));
   } catch (error) { next(error); }
 }
 
-router.patch('/:id', update);
-router.patch('/:id/move', update);
-router.patch('/:id/won', (req, res, next) => { req.body = { ...req.body, status: 'won' }; return update(req, res, next); });
-router.patch('/:id/lost', (req, res, next) => { req.body = { ...req.body, status: 'lost' }; return update(req, res, next); });
+const requireOpportunityUpdate = requireAnyPermission(
+  'opportunities:manage',
+  'opportunities:update_team',
+  'opportunities:update_assigned'
+);
+router.patch('/:id', requireOpportunityUpdate, update);
+router.patch('/:id/move', requireOpportunityUpdate, update);
+router.patch('/:id/won', requireOpportunityUpdate, (req, res, next) => { req.body = { ...req.body, status: 'won' }; return update(req, res, next); });
+router.patch('/:id/lost', requireOpportunityUpdate, (req, res, next) => { req.body = { ...req.body, status: 'lost' }; return update(req, res, next); });
 
-router.delete('/:id', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.delete('/:id', roleMiddleware('ADMIN'), requireAnyPermission('opportunities:manage'), async (req, res, next) => {
   try {
     const item = await Opportunity.findOneAndUpdate(
       { _id: req.params.id, companyId: req.user.companyId },

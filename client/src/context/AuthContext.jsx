@@ -13,6 +13,10 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem('tenantdesk_tenant');
     return stored ? JSON.parse(stored) : { distributor: null, company: null };
   });
+  const [access, setAccess] = useState(() => {
+    const stored = localStorage.getItem('tenantdesk_access');
+    return stored ? JSON.parse(stored) : { permissions: [], modules: [] };
+  });
   const [impersonator, setImpersonator] = useState(() => {
     const stored = localStorage.getItem('tenantdesk_original_session');
     if (!stored) return null;
@@ -49,8 +53,11 @@ export function AuthProvider({ children }) {
         if (!ignore) {
           setUser(data.user);
           setTenant(data.tenant || { distributor: null, company: null });
+          setAccess(data.access || { permissions: [], modules: [] });
+          setImpersonator(data.impersonation || null);
           localStorage.setItem('tenantdesk_user', JSON.stringify(data.user));
           localStorage.setItem('tenantdesk_tenant', JSON.stringify(data.tenant || {}));
+          localStorage.setItem('tenantdesk_access', JSON.stringify(data.access || {}));
         }
       } catch (error) {
         if (!ignore) {
@@ -58,9 +65,11 @@ export function AuthProvider({ children }) {
           localStorage.removeItem('tenantdesk_user');
           localStorage.removeItem('tenantdesk_original_session');
           localStorage.removeItem('tenantdesk_tenant');
+          localStorage.removeItem('tenantdesk_access');
           setToken(null);
           setUser(null);
           setTenant({ distributor: null, company: null });
+          setAccess({ permissions: [], modules: [] });
           setImpersonator(null);
         }
       } finally {
@@ -83,10 +92,12 @@ export function AuthProvider({ children }) {
     localStorage.setItem('tenantdesk_token', data.token);
     localStorage.setItem('tenantdesk_user', JSON.stringify(data.user));
     localStorage.setItem('tenantdesk_tenant', JSON.stringify(data.tenant || {}));
+    localStorage.setItem('tenantdesk_access', JSON.stringify(data.access || {}));
     localStorage.removeItem('tenantdesk_original_session');
     setToken(data.token);
     setUser(data.user);
     setTenant(data.tenant || { distributor: null, company: null });
+    setAccess(data.access || { permissions: [], modules: [] });
     setImpersonator(null);
     return data;
   }
@@ -99,15 +110,17 @@ export function AuthProvider({ children }) {
 
     localStorage.setItem(
       'tenantdesk_original_session',
-      JSON.stringify({ token, user, tenant })
+      JSON.stringify({ token, user, tenant, access })
     );
     localStorage.setItem('tenantdesk_token', data.token);
     localStorage.setItem('tenantdesk_user', JSON.stringify(data.user));
     localStorage.setItem('tenantdesk_tenant', JSON.stringify(data.tenant || {}));
+    localStorage.setItem('tenantdesk_access', JSON.stringify(data.access || {}));
     setImpersonator(user);
     setToken(data.token);
     setUser(data.user);
     setTenant(data.tenant || { distributor: null, company: null });
+    setAccess(data.access || { permissions: [], modules: [] });
     return data;
   }
 
@@ -128,10 +141,15 @@ export function AuthProvider({ children }) {
       'tenantdesk_tenant',
       JSON.stringify(originalSession.tenant || {})
     );
+    localStorage.setItem(
+      'tenantdesk_access',
+      JSON.stringify(originalSession.access || {})
+    );
     localStorage.removeItem('tenantdesk_original_session');
     setToken(originalSession.token);
     setUser(originalSession.user);
     setTenant(originalSession.tenant || { distributor: null, company: null });
+    setAccess(originalSession.access || { permissions: [], modules: [] });
     setImpersonator(null);
     return originalSession.user;
   }
@@ -141,9 +159,11 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('tenantdesk_user');
     localStorage.removeItem('tenantdesk_original_session');
     localStorage.removeItem('tenantdesk_tenant');
+    localStorage.removeItem('tenantdesk_access');
     setToken(null);
     setUser(null);
     setTenant({ distributor: null, company: null });
+    setAccess({ permissions: [], modules: [] });
     setImpersonator(null);
   }
 
@@ -152,6 +172,7 @@ export function AuthProvider({ children }) {
       token,
       user,
       tenant,
+      access,
       impersonator,
       loading,
       isAuthenticated: Boolean(token && user),
@@ -163,13 +184,15 @@ export function AuthProvider({ children }) {
         const data = await apiRequest('/auth/me');
         setUser(data.user);
         setTenant(data.tenant || { distributor: null, company: null });
+        setAccess(data.access || { permissions: [], modules: [] });
         localStorage.setItem('tenantdesk_user', JSON.stringify(data.user));
         localStorage.setItem('tenantdesk_tenant', JSON.stringify(data.tenant || {}));
+        localStorage.setItem('tenantdesk_access', JSON.stringify(data.access || {}));
         return data;
       },
       logout
     }),
-    [token, user, tenant, impersonator, loading]
+    [token, user, tenant, access, impersonator, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

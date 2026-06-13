@@ -1,5 +1,14 @@
 import { Router } from 'express';
+import {
+  PERMISSION_TEMPLATES,
+  filterPermissionsByModules,
+  getPermissionTemplate,
+  permissionsAllowedForRole
+} from '../core/permissions/permissionTemplates.js';
+import { ROLE_PERMISSIONS } from '../core/permissions/permissions.js';
+import { getCompanyAuthorizedModules } from '../core/modules/moduleAccess.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
 import { User } from '../models/User.js';
@@ -17,6 +26,7 @@ import {
 
 const router = Router();
 const USER_STATUSES = ['active', 'inactive', 'pending'];
+const INTERNAL_ROLES = ['SUPERVISOR', 'CALLCENTER'];
 
 function userScope(user) {
   if (user.role === 'DISTRIBUTOR') return { distributorId: user.distributorId };
@@ -62,22 +72,159 @@ async function validateSupervisor(supervisorId, companyId) {
 
 router.use(authMiddleware);
 
-router.get('/', async (req, res, next) => {
-  try {
-    if (req.user.role === 'CALLCENTER') {
-      return res.status(403).json({ message: 'CALLCENTER no puede listar usuarios' });
-    }
+function permissionsForRoleAndModules(role, permissions, modules) {
+  return filterPermissionsByModules(
+    permissionsAllowedForRole(role, permissions),
+    modules
+  );
+}
 
-    const users = await User.find(userScope(req.user))
-      .populate('distributorId', 'name')
-      .populate('companyId', 'name')
-      .populate('supervisorId', 'name email')
-      .sort({ createdAt: -1 });
-    res.json(users);
-  } catch (error) {
-    next(error);
+function permissionTemplateResponse(template, modules) {
+  return {
+    key: template.key,
+    name: template.name,
+    description: template.description,
+    targetRoles: template.targetRoles,
+    permissionsByRole: Object.fromEntries(
+      template.targetRoles.map((role) => [
+        role,
+        permissionsForRoleAndModules(role, template.permissions, modules)
+      ])
+    )
+  };
+}
+
+async function buildPermissionUpdate(target, body, modules) {
+  const templateKey = cleanString(body.templateKey);
+  const template = templateKey ? getPermissionTemplate(templateKey) : null;
+  if (templateKey && (!template || !template.targetRoles.includes(target.role))) {
+    throw Object.assign(new Error('La plantilla no aplica al rol seleccionado'), { status: 400 });
   }
-});
+  if ('permissions' in body && !Array.isArray(body.permissions)) {
+    throw Object.assign(new Error('permissions debe ser una lista'), { status: 400 });
+  }
+
+  const customPermissions = 'permissions' in body;
+  const requestedPermissions = customPermissions
+    ? body.permissions.map(cleanString).filter(Boolean)
+    : template
+      ? permissionsAllowedForRole(target.role, template.permissions)
+      : null;
+  if (!requestedPermissions) {
+    throw Object.assign(new Error('Debes enviar permissions o templateKey'), { status: 400 });
+  }
+
+  const rolePermissions = permissionsAllowedForRole(target.role, requestedPermissions);
+  if (customPermissions && new Set(requestedPermissions).size !== rolePermissions.length) {
+    throw Object.assign(
+      new Error(`La seleccion contiene permisos no permitidos para ${target.role}`),
+      { status: 403 }
+    );
+  }
+
+  const permissions = filterPermissionsByModules(rolePermissions, modules);
+  return {
+    permissions,
+    permissionTemplate: templateKey,
+    removedPermissions: rolePermissions.filter(
+      (permission) => !permissions.includes(permission)
+    )
+  };
+}
+
+router.get(
+  '/permissions/templates',
+  roleMiddleware('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const modules = await getCompanyAuthorizedModules(req.user.companyId);
+      res.json({
+        modules,
+        templates: PERMISSION_TEMPLATES.map((template) =>
+          permissionTemplateResponse(template, modules)
+        ),
+        availablePermissions: Object.fromEntries(
+          ['ADMIN', ...INTERNAL_ROLES].map((role) => [
+            role,
+            permissionsForRoleAndModules(role, ROLE_PERMISSIONS[role] || [], modules)
+          ])
+        )
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.put(
+  '/permissions/roles/:role',
+  roleMiddleware('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const role = cleanString(req.params.role).toUpperCase();
+      if (!INTERNAL_ROLES.includes(role)) {
+        return res.status(400).json({ message: 'Solo se permiten roles internos' });
+      }
+      const users = await User.find({
+        companyId: req.user.companyId,
+        distributorId: req.user.distributorId,
+        role
+      });
+      const modules = await getCompanyAuthorizedModules(req.user.companyId);
+      const previewTarget = { role };
+      const update = await buildPermissionUpdate(previewTarget, req.body, modules);
+
+      for (const user of users) {
+        user.permissions = update.permissions;
+        user.permissionTemplate = update.permissionTemplate;
+        await user.save();
+      }
+
+      await recordActivity({
+        user: req.user,
+        type: update.permissionTemplate
+          ? 'permission_template_applied'
+          : 'permissions_updated',
+        summary: `Permisos actualizados para el rol ${role}`,
+        metadata: {
+          role,
+          usersUpdated: users.length,
+          templateKey: update.permissionTemplate,
+          permissions: update.permissions,
+          removedPermissions: update.removedPermissions
+        }
+      });
+      res.json({
+        message: `Permisos aplicados a ${users.length} usuario(s) ${role}`,
+        usersUpdated: users.length,
+        ...update
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get(
+  '/',
+  requireAnyPermission('companies:manage', 'users:manage', 'users:read_team'),
+  async (req, res, next) => {
+    try {
+      if (req.user.role === 'CALLCENTER') {
+        return res.status(403).json({ message: 'CALLCENTER no puede listar usuarios' });
+      }
+
+      const users = await User.find(userScope(req.user))
+        .populate('distributorId', 'name')
+        .populate('companyId', 'name')
+        .populate('supervisorId', 'name email')
+        .sort({ createdAt: -1 });
+      res.json(users);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.post('/', roleMiddleware('DISTRIBUTOR', 'ADMIN'), async (req, res, next) => {
   try {
@@ -190,6 +337,11 @@ async function updateUser(req, res, next) {
         message: 'El password solo puede cambiarse en PATCH /api/users/:id/password'
       });
     }
+    if ('role' in req.body || 'permissions' in req.body || 'permissionTemplate' in req.body) {
+      return res.status(400).json({
+        message: 'Usa la ruta de permisos; el rol no puede cambiarse desde esta operacion'
+      });
+    }
 
     const target = await User.findOne({
       _id: req.params.id,
@@ -260,6 +412,55 @@ router.patch(
       user.password = password;
       await user.save();
       res.json({ message: 'Password actualizado correctamente', user });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.put(
+  '/:id/permissions',
+  roleMiddleware('ADMIN'),
+  async (req, res, next) => {
+    try {
+      if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ message: 'userId invalido' });
+      }
+      const target = await User.findOne({
+        _id: req.params.id,
+        distributorId: req.user.distributorId,
+        companyId: req.user.companyId,
+        role: { $in: INTERNAL_ROLES }
+      });
+      if (!target) return res.status(404).json({ message: 'Usuario interno no encontrado' });
+      if (String(target._id) === String(req.user._id)) {
+        return res.status(403).json({ message: 'No puedes editar tus propios permisos' });
+      }
+
+      const modules = await getCompanyAuthorizedModules(req.user.companyId);
+      const update = await buildPermissionUpdate(target, req.body, modules);
+      target.permissions = update.permissions;
+      target.permissionTemplate = update.permissionTemplate;
+      await target.save();
+      await recordActivity({
+        user: req.user,
+        type: update.permissionTemplate
+          ? 'permission_template_applied'
+          : 'permissions_updated',
+        summary: `Permisos actualizados para ${target.email}`,
+        metadata: {
+          targetUserId: target._id,
+          targetRole: target.role,
+          templateKey: update.permissionTemplate,
+          permissions: update.permissions,
+          removedPermissions: update.removedPermissions
+        }
+      });
+      res.json({
+        message: 'Permisos actualizados correctamente',
+        user: target,
+        removedPermissions: update.removedPermissions
+      });
     } catch (error) {
       next(error);
     }

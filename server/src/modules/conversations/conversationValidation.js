@@ -26,6 +26,7 @@ function mediaConfigured(media = {}) {
 export function contactDndStatus(contact) {
   const metadata = contact?.metadata || {};
   const candidates = [
+    contact?.communicationPreferences?.globalDnd,
     metadata.doNotDisturb,
     metadata.dnd,
     metadata.optOut,
@@ -53,9 +54,6 @@ export function assertOutboundAllowed({
   if (!OUTBOUND_TYPES.has(type)) {
     throw badRequest('type de mensaje invalido');
   }
-  if (conversation?.channel !== 'internal' && contactDndStatus(contact).active) {
-    throw badRequest('El contacto tiene No molestar activo', 409);
-  }
   if (type === 'text' && !String(text).trim() && !template) {
     throw badRequest('El mensaje no puede estar vacio');
   }
@@ -66,4 +64,3 @@ export function assertOutboundAllowed({
     throw badRequest('La plantilla del proveedor es requerida');
   }
 }
-

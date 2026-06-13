@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { CRM_PRIORITIES } from './Contact.js';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
 
 export const OPPORTUNITY_STATUSES = ['open', 'won', 'lost', 'archived'];
 
@@ -20,12 +21,15 @@ const opportunitySchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     source: { type: String, trim: true, default: '' },
     priority: { type: String, enum: CRM_PRIORITIES, default: 'medium' },
+    tags: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Tag' }],
+    lists: [{ type: mongoose.Schema.Types.ObjectId, ref: 'CrmList' }],
     customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
     lostReason: { type: String, trim: true, default: '' },
     wonAt: { type: Date, default: null },
     lostAt: { type: Date, default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -34,5 +38,10 @@ const opportunitySchema = new mongoose.Schema(
 opportunitySchema.index({ companyId: 1, pipelineId: 1, stageId: 1, status: 1 });
 opportunitySchema.index({ companyId: 1, assignedTo: 1 });
 opportunitySchema.index({ companyId: 1, contactId: 1 });
+opportunitySchema.index({ companyId: 1, tags: 1 });
+opportunitySchema.index({ companyId: 1, lists: 1 });
+opportunitySchema.index({ companyId: 1, 'attribution.campaignId': 1 });
+opportunitySchema.index({ companyId: 1, 'attribution.consultedProduct': 1 });
+opportunitySchema.index({ companyId: 1, 'attribution.purchasedProduct': 1 });
 
 export const Opportunity = mongoose.model('Opportunity', opportunitySchema);

@@ -7,7 +7,8 @@ import { Distributor } from '../models/Distributor.js';
 import { User } from '../models/User.js';
 import { recordActivity } from '../utils/activity.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
-import { buildSessionTenant } from '../utils/sessionContext.js';
+import { buildSessionAccess, buildSessionTenant } from '../utils/sessionContext.js';
+import { isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
 const loginLimiter = rateLimit({
@@ -20,7 +21,7 @@ const loginLimiter = rateLimit({
   }
 });
 
-function signToken(user, extraPayload = {}) {
+function signToken(user, extraPayload = {}, expiresIn = process.env.JWT_EXPIRES_IN || '7d') {
   return jwt.sign(
     {
       id: user._id,
@@ -28,7 +29,7 @@ function signToken(user, extraPayload = {}) {
       ...extraPayload
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    { expiresIn }
   );
 }
 
@@ -73,6 +74,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       token,
       user: user.toJSON(),
       tenant: await buildSessionTenant(user),
+      access: await buildSessionAccess(user),
       redirectPath: getDashboardPath(user.role)
     });
   } catch (error) {
@@ -84,6 +86,7 @@ router.get('/me', authMiddleware, async (req, res) => {
   res.json({
     user: req.user,
     tenant: await buildSessionTenant(req.user),
+    access: await buildSessionAccess(req.user),
     redirectPath: getDashboardPath(req.user.role),
     impersonation: req.impersonation
   });
@@ -101,8 +104,8 @@ router.post('/impersonate', authMiddleware, async (req, res, next) => {
 
     if (req.user.role === 'SUPERADMIN') {
       distributorId = req.body.distributorId;
-      if (!distributorId) {
-        return res.status(400).json({ message: 'distributorId es requerido' });
+      if (!isValidObjectId(distributorId)) {
+        return res.status(400).json({ message: 'distributorId valido es requerido' });
       }
 
       const distributor = await Distributor.findOne({
@@ -120,8 +123,8 @@ router.post('/impersonate', authMiddleware, async (req, res, next) => {
       }).sort({ createdAt: 1 });
     } else if (req.user.role === 'DISTRIBUTOR') {
       companyId = req.body.companyId;
-      if (!companyId) {
-        return res.status(400).json({ message: 'companyId es requerido' });
+      if (!isValidObjectId(companyId)) {
+        return res.status(400).json({ message: 'companyId valido es requerido' });
       }
 
       const company = await Company.findOne({
@@ -134,13 +137,29 @@ router.post('/impersonate', authMiddleware, async (req, res, next) => {
       }
 
       distributorId = req.user.distributorId;
-      targetUser = await User.findOne({
-        _id: company.adminId,
-        companyId: company._id,
-        distributorId,
-        role: 'ADMIN',
-        status: 'active'
-      });
+      targetUser = company.adminId
+        ? await User.findOne({
+            _id: company.adminId,
+            companyId: company._id,
+            distributorId,
+            role: 'ADMIN',
+            status: 'active'
+          })
+        : null;
+      if (!targetUser) {
+        targetUser = await User.findOne({
+          companyId: company._id,
+          distributorId,
+          role: 'ADMIN',
+          status: 'active'
+        }).sort({ createdAt: 1 });
+      }
+      if (targetUser && String(company.adminId || '') !== String(targetUser._id)) {
+        await Company.updateOne(
+          { _id: company._id, distributorId },
+          { $set: { adminId: targetUser._id } }
+        );
+      }
     } else {
       return res.status(403).json({
         message: 'Solo SUPERADMIN o DISTRIBUTOR pueden iniciar impersonacion'
@@ -169,15 +188,18 @@ router.post('/impersonate', authMiddleware, async (req, res, next) => {
       id: req.user._id.toString(),
       name: req.user.name,
       email: req.user.email,
-      role: req.user.role
+      role: req.user.role,
+      distributorId: req.user.distributorId || null
     };
-    const token = signToken(targetUser, { impersonatedBy });
+    const token = signToken(targetUser, { impersonatedBy }, '30m');
     res.json({
       token,
       user: targetUser,
       tenant: await buildSessionTenant(targetUser),
+      access: await buildSessionAccess(targetUser),
       redirectPath: getDashboardPath(targetUser.role),
-      impersonatedBy
+      impersonatedBy,
+      expiresIn: '30m'
     });
   } catch (error) {
     next(error);

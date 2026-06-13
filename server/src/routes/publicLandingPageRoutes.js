@@ -97,7 +97,8 @@ router.get('/:slug', async (req, res, next) => {
           companyId: resolved.page.companyId,
           distributorId: resolved.page.distributorId,
           landingPageId: resolved.page._id,
-          formId: resolved.page.settings.associatedFormId?._id || null
+          formId: resolved.page.settings.associatedFormId?._id || null,
+          attribution: resolved.page.attribution
         },
         tracking: safeTrackingContext(req),
         path: req.originalUrl
@@ -120,7 +121,8 @@ router.post('/:slug/events', async (req, res, next) => {
       target: {
         companyId: resolved.page.companyId,
         distributorId: resolved.page.distributorId,
-        landingPageId: resolved.page._id
+        landingPageId: resolved.page._id,
+        attribution: resolved.page.attribution
       },
       type: 'button_click',
       tracking: safeTrackingContext(req),

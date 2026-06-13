@@ -6,6 +6,7 @@ import {
 } from '../modules/marketing/marketingSecurity.js';
 import { sanitize } from '../utils/sanitize.js';
 import { normalizeOptionalObjectId } from '../utils/validation.js';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
 
 export const LANDING_PAGE_STATUSES = ['draft', 'published', 'paused', 'archived'];
 export const LANDING_SECTION_TYPES = [
@@ -90,6 +91,7 @@ const landingPageSchema = new mongoose.Schema(
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     publishedAt: { type: Date, default: null },
     archivedAt: { type: Date, default: null },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -117,5 +119,6 @@ landingPageSchema.pre('validate', function sanitizeLanding(next) {
 });
 
 landingPageSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+landingPageSchema.index({ companyId: 1, 'attribution.campaignId': 1 });
 
 export const LandingPage = mongoose.model('LandingPage', landingPageSchema);

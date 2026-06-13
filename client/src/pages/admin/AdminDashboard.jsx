@@ -5,6 +5,7 @@ import {
   createContact,
   createUser,
   deleteContact,
+  applyRolePermissions,
   getActivityLogs,
   getCompanyInvoices,
   getCompanyOnboarding,
@@ -16,20 +17,50 @@ import {
   getUsers,
   getCrmDashboard,
   getInboxMetrics,
+  getPermissionTemplates,
   updateCompanyOnboarding,
-  updateContact
+  updateContact,
+  updateUserPermissions
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { LoadingState, ModuleUnavailableState } from '../../components/AsyncState.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { ContactManager } from '../../components/ContactManager.jsx';
+import { FormField, FormSection } from '../../components/FormField.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { formatMoney } from '../../utils/billing.js';
 import { contactStatusLabel, formatDate } from '../../utils/contacts.js';
 
+const inputClass =
+  'w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100';
+
+const permissionEffects = {
+  manage: 'Permite crear, editar y administrar este recurso.',
+  read: 'Permite consultar este recurso.',
+  read_team: 'Permite consultar informacion del equipo.',
+  read_assigned: 'Permite consultar solo registros asignados.',
+  read_self: 'Permite consultar solo actividad propia.',
+  create_team: 'Permite crear registros para el equipo.',
+  create_assigned: 'Permite crear registros dentro de su alcance asignado.',
+  use: 'Permite utilizar recursos ya configurados.'
+};
+
+function permissionEffect(permission) {
+  const action = String(permission).split(':')[1] || '';
+  return permissionEffects[action] || 'Habilita esta accion dentro del alcance del rol.';
+}
+
 export function AdminDashboard() {
+  const { access } = useAuth();
+  const enabledModules = new Set(access.modules || []);
+  const canUseContacts = enabledModules.has('crm') && enabledModules.has('contacts');
+  const canUseInbox =
+    enabledModules.has('conversations') && enabledModules.has('inbox');
+  const canUseBilling = enabledModules.has('billing');
   const [users, setUsers] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -41,6 +72,15 @@ export function AdminDashboard() {
   const [onboarding, setOnboarding] = useState(null);
   const [crmSummary, setCrmSummary] = useState(null);
   const [inboxSummary, setInboxSummary] = useState(null);
+  const [permissionCatalog, setPermissionCatalog] = useState({
+    modules: [],
+    templates: [],
+    availablePermissions: {}
+  });
+  const [permissionUserId, setPermissionUserId] = useState('');
+  const [permissionTemplateKey, setPermissionTemplateKey] = useState('');
+  const [selectedPermissions, setSelectedPermissions] = useState([]);
+  const [moduleWarning, setModuleWarning] = useState('');
   const [commercialError, setCommercialError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -51,18 +91,36 @@ export function AdminDashboard() {
     if (showLoader) setLoading(true);
     setError('');
     setCommercialError('');
+    setModuleWarning('');
 
     try {
-      const [userData, contactData, activityData, companyData, subscriptionData, crmData, inboxData] =
+      const [
+        userData,
+        activityData,
+        companyData,
+        subscriptionData,
+        permissionData
+      ] =
         await Promise.all([
           getUsers(),
-          getContacts(),
           getActivityLogs(),
           getCompanies(),
           getSubscriptions(),
-          getCrmDashboard(),
-          getInboxMetrics()
+          getPermissionTemplates()
         ]);
+      const optionalErrors = [];
+      const [contactData, crmData] = canUseContacts
+        ? await Promise.all([getContacts(), getCrmDashboard()]).catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return [[], null];
+          })
+        : [[], null];
+      const inboxData = canUseInbox
+        ? await getInboxMetrics().catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return null;
+          })
+        : null;
       setUsers(userData);
       setContacts(contactData);
       setActivities(activityData);
@@ -70,6 +128,8 @@ export function AdminDashboard() {
       setSubscription(subscriptionData[0] || null);
       setCrmSummary(crmData);
       setInboxSummary(inboxData);
+      setPermissionCatalog(permissionData);
+      setModuleWarning([...new Set(optionalErrors)].join(' '));
 
       const [settingsData, onboardingData] = await Promise.all([
         getCompanySettings(),
@@ -78,13 +138,15 @@ export function AdminDashboard() {
       setCompanySettings(settingsData);
       setOnboarding(onboardingData);
 
-      const billingData = await Promise.all([
-        getCompanyInvoices(),
-        getCompanyPayments()
-      ]).catch((billingError) => {
-        setCommercialError(billingError.message);
-        return null;
-      });
+      const billingData = canUseBilling
+        ? await Promise.all([
+            getCompanyInvoices(),
+            getCompanyPayments()
+          ]).catch((billingError) => {
+            setCommercialError(billingError.message);
+            return null;
+          })
+        : null;
       if (billingData) {
         setCommercialError('');
         setCompanyInvoices(billingData[0]);
@@ -95,7 +157,7 @@ export function AdminDashboard() {
     } finally {
       if (showLoader) setLoading(false);
     }
-  }, []);
+  }, [canUseBilling, canUseContacts, canUseInbox]);
 
   useEffect(() => {
     loadDashboard();
@@ -109,6 +171,38 @@ export function AdminDashboard() {
     () => users.filter((user) => user.role === 'CALLCENTER'),
     [users]
   );
+  const permissionTargets = useMemo(
+    () => users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)),
+    [users]
+  );
+  const permissionTarget = useMemo(
+    () => permissionTargets.find((item) => item._id === permissionUserId) || null,
+    [permissionTargets, permissionUserId]
+  );
+  const applicableTemplates = useMemo(
+    () =>
+      permissionCatalog.templates.filter((template) =>
+        template.targetRoles.includes(permissionTarget?.role)
+      ),
+    [permissionCatalog.templates, permissionTarget]
+  );
+  const availablePermissions = permissionTarget
+    ? permissionCatalog.availablePermissions[permissionTarget.role] || []
+    : [];
+
+  useEffect(() => {
+    if (!permissionTarget) {
+      setPermissionTemplateKey('');
+      setSelectedPermissions([]);
+      return;
+    }
+    setPermissionTemplateKey(permissionTarget.permissionTemplate || '');
+    setSelectedPermissions(
+      Array.isArray(permissionTarget.permissions)
+        ? permissionTarget.permissions
+        : permissionCatalog.availablePermissions[permissionTarget.role] || []
+    );
+  }, [permissionTarget, permissionCatalog.availablePermissions]);
 
   async function runMutation(action, successMessage) {
     setBusy(true);
@@ -147,6 +241,57 @@ export function AdminDashboard() {
     if (created) form.reset();
   }
 
+  function loadPermissionTemplate(templateKey) {
+    setPermissionTemplateKey(templateKey);
+    const template = permissionCatalog.templates.find((item) => item.key === templateKey);
+    setSelectedPermissions(
+      template?.permissionsByRole?.[permissionTarget?.role] || []
+    );
+  }
+
+  function togglePermission(permission) {
+    setPermissionTemplateKey('');
+    setSelectedPermissions((current) =>
+      current.includes(permission)
+        ? current.filter((item) => item !== permission)
+        : [...current, permission]
+    );
+  }
+
+  async function handleApplyUserPermissions() {
+    if (!permissionTarget) return;
+    if (
+      !window.confirm(
+        `Reemplazar los permisos actuales de ${permissionTarget.name}?`
+      )
+    ) return;
+    await runMutation(
+      () =>
+        updateUserPermissions(permissionTarget._id, {
+          permissions: selectedPermissions,
+          templateKey: permissionTemplateKey
+        }),
+      `Permisos de ${permissionTarget.name} actualizados.`
+    );
+  }
+
+  async function handleApplyRolePermissions() {
+    if (!permissionTarget) return;
+    if (
+      !window.confirm(
+        `Aplicar esta configuracion a todos los usuarios ${permissionTarget.role} de la empresa?`
+      )
+    ) return;
+    await runMutation(
+      () =>
+        applyRolePermissions(permissionTarget.role, {
+          permissions: selectedPermissions,
+          templateKey: permissionTemplateKey
+        }),
+      `Permisos aplicados al rol ${permissionTarget.role}.`
+    );
+  }
+
   const handleCreateContact = (payload) =>
     runMutation(() => createContact(payload), `Contacto "${payload.name}" creado.`);
 
@@ -175,9 +320,7 @@ export function AdminDashboard() {
         title="Dashboard de empresa"
         description="Cargando usuarios, contactos y actividad real..."
       >
-        <Card className="p-8 text-center text-sm text-slate-500">
-          Cargando datos desde la API...
-        </Card>
+        <LoadingState label="Cargando usuarios, permisos y actividad..." />
       </PageShell>
     );
   }
@@ -198,13 +341,22 @@ export function AdminDashboard() {
           {error}
         </div>
       ) : null}
+      {moduleWarning ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          Algunos modulos no pudieron cargarse: {moduleWarning}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Usuarios" value={users.length} helper="Equipo del tenant" icon={UsersRound} tone="cyan" />
         <MetricCard label="Supervisores" value={supervisors.length} helper="Roles de supervision" icon={UserCog} tone="emerald" />
         <MetricCard label="Agentes" value={agents.length} helper="Call center activos e inactivos" icon={Headphones} tone="amber" />
-        <MetricCard label="Contactos" value={contacts.length} helper={`${contacts.filter((item) => item.status === 'seguimiento').length} en seguimiento`} icon={ContactRound} tone="rose" />
-        <MetricCard label="Cerrados" value={contacts.filter((item) => item.status === 'cerrado').length} helper="Contactos finalizados" icon={Activity} tone="slate" />
+        {canUseContacts ? (
+          <>
+            <MetricCard label="Contactos" value={contacts.length} helper={`${contacts.filter((item) => item.status === 'seguimiento').length} en seguimiento`} icon={ContactRound} tone="rose" />
+            <MetricCard label="Cerrados" value={contacts.filter((item) => item.status === 'cerrado').length} helper="Contactos finalizados" icon={Activity} tone="slate" />
+          </>
+        ) : null}
       </div>
       {crmSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Oportunidades abiertas" value={crmSummary.opportunitiesOpen} helper={`$${crmSummary.openValue}`} icon={Target} tone="cyan" />
@@ -256,19 +408,29 @@ export function AdminDashboard() {
             description="El backend fuerza empresa, distribuidor y rol permitido."
           />
           <form className="space-y-4 p-5" onSubmit={handleCreateUser}>
-            <input required name="name" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Nombre completo" />
-            <input required type="email" name="email" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Email corporativo" />
-            <input required minLength="8" type="password" name="password" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Password (minimo 8 caracteres)" />
-            <select name="role" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm">
-              <option value="SUPERVISOR">Supervisor</option>
-              <option value="CALLCENTER">Call center</option>
-            </select>
-            <select name="supervisorId" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" defaultValue="">
-              <option value="">Sin supervisor</option>
-              {supervisors.map((supervisor) => (
-                <option key={supervisor._id} value={supervisor._id}>{supervisor.name}</option>
-              ))}
-            </select>
+            <FormField label="Nombre completo" htmlFor="team-user-name" required>
+              <input id="team-user-name" required name="name" className={inputClass} placeholder="Ej. Ana Perez" />
+            </FormField>
+            <FormField label="Email corporativo" htmlFor="team-user-email" required>
+              <input id="team-user-email" required type="email" name="email" className={inputClass} placeholder="ana@empresa.com" />
+            </FormField>
+            <FormField label="Contrasena temporal" htmlFor="team-user-password" hint="Debe tener al menos 8 caracteres." required>
+              <input id="team-user-password" required minLength="8" type="password" name="password" className={inputClass} placeholder="Minimo 8 caracteres" />
+            </FormField>
+            <FormField label="Rol" htmlFor="team-user-role" hint="Los permisos finales se ajustan en la seccion inferior.">
+              <select id="team-user-role" name="role" className={inputClass}>
+                <option value="SUPERVISOR">Supervisor</option>
+                <option value="CALLCENTER">Call center</option>
+              </select>
+            </FormField>
+            <FormField label="Supervisor asignado" htmlFor="team-user-supervisor" hint="Aplica principalmente a agentes de call center.">
+              <select id="team-user-supervisor" name="supervisorId" className={inputClass} defaultValue="">
+                <option value="">Sin supervisor</option>
+                {supervisors.map((supervisor) => (
+                  <option key={supervisor._id} value={supervisor._id}>{supervisor.name}</option>
+                ))}
+              </select>
+            </FormField>
             <Button className="w-full" type="submit" disabled={busy}>
               <Plus className="h-4 w-4" />
               {busy ? 'Creando...' : 'Crear usuario'}
@@ -277,21 +439,124 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      <ContactManager
-        contacts={contacts}
-        agents={agents.filter((agent) => agent.status === 'active')}
-        busy={busy}
-        canCreate
-        canDelete
-        canEditDetails
-        canAssign
-        onCreate={handleCreateContact}
-        onUpdate={handleUpdateContact}
-        onDelete={handleDeleteContact}
-        onAddNote={handleAddNote}
-        title="Contactos de la empresa"
-        description="Crear, editar, asignar, filtrar y eliminar contactos reales."
-      />
+      <Card id="permisos">
+        <CardHeader
+          title="Permisos y plantillas"
+          description="Los permisos disponibles ya estan limitados por el rol y los modulos contratados."
+        />
+        <div className="space-y-5 p-5">
+          {!permissionTargets.length ? (
+            <p className="text-sm text-slate-500">
+              Crea un supervisor o agente para configurar sus accesos.
+            </p>
+          ) : (
+            <>
+              <FormSection step="1" title="Seleccionar alcance" description="Elige el usuario y, si aplica, una plantilla como punto de partida.">
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <FormField label="Usuario" htmlFor="permission-user">
+                  <select
+                    id="permission-user"
+                    value={permissionUserId}
+                    onChange={(event) => setPermissionUserId(event.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Selecciona un usuario</option>
+                    {permissionTargets.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name} ({item.role})
+                      </option>
+                    ))}
+                  </select>
+                  </FormField>
+                  <FormField label="Plantilla base" htmlFor="permission-template" hint="Cargar una plantilla reemplaza la seleccion visible antes de guardar.">
+                  <select
+                    id="permission-template"
+                    value={permissionTemplateKey}
+                    disabled={!permissionTarget}
+                    onChange={(event) => loadPermissionTemplate(event.target.value)}
+                    className={`${inputClass} disabled:bg-slate-100`}
+                  >
+                    <option value="">Configuracion personalizada</option>
+                    {applicableTemplates.map((template) => (
+                      <option key={template.key} value={template.key}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  </FormField>
+                </div>
+              </FormSection>
+              {permissionTarget ? (
+                <>
+                  <FormSection step="2" title="Configurar permisos" description={`Modulos efectivos: ${permissionCatalog.modules.join(', ') || 'solo core'}. Los permisos globales o fuera del plan no se ofrecen.`}>
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {availablePermissions.map((permission) => (
+                        <label
+                          key={permission}
+                          className="flex items-start gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                        >
+                          <input
+                            className="mt-1"
+                            type="checkbox"
+                            checked={selectedPermissions.includes(permission)}
+                            onChange={() => togglePermission(permission)}
+                          />
+                          <span>
+                            <span className="block font-medium">
+                              {permission.replace(':', ' / ').replaceAll('_', ' ')}
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              {permissionEffect(permission)}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {!availablePermissions.length ? (
+                      <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+                        No hay permisos operativos disponibles para este rol con el plan actual.
+                      </p>
+                    ) : null}
+                  </FormSection>
+                  <FormSection step="3" title="Aplicar cambios" description="Aplicar al rol reemplaza la configuracion de todos los usuarios de ese rol en la empresa.">
+                    <div className="flex flex-wrap gap-3">
+                      <Button onClick={handleApplyUserPermissions} disabled={busy}>
+                        Aplicar al usuario
+                      </Button>
+                      <Button variant="secondary" onClick={handleApplyRolePermissions} disabled={busy}>
+                        Aplicar a todos los {permissionTarget.role}
+                      </Button>
+                    </div>
+                  </FormSection>
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+      </Card>
+
+      {canUseContacts ? (
+        <ContactManager
+          contacts={contacts}
+          agents={agents.filter((agent) => agent.status === 'active')}
+          busy={busy}
+          canCreate
+          canDelete
+          canEditDetails
+          canAssign
+          onCreate={handleCreateContact}
+          onUpdate={handleUpdateContact}
+          onDelete={handleDeleteContact}
+          onAddNote={handleAddNote}
+          title="Contactos de la empresa"
+          description="Crear, editar, asignar, filtrar y eliminar contactos reales."
+        />
+      ) : (
+        <ModuleUnavailableState
+          title="CRM no incluido"
+          description="El plan o los modulos efectivos de la empresa no habilitan contactos y CRM."
+        />
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_0.65fr]">
         <Card id="actividad">
@@ -355,7 +620,7 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      <div id="facturacion" className="grid gap-6 xl:grid-cols-2">
+      {canUseBilling ? <div id="facturacion" className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader title="Facturas de la empresa" description="Solo lectura para la empresa autenticada." />
           {commercialError ? (
@@ -404,7 +669,7 @@ export function AdminDashboard() {
             ]}
           />
         </Card>
-      </div>
+      </div> : null}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card id="configuracion">

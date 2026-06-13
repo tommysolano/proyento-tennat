@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { safePublicUrl, sanitizePlainText } from '../modules/marketing/marketingSecurity.js';
 import { sanitize } from '../utils/sanitize.js';
 import { normalizeOptionalObjectId } from '../utils/validation.js';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
 
 export const FUNNEL_STATUSES = ['draft', 'published', 'paused', 'archived'];
 
@@ -35,6 +36,7 @@ const funnelSchema = new mongoose.Schema(
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     publishedAt: { type: Date, default: null },
     archivedAt: { type: Date, default: null },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -52,5 +54,6 @@ funnelSchema.pre('validate', function sanitizeFunnel(next) {
 });
 
 funnelSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+funnelSchema.index({ companyId: 1, 'attribution.campaignId': 1 });
 
 export const Funnel = mongoose.model('Funnel', funnelSchema);

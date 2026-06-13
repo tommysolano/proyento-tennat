@@ -2,12 +2,17 @@ import { ArrowLeft, CalendarDays, MessageSquare, Save, StickyNote, ThumbsDown, T
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  createCommercialRelation,
   createNote,
+  deleteCommercialRelation,
   getAppointments,
+  getCommercialRelations,
+  getContacts,
   getCustomFields,
   getOpportunity,
   getOpportunityTimeline,
   getPipelines,
+  getTags,
   getUsers,
   markOpportunityLost,
   markOpportunityWon,
@@ -16,7 +21,10 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { CommercialRelationsCard } from '../../components/CommercialRelationsCard.jsx';
+import { MarketingAttributionCard } from '../../components/MarketingAttributionCard.jsx';
 import {
+  CrmLoadError,
   CrmLoading,
   CrmNotice,
   CustomFieldInput,
@@ -39,34 +47,87 @@ function eventText(entry) {
 
 export function OpportunityDetailPage() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, access } = useAuth();
   const [item, setItem] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [pipelines, setPipelines] = useState([]);
   const [users, setUsers] = useState([]);
   const [fields, setFields] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [relations, setRelations] = useState([]);
+  const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const canEditDetails = user.role !== 'CALLCENTER';
+  const [loadError, setLoadError] = useState('');
+  const permissions = new Set(access.permissions || []);
+  const canUpdateOpportunity = [
+    'opportunities:manage',
+    'opportunities:update_team',
+    'opportunities:update_assigned'
+  ].some((permission) => permissions.has(permission));
+  const canEditDetails = [
+    'opportunities:manage',
+    'opportunities:update_team'
+  ].some((permission) => permissions.has(permission));
+  const canAddNote = [
+    'notes:manage',
+    'notes:create_team',
+    'notes:create_assigned'
+  ].some((permission) => permissions.has(permission));
+  const modules = new Set(access.modules || []);
+  const canReadContacts = modules.has('contacts') && [
+    'contacts:manage',
+    'contacts:read_team',
+    'contacts:read_assigned'
+  ].some((permission) => permissions.has(permission));
+  const canManageRelations = [
+    'contacts:manage',
+    'contacts:update_team',
+    'contacts:update_assigned'
+  ].some((permission) => permissions.has(permission)) && [
+    'opportunities:manage',
+    'opportunities:update_team',
+    'opportunities:update_assigned'
+  ].some((permission) => permissions.has(permission)) && canReadContacts;
+  const canReadAttribution = [
+    'attribution:read',
+    'attribution:read_team',
+    'attribution:read_assigned'
+  ].some((permission) => permissions.has(permission));
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      const [opportunity, timelineData, pipelineData, userData, fieldData, appointmentData] = await Promise.all([
+      const [
+        opportunity,
+        timelineData,
+        pipelineData,
+        userData,
+        fieldData,
+        appointmentData,
+        contactData,
+        relationData,
+        tagData
+      ] = await Promise.all([
         getOpportunity(id), getOpportunityTimeline(id), getPipelines(),
         user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
         getCustomFields('opportunity'),
-        getAppointments({ opportunityId: id })
+        getAppointments({ opportunityId: id }),
+        canReadContacts ? getContacts({ limit: 500 }) : Promise.resolve([]),
+        canReadContacts ? getCommercialRelations({ opportunityId: id }) : Promise.resolve([]),
+        getTags('opportunity')
       ]);
       setItem(opportunity); setTimeline(timelineData); setPipelines(pipelineData);
       setUsers(userData); setFields(fieldData.filter((field) => field.status === 'active'));
       setAppointments(appointmentData);
-    } catch (requestError) { setError(requestError.message); }
+      setContacts(contactData); setRelations(relationData); setTags(tagData);
+    } catch (requestError) { setLoadError(requestError.message); }
     finally { setLoading(false); }
-  }, [id, user.role]);
+  }, [id, user.role, canReadContacts]);
   useEffect(() => { load(); }, [load]);
 
   async function mutate(action, message) {
@@ -77,7 +138,9 @@ export function OpportunityDetailPage() {
   }
 
   async function save(event) {
-    event.preventDefault(); const data = new FormData(event.currentTarget);
+    event.preventDefault();
+    if (!canUpdateOpportunity) return;
+    const data = new FormData(event.currentTarget);
     const payload = {
       status: data.get('status'),
       stageId: data.get('stageId'),
@@ -91,6 +154,7 @@ export function OpportunityDetailPage() {
       assignedTo: data.get('assignedTo') || null,
       priority: data.get('priority'),
       expectedCloseDate: data.get('expectedCloseDate') || null,
+      tags: data.getAll('tags'),
       customFields: customFieldsFromForm(data, fields)
     });
     await mutate(() => updateOpportunity(id, payload), 'Oportunidad actualizada.');
@@ -102,7 +166,38 @@ export function OpportunityDetailPage() {
     form.reset();
   }
 
+  async function createRelation(payload) {
+    setBusy(true); setError('');
+    try {
+      await createCommercialRelation({
+        contactId: payload.targetId,
+        opportunityId: id,
+        relationType: payload.relationType,
+        channel: payload.channel,
+        campaign: payload.campaign,
+        consultedProduct: payload.consultedProduct,
+        purchasedProduct: payload.purchasedProduct,
+        notes: payload.notes
+      });
+      setNotice('Relacion comercial creada.');
+      await load();
+      return true;
+    } catch (requestError) { setError(requestError.message); return false; }
+    finally { setBusy(false); }
+  }
+
+  async function removeRelation(relationId) {
+    setBusy(true); setError('');
+    try {
+      await deleteCommercialRelation(relationId);
+      setNotice('Relacion comercial eliminada.');
+      await load();
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }
+
   if (loading) return <PageShell eyebrow="CRM" title="Oportunidad"><CrmLoading /></PageShell>;
+  if (loadError) return <PageShell eyebrow="CRM" title="Oportunidad"><CrmLoadError message={loadError} onRetry={load} /></PageShell>;
   const pipeline = pipelines.find((current) => current._id === item?.pipelineId?._id);
   return (
     <PageShell eyebrow="CRM" title={item?.title || 'Oportunidad'} description={item ? `${item.contactId?.name} - ${money(item.value, item.currency)}` : ''}>
@@ -126,17 +221,29 @@ export function OpportunityDetailPage() {
             <label className="text-xs font-semibold">Probabilidad<input name="probability" type="number" min="0" max="100" defaultValue={item.probability} className={inputClass} /></label>
             <label className="text-xs font-semibold">Proximo seguimiento<input name="nextFollowUpAt" type="datetime-local" defaultValue={dateTimeLocal(item.nextFollowUpAt)} className={inputClass} /></label>
             <label className="text-xs font-semibold md:col-span-2">Motivo de perdida<input name="lostReason" defaultValue={item.lostReason || ''} className={inputClass} /></label>
+            {canEditDetails ? <fieldset className="md:col-span-2 rounded-md border border-slate-200 p-3"><legend className="px-1 text-xs font-semibold">Tags de oportunidad</legend><div className="flex flex-wrap gap-3">{tags.filter((tag) => tag.status === 'active').map((tag) => <label key={tag._id} className="flex items-center gap-1 text-sm"><input type="checkbox" name="tags" value={tag._id} defaultChecked={item.tags?.some((current) => current._id === tag._id)} />{tag.name}</label>)}</div></fieldset> : null}
             {canEditDetails ? fields.map((field) => <CustomFieldInput key={field._id} field={field} defaultValue={item.customFields?.[field.key]} />) : null}
-            <div className="md:col-span-2 flex flex-wrap gap-3">
+            {canUpdateOpportunity ? <div className="md:col-span-2 flex flex-wrap gap-3">
               <Button type="submit" disabled={busy}><Save className="h-4 w-4" />Guardar</Button>
               <Button variant="secondary" disabled={busy} onClick={() => mutate(() => markOpportunityWon(id), 'Oportunidad marcada como ganada.')}><Trophy className="h-4 w-4" />Ganada</Button>
               <Button variant="danger" disabled={busy} onClick={() => mutate(() => markOpportunityLost(id, item.lostReason), 'Oportunidad marcada como perdida.')}><ThumbsDown className="h-4 w-4" />Perdida</Button>
-            </div>
+            </div> : null}
           </form>
         </Card>
         <div className="space-y-6">
+          {canReadAttribution ? <MarketingAttributionCard attribution={item.attribution} /> : null}
+          {canReadContacts ? <CommercialRelationsCard
+            context="opportunity"
+            primaryRecords={item.contactId ? [item.contactId] : []}
+            relations={relations}
+            options={contacts}
+            busy={busy}
+            canManage={canManageRelations}
+            onCreate={createRelation}
+            onDelete={removeRelation}
+          /> : null}
           <Card><CardHeader title="Citas vinculadas" /><div className="space-y-3 p-5">{appointments.slice(0, 5).map((appointment) => <div key={appointment._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="font-semibold">{appointment.title}</span><Badge tone={appointment.status}>{appointment.status}</Badge></div><p className="mt-1 text-xs text-slate-500">{localDate(appointment.startAt)} - {appointment.assignedTo?.name}</p></div>)}{!appointments.length ? <p className="text-sm text-slate-500">Sin citas asociadas.</p> : null}</div></Card>
-          <Card><CardHeader title="Nueva nota" /><form onSubmit={addNote} className="space-y-3 p-5"><textarea required name="text" className={`${inputClass} min-h-28`} /><Button type="submit" disabled={busy}><StickyNote className="h-4 w-4" />Agregar nota</Button></form></Card>
+          {canAddNote ? <Card><CardHeader title="Nueva nota" /><form onSubmit={addNote} className="space-y-3 p-5"><textarea required name="text" className={`${inputClass} min-h-28`} /><Button type="submit" disabled={busy}><StickyNote className="h-4 w-4" />Agregar nota</Button></form></Card> : null}
           <Card><CardHeader title="Timeline de oportunidad" /><div className="max-h-[600px] space-y-3 overflow-y-auto p-5">{timeline.map((entry, index) => <div key={`${entry.kind}-${entry.item._id}-${index}`} className="border-l-2 border-cyan-200 pl-4"><p className="text-sm font-medium">{eventText(entry)}</p><p className="text-xs text-slate-500">{localDate(entry.date)} - {entry.item.createdBy?.name || entry.item.userId?.name || 'Sistema'}</p></div>)}</div></Card>
         </div>
       </div> : null}

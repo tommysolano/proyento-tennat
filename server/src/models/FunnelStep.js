@@ -6,6 +6,7 @@ import {
 } from '../modules/marketing/marketingSecurity.js';
 import { sanitize } from '../utils/sanitize.js';
 import { normalizeOptionalObjectId } from '../utils/validation.js';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
 
 export const FUNNEL_STEP_TYPES = [
   'landing',
@@ -76,6 +77,7 @@ const funnelStepSchema = new mongoose.Schema(
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     publishedAt: { type: Date, default: null },
     archivedAt: { type: Date, default: null },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -92,5 +94,6 @@ funnelStepSchema.pre('validate', function sanitizeFunnelStep(next) {
 
 funnelStepSchema.index({ funnelId: 1, slug: 1 }, { unique: true });
 funnelStepSchema.index({ companyId: 1, funnelId: 1, order: 1 });
+funnelStepSchema.index({ companyId: 1, 'attribution.campaignId': 1 });
 
 export const FunnelStep = mongoose.model('FunnelStep', funnelStepSchema);

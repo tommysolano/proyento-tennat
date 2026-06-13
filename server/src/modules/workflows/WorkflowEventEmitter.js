@@ -18,11 +18,12 @@ const ACTIVITY_EVENTS = {
   message_inbound_received: ['message.inbound_received', 'conversations', 'message', 'messageId'],
   message_outbound_failed: ['message.outbound_failed', 'conversations', 'message', 'messageId'],
   appointment_created: ['appointment.created', 'calendar', 'appointment', 'appointmentId'],
+  appointment_confirmed: ['appointment.confirmed', 'calendar', 'appointment', 'appointmentId'],
   appointment_cancelled: ['appointment.cancelled', 'calendar', 'appointment', 'appointmentId'],
+  appointment_reminder_sent: ['appointment.upcoming', 'calendar', 'appointment', 'appointmentId'],
   appointment_completed: ['appointment.completed', 'calendar', 'appointment', 'appointmentId'],
   appointment_no_show: ['appointment.no_show', 'calendar', 'appointment', 'appointmentId'],
   appointment_rescheduled: ['appointment.rescheduled', 'calendar', 'appointment', 'appointmentId'],
-  appointment_reminder_sent: ['appointment.reminder_sent', 'calendar', 'appointment', 'appointmentId'],
   company_invoice_created: ['invoice.created', 'billing', 'invoice', 'invoiceId'],
   company_payment_recorded: ['payment.succeeded', 'billing', 'payment', 'paymentId'],
   review_request_created: ['review_request.created', 'reviews', 'review_request', 'reviewRequestId'],
@@ -49,6 +50,14 @@ export class WorkflowEventEmitter {
     const definitions = [];
     const mapped = ACTIVITY_EVENTS[activity.type];
     if (mapped) definitions.push(mapped);
+    if (activity.type === 'appointment_reminder_sent') {
+      definitions.push([
+        'appointment.reminder_sent',
+        'calendar',
+        'appointment',
+        'appointmentId'
+      ]);
+    }
     if (
       activity.type === 'company_payment_recorded' &&
       metadata.status &&

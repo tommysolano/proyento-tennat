@@ -4,6 +4,31 @@ La matriz vive en
 `server/src/core/permissions/permissions.js`. Las rutas nuevas usan
 `requirePermission(permission)` ademas de autenticacion y rol.
 
+## Permisos efectivos y plantillas
+
+`User.permissions` es una reduccion opcional de los permisos del rol. Nunca
+puede ampliar `ROLE_PERMISSIONS`, y el backend vuelve a filtrar la seleccion
+por los modulos efectivos de la empresa.
+
+Las plantillas viven en
+`server/src/core/permissions/permissionTemplates.js`:
+
+- `admin_full`: referencia del ADMIN, limitada por plan.
+- `supervisor_commercial`: CRM, inbox, tareas, calendario y reportes basicos.
+- `callcenter`: recursos asignados, notas, inbox y citas.
+- `support_service`: atencion por inbox, notas y agenda disponible.
+
+ADMIN puede consultar plantillas, aplicarlas a un usuario interno o copiarlas
+a todos los usuarios SUPERVISOR/CALLCENTER de su empresa. Cada cambio exige
+scope de empresa en backend y registra auditoria.
+
+## Acceso delegado
+
+SUPERADMIN puede entrar como DISTRIBUTOR y DISTRIBUTOR puede entrar como el
+ADMIN activo de una empresa propia. El token delegado expira en 30 minutos,
+no permite impersonacion anidada y el middleware revalida actor,
+distribuidor y empresa en cada request.
+
 ## SUPERADMIN
 
 - `platform:manage`
@@ -29,6 +54,7 @@ La matriz vive en
 - `distributor_branding:manage`
 - `modules:read`
 - `impersonation:start_admin`
+- `activity:read_distributor`
 
 ## ADMIN
 
@@ -97,6 +123,7 @@ La matriz vive en
 - `tasks:update_team`
 - `notes:create_team`
 - `activity:read_team`
+- `users:read_team`
 - `conversations:read_team`
 - `conversations:assign_team`
 - `conversations:send_team`
@@ -140,6 +167,7 @@ La matriz vive en
 - `appointments:manage_assigned`
 - `appointments:read_assigned`
 - `appointments:update_assigned`
+- `activity:read_self`
 
 ## SUPERADMIN Fase 5
 

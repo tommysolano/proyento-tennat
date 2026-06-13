@@ -9,6 +9,7 @@ import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { FormsService } from '../modules/forms/FormsService.js';
 import { FunnelService } from '../modules/funnels/FunnelService.js';
 import { safeTrackingContext, slugifyPublic } from '../modules/marketing/marketingSecurity.js';
+import { mergeMarketingAttribution } from '../modules/marketing/marketingAttribution.js';
 
 const router = Router();
 const readLimiter = rateLimit({
@@ -64,16 +65,30 @@ async function resolveSource(form, body) {
           funnelId: funnel._id,
           companyId: form.companyId,
           slug: slugifyPublic(source.stepSlug),
-          status: 'published',
-          formId: form._id
+          status: 'published'
         })
       : null;
-    if (funnel && step) {
+    const funnelLanding = step?.landingPageId
+      ? await LandingPage.findOne({
+          _id: step.landingPageId,
+          companyId: form.companyId,
+          status: 'published',
+          $or: [
+            { 'settings.associatedFormId': form._id },
+            { 'content.sections.content.formId': form._id }
+          ]
+        })
+      : null;
+    if (funnel && step && (String(step.formId || '') === String(form._id) || funnelLanding)) {
       return {
         sourceType: 'funnel_step',
         sourceId: step._id,
         funnelId: funnel._id,
-        funnelStepId: step._id
+        funnelStepId: step._id,
+        attribution: mergeMarketingAttribution(
+          mergeMarketingAttribution(funnel.attribution, funnelLanding?.attribution),
+          step.attribution
+        )
       };
     }
   }
@@ -87,7 +102,13 @@ async function resolveSource(form, body) {
         { 'content.sections.content.formId': form._id }
       ]
     });
-    if (page) return { sourceType: 'landing_page', sourceId: page._id };
+    if (page) {
+      return {
+        sourceType: 'landing_page',
+        sourceId: page._id,
+        attribution: page.attribution?.toObject?.() || page.attribution || {}
+      };
+    }
   }
   return { sourceType: 'form' };
 }
@@ -100,7 +121,8 @@ router.get('/:slug', readLimiter, async (req, res, next) => {
       target: {
         companyId: resolved.form.companyId,
         distributorId: resolved.form.distributorId,
-        formId: resolved.form._id
+        formId: resolved.form._id,
+        attribution: resolved.form.attribution
       },
       tracking: safeTrackingContext(req),
       path: req.originalUrl

@@ -39,9 +39,15 @@ import {
   CrmNotice,
   inputClass
 } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import {
+  appendPublicMarketingQuery,
+  publicMarketingContext,
+  publicMarketingQuery
+} from '../../utils/publicMarketing.js';
 import { PublicFormRenderer } from './FormsPage.jsx';
 import { PublicLandingRenderer } from './LandingPagesPage.jsx';
 import { PublicSurveyPage } from '../reputation/PublicReputationPages.jsx';
@@ -408,20 +414,30 @@ export function FunnelBuilderPage() {
       <div><Button as={Link} to="/marketing/funnels" variant="secondary">Volver</Button></div>
       <CrmNotice notice={notice} error={error} />
       <Card>
-        <CardHeader title="Funnel" />
+        <CardHeader title="1. Informacion del funnel" description="Define la URL, el punto de entrada y el comportamiento general." />
         <div className="grid gap-4 p-5 md:grid-cols-2">
-          <label className="text-xs font-semibold">Nombre<input className={inputClass} value={funnel.name} onChange={(event) => setFunnel({ ...funnel, name: event.target.value })} /></label>
-          <label className="text-xs font-semibold">Slug<input className={inputClass} value={funnel.slug} onChange={(event) => setFunnel({ ...funnel, slug: event.target.value })} /></label>
-          <label className="text-xs font-semibold md:col-span-2">Descripcion<textarea className={`${inputClass} min-h-20`} value={funnel.description} onChange={(event) => setFunnel({ ...funnel, description: event.target.value })} /></label>
-          <label className="text-xs font-semibold">Step de entrada<select className={inputClass} value={funnel.settings.entryStepId} onChange={(event) => setFunnel({ ...funnel, settings: { ...funnel.settings, entryStepId: event.target.value } })}><option value="">Primer step publicado</option>{steps.map((step) => <option key={step._id} value={step._id}>{step.name}</option>)}</select></label>
-          <label className="text-xs font-semibold">Redirect por defecto<input className={inputClass} value={funnel.settings.defaultRedirectUrl} onChange={(event) => setFunnel({ ...funnel, settings: { ...funnel.settings, defaultRedirectUrl: event.target.value } })} /></label>
+          <FormField label="Nombre" htmlFor="funnel-builder-name">
+            <input id="funnel-builder-name" className={inputClass} value={funnel.name} onChange={(event) => setFunnel({ ...funnel, name: event.target.value })} />
+          </FormField>
+          <FormField label="Slug" htmlFor="funnel-builder-slug" hint="Identificador tecnico usado en la URL publica.">
+            <input id="funnel-builder-slug" className={inputClass} value={funnel.slug} onChange={(event) => setFunnel({ ...funnel, slug: event.target.value })} />
+          </FormField>
+          <FormField label="Descripcion" htmlFor="funnel-builder-description" className="md:col-span-2">
+            <textarea id="funnel-builder-description" className={`${inputClass} min-h-20`} value={funnel.description} onChange={(event) => setFunnel({ ...funnel, description: event.target.value })} />
+          </FormField>
+          <FormField label="Paso de entrada" htmlFor="funnel-builder-entry-step" hint="Si no eliges uno, se usara el primer paso publicado.">
+            <select id="funnel-builder-entry-step" className={inputClass} value={funnel.settings.entryStepId} onChange={(event) => setFunnel({ ...funnel, settings: { ...funnel.settings, entryStepId: event.target.value } })}><option value="">Primer paso publicado</option>{steps.map((step) => <option key={step._id} value={step._id}>{step.name}</option>)}</select>
+          </FormField>
+          <FormField label="Redireccion por defecto" htmlFor="funnel-builder-redirect">
+            <input id="funnel-builder-redirect" className={inputClass} value={funnel.settings.defaultRedirectUrl} onChange={(event) => setFunnel({ ...funnel, settings: { ...funnel.settings, defaultRedirectUrl: event.target.value } })} />
+          </FormField>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={funnel.settings.trackingEnabled} onChange={(event) => setFunnel({ ...funnel, settings: { ...funnel.settings, trackingEnabled: event.target.checked } })} />Tracking habilitado</label>
           {funnel.slug ? <p className="text-sm text-slate-500">URL publica: <code>/f/{funnel.slug}</code></p> : null}
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="Steps" description="El orden guardado define la secuencia y el calculo de abandono." action={<Button variant="secondary" disabled={busy} onClick={addStep}><Plus className="h-4 w-4" />Step</Button>} />
+        <CardHeader title="2. Pasos" description="El orden guardado define la secuencia y el calculo de abandono." action={<Button variant="secondary" disabled={busy} onClick={addStep}><Plus className="h-4 w-4" />Paso</Button>} />
         <div className="space-y-4 p-5">
           {steps.map((step, index) => (
             <div key={step._id} className="rounded-lg border border-slate-200 p-4">
@@ -463,7 +479,7 @@ export function PublicFunnelPage() {
   useEffect(() => {
     setError('');
     setData(null);
-    getPublicFunnel(funnelSlug, stepSlug)
+    getPublicFunnel(funnelSlug, stepSlug, publicMarketingQuery())
       .then((payload) => {
         if (!payload?.funnel || !payload?.step || !payload?.company) {
           throw new Error('La API devolvio un funnel publico invalido.');
@@ -493,11 +509,13 @@ export function PublicFunnelPage() {
   }
   if (!data) return <main className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Cargando funnel...</main>;
   const source = { funnelSlug: data.funnel.slug, stepSlug: data.step.slug };
-  const nextUrl = data.step.nextStepSlug ? `/f/${data.funnel.slug}/${data.step.nextStepSlug}` : '';
+  const nextUrl = data.step.nextStepSlug
+    ? appendPublicMarketingQuery(`/f/${data.funnel.slug}/${data.step.nextStepSlug}`)
+    : '';
 
   let body = null;
   if (data.step.type === 'landing' && data.step.landingPageSlug) {
-    body = <PublicLandingRenderer slug={data.step.landingPageSlug} embedded />;
+    body = <PublicLandingRenderer slug={data.step.landingPageSlug} source={source} embedded />;
   } else if (['form', 'survey'].includes(data.step.type) && data.step.formSlug) {
     body = <div className="mx-auto max-w-xl"><PublicFormRenderer slug={data.step.formSlug} source={source} embedded /></div>;
   } else if (data.step.type === 'satisfaction_survey' && data.step.satisfactionSurveySlug) {
@@ -515,7 +533,7 @@ export function PublicFunnelPage() {
       <div className="mx-auto max-w-5xl">
         <p className="mb-6 text-center text-xs font-bold uppercase tracking-widest text-cyan-700">{data.company.name} · {data.funnel.name}</p>
         {body}
-        {nextUrl ? <div className="mt-10 text-center"><Link to={nextUrl} onClick={() => trackFunnelEvent(data.funnel.slug, data.step.slug, { type: 'button_click', label: 'next_step' }).catch(() => {})} className="inline-flex rounded-lg bg-slate-950 px-6 py-3 font-semibold text-white">Continuar</Link></div> : null}
+        {nextUrl ? <div className="mt-10 text-center"><Link to={nextUrl} onClick={() => trackFunnelEvent(data.funnel.slug, data.step.slug, { type: 'funnel_step_completed', label: 'next_step', ...publicMarketingContext() }).catch(() => {})} className="inline-flex rounded-lg bg-slate-950 px-6 py-3 font-semibold text-white">Continuar</Link></div> : null}
       </div>
     </main>
   );

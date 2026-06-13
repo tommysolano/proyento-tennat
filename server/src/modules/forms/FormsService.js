@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { BookingLink } from '../../models/BookingLink.js';
 import { Contact, CONTACT_LIFECYCLE_STAGES, CONTACT_STATUSES, CRM_PRIORITIES } from '../../models/Contact.js';
+import { Campaign } from '../../models/Campaign.js';
 import { ConversionEvent } from '../../models/ConversionEvent.js';
 import { CustomField } from '../../models/CustomField.js';
 import { Form, FORM_FIELD_TYPES, FORM_TYPES } from '../../models/Form.js';
@@ -9,6 +10,7 @@ import { Opportunity } from '../../models/Opportunity.js';
 import { Pipeline } from '../../models/Pipeline.js';
 import { PipelineStage } from '../../models/PipelineStage.js';
 import { Tag } from '../../models/Tag.js';
+import { tagScopeFilter } from '../../utils/crmOrganization.js';
 import { User } from '../../models/User.js';
 import { NotificationService } from '../notifications/NotificationService.js';
 import { RealtimeService } from '../realtime/RealtimeService.js';
@@ -31,6 +33,12 @@ import {
   sanitizePlainText,
   slugifyPublic
 } from '../marketing/marketingSecurity.js';
+import {
+  attributionFromTracking,
+  mergeMarketingAttribution,
+  normalizeMarketingAttribution
+} from '../marketing/marketingAttribution.js';
+import { CommunicationPolicyService } from '../communications/CommunicationPolicyService.js';
 
 const CONTACT_FIELDS = new Set([
   'name',
@@ -127,7 +135,8 @@ function publicField(field) {
     defaultValue: field.type === 'hidden' ? field.defaultValue : undefined,
     order: field.order,
     hidden: field.hidden,
-    validation: field.validation
+    validation: field.validation,
+    consentChannel: field.consentChannel || ''
   };
 }
 
@@ -156,11 +165,26 @@ export class FormsService {
       if (keys.has(field.key)) throw badRequest(`Campo duplicado: ${field.key}`);
       keys.add(field.key);
       if (!FORM_FIELD_TYPES.includes(field.type)) throw badRequest(`Tipo invalido: ${field.type}`);
+      if (
+        field.type === 'consent' &&
+        field.consentChannel &&
+        !['whatsapp', 'sms', 'email', 'call', 'facebook_messenger', 'instagram_dm', 'other']
+          .includes(field.consentChannel)
+      ) {
+        throw badRequest(`Canal de consentimiento invalido: ${field.consentChannel}`);
+      }
       if (['select', 'multiselect', 'radio'].includes(field.type) && !(field.options || []).length) {
         throw badRequest(`El campo ${field.key} requiere opciones`);
       }
     }
     const settings = normalizeFormSettings(input.settings);
+    const attribution = normalizeMarketingAttribution(input.attribution || {});
+    if (
+      attribution.campaignId &&
+      !await Campaign.exists({ _id: attribution.campaignId, companyId, status: { $ne: 'archived' } })
+    ) {
+      throw badRequest('campaignId no pertenece a la empresa');
+    }
     if (
       settings.defaultContactStatus &&
       !CONTACT_STATUSES.includes(settings.defaultContactStatus)
@@ -199,7 +223,12 @@ export class FormsService {
     const tagIds = [...new Set((settings.addTags || []).map(String))];
     if (tagIds.some((id) => !mongoose.isValidObjectId(id))) throw badRequest('Tag invalido');
     if (tagIds.length) {
-      const count = await Tag.countDocuments({ _id: { $in: tagIds }, companyId, status: 'active' });
+      const count = await Tag.countDocuments({
+        _id: { $in: tagIds },
+        companyId,
+        status: 'active',
+        ...tagScopeFilter('contact')
+      });
       if (count !== tagIds.length) throw badRequest('Uno o mas tags no pertenecen a la empresa');
     }
     const notifyIds = [...new Set((settings.notifyUsers || []).map(String))];
@@ -264,6 +293,7 @@ export class FormsService {
       styling: body.styling || {},
       createdBy: actor._id,
       updatedBy: actor._id,
+      attribution: normalizeMarketingAttribution(body.attribution || {}),
       metadata: body.metadata || {}
     });
     await Promise.all([
@@ -302,7 +332,8 @@ export class FormsService {
     const definition = {
       type: body.type || form.type,
       fields: body.fields || form.fields.map(asPlain),
-      settings
+      settings,
+      attribution: body.attribution || form.attribution
     };
     await this.validateConfiguration(form.companyId, definition);
     if ('name' in body) form.name = sanitizePlainText(body.name, 120);
@@ -311,6 +342,9 @@ export class FormsService {
     }
     for (const field of ['description', 'type', 'fields', 'styling', 'metadata']) {
       if (field in body) form[field] = body[field];
+    }
+    if ('attribution' in body) {
+      form.attribution = normalizeMarketingAttribution(body.attribution);
     }
     if ('settings' in body) {
       form.settings = settings;
@@ -478,7 +512,7 @@ export class FormsService {
     return { standard, customFields };
   }
 
-  static async findOrCreateContact({ form, values, actor }) {
+  static async findOrCreateContact({ form, values, actor, attribution }) {
     if (!form.settings.createContact && !form.settings.updateExistingContact) {
       return { contact: null, created: false, ignored: false };
     }
@@ -526,6 +560,12 @@ export class FormsService {
         }
       }
       contact.tags = [...new Set([...contact.tags.map(String), ...form.settings.addTags.map(String)])];
+      contact.attribution = mergeMarketingAttribution(contact.attribution, attribution);
+      contact.metadata = {
+        ...(contact.metadata || {}),
+        channel: attribution.entryChannel || attribution.channel || contact.metadata?.channel || '',
+        campaign: attribution.campaignName || attribution.utmCampaign || contact.metadata?.campaign || ''
+      };
       contact.updatedBy = actor._id;
       await contact.save();
       return { contact, created: false, ignored: false };
@@ -550,12 +590,17 @@ export class FormsService {
       tags: form.settings.addTags,
       createdBy: actor._id,
       updatedBy: actor._id,
-      metadata: { sourceFormId: form._id }
+      attribution,
+      metadata: {
+        sourceFormId: form._id,
+        channel: attribution.entryChannel || attribution.channel || '',
+        campaign: attribution.campaignName || attribution.utmCampaign || ''
+      }
     });
     return { contact, created: true, ignored: false };
   }
 
-  static async createOpportunity({ form, values, contact, actor }) {
+  static async createOpportunity({ form, values, contact, actor, attribution }) {
     if (!form.settings.createOpportunity || !contact) return null;
     const mapped = this.mappedData(form, values, 'opportunity');
     const pipeline = await Pipeline.findOne({
@@ -587,7 +632,12 @@ export class FormsService {
       customFields: mapped.customFields,
       createdBy: actor._id,
       updatedBy: actor._id,
-      metadata: { sourceFormId: form._id }
+      attribution,
+      metadata: {
+        sourceFormId: form._id,
+        channel: attribution.entryChannel || attribution.channel || '',
+        campaign: attribution.campaignName || attribution.utmCampaign || ''
+      }
     });
   }
 
@@ -603,6 +653,21 @@ export class FormsService {
     const rawValues = body.values && typeof body.values === 'object' ? body.values : body;
     let normalizedValues = {};
     if (!spam.spam) normalizedValues = this.normalizeValues(form, rawValues);
+    const sourceAttribution = mergeMarketingAttribution(
+      form.attribution || {},
+      source.attribution || {}
+    );
+    const attribution = mergeMarketingAttribution(
+      sourceAttribution,
+      attributionFromTracking(tracking, tracking.attribution || body.attribution || {}, {
+        campaignId: sourceAttribution.campaignId || null,
+        campaignName: sourceAttribution.campaignName || '',
+        formId: form._id,
+        landingPageId: source.sourceType === 'landing_page' ? source.sourceId : null,
+        funnelId: source.funnelId || null,
+        funnelStepId: source.funnelStepId || null
+      })
+    );
     const consentField = form.fields.find((field) => field.type === 'consent');
     const submission = await FormSubmission.create({
       companyId: form.companyId,
@@ -622,6 +687,7 @@ export class FormsService {
         grantedAt: consentField && normalizedValues[consentField.key] === true ? new Date() : null
       },
       spamScore: spam.score,
+      attribution,
       metadata: { spamReason: spam.reason }
     });
     await trackUsage({
@@ -714,7 +780,8 @@ export class FormsService {
       const contactResult = await this.findOrCreateContact({
         form,
         values: normalizedValues,
-        actor
+        actor,
+        attribution
       });
       if (contactResult.ignored) {
         submission.status = 'ignored';
@@ -726,12 +793,38 @@ export class FormsService {
         form,
         values: normalizedValues,
         contact: contactResult.contact,
-        actor
+        actor,
+        attribution
       });
       submission.contactId = contactResult.contact?._id || null;
       submission.opportunityId = opportunity?._id || null;
       submission.status = 'processed';
       await submission.save();
+      const grantedConsents = contactResult.contact ? form.fields.filter(
+        (field) =>
+          field.type === 'consent' &&
+          field.consentChannel &&
+          normalizedValues[field.key] === true
+      ) : [];
+      await Promise.all(grantedConsents.map((field) =>
+        CommunicationPolicyService.recordConsent({
+          companyId: form.companyId,
+          distributorId: form.distributorId,
+          contactId: contactResult.contact._id,
+          channel: field.consentChannel,
+          status: 'opted_in',
+          source: 'form',
+          sourceReference: String(submission._id),
+          consentText: field.label,
+          consentVersion: form.updatedAt?.toISOString?.() || '',
+          recordedBy: actor._id,
+          evidence: {
+            formId: form._id,
+            submissionId: submission._id,
+            fieldKey: field.key
+          }
+        })
+      ));
       const conversionBase = {
         companyId: form.companyId,
         distributorId: form.distributorId,
@@ -743,7 +836,8 @@ export class FormsService {
         contactId: submission.contactId,
         opportunityId: submission.opportunityId,
         sessionId: tracking.sessionId,
-        visitorId: tracking.visitorId
+        visitorId: tracking.visitorId,
+        attribution
       };
       const conversionTypes = ['form_submission'];
       if (contactResult.created) conversionTypes.push('contact_created');

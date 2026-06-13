@@ -3,17 +3,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   addContactNote,
+  createCommercialRelation,
   createReferral,
   createReviewRequest,
   createConversation,
   deleteContact,
+  deleteCommercialRelation,
   getContact,
   getContactReputation,
   getContactTimeline,
+  getCommercialRelations,
   getConversations,
   getAppointments,
   getCustomFields,
   getCoupons,
+  getOpportunities,
   getReferralPrograms,
   getTags,
   getUsers,
@@ -23,7 +27,11 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { CommercialRelationsCard } from '../../components/CommercialRelationsCard.jsx';
+import { MarketingAttributionCard } from '../../components/MarketingAttributionCard.jsx';
+import { CommunicationPreferencesCard } from '../../components/CommunicationPreferencesCard.jsx';
 import {
+  CrmLoadError,
   CrmLoading,
   CrmNotice,
   CustomFieldInput,
@@ -51,7 +59,7 @@ function timelineText(entry) {
 export function ContactDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, access } = useAuth();
   const [contact, setContact] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [tags, setTags] = useState([]);
@@ -59,6 +67,8 @@ export function ContactDetailPage() {
   const [users, setUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [relations, setRelations] = useState([]);
+  const [opportunities, setOpportunities] = useState([]);
   const [reputation, setReputation] = useState({
     reviews: [],
     reviewRequests: [],
@@ -71,10 +81,46 @@ export function ContactDetailPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const canEditDetails = user.role !== 'CALLCENTER';
+  const [loadError, setLoadError] = useState('');
+  const permissions = new Set(access.permissions || []);
+  const canUpdateContact = [
+    'contacts:manage',
+    'contacts:update_team',
+    'contacts:update_assigned'
+  ].some((permission) => permissions.has(permission));
+  const canEditDetails = [
+    'contacts:manage',
+    'contacts:update_team'
+  ].some((permission) => permissions.has(permission));
+  const canAddNote = [
+    'notes:manage',
+    'notes:create_team',
+    'notes:create_assigned',
+    'contacts:notes'
+  ].some((permission) => permissions.has(permission));
+  const modules = new Set(access.modules || []);
+  const canReadOpportunities = modules.has('opportunities') && [
+    'opportunities:manage',
+    'opportunities:read_team',
+    'opportunities:read_assigned'
+  ].some((permission) => permissions.has(permission));
+  const canManageRelations = [
+    'contacts:manage',
+    'contacts:update_team',
+    'contacts:update_assigned'
+  ].some((permission) => permissions.has(permission)) && [
+    'opportunities:manage',
+    'opportunities:update_team',
+    'opportunities:update_assigned'
+  ].some((permission) => permissions.has(permission)) && canReadOpportunities;
+  const canReadAttribution = [
+    'attribution:read',
+    'attribution:read_team',
+    'attribution:read_assigned'
+  ].some((permission) => permissions.has(permission));
 
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true); setLoadError('');
     try {
       const [
         contactData,
@@ -84,14 +130,18 @@ export function ContactDetailPage() {
         userData,
         conversationData,
         appointmentData,
+        relationData,
+        opportunityData,
         reputationData,
         couponData,
         referralProgramData
       ] = await Promise.all([
-        getContact(id), getContactTimeline(id), getTags(), getCustomFields('contact'),
+        getContact(id), getContactTimeline(id), getTags('contact'), getCustomFields('contact'),
         user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
         getConversations({ contactId: id }),
         getAppointments({ contactId: id }),
+        canReadOpportunities ? getCommercialRelations({ contactId: id }) : Promise.resolve([]),
+        canReadOpportunities ? getOpportunities() : Promise.resolve([]),
         getContactReputation(id),
         getCoupons(),
         user.role === 'ADMIN' ? getReferralPrograms() : Promise.resolve([])
@@ -100,17 +150,21 @@ export function ContactDetailPage() {
       setFields(fieldData.filter((field) => field.status === 'active')); setUsers(userData);
       setConversations(conversationData);
       setAppointments(appointmentData);
+      setRelations(relationData);
+      setOpportunities(opportunityData);
       setReputation(reputationData);
       setCoupons(couponData);
       setReferralPrograms(referralProgramData);
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) { setLoadError(requestError.message); }
     finally { setLoading(false); }
-  }, [id, user.role]);
+  }, [id, user.role, canReadOpportunities]);
 
   useEffect(() => { load(); }, [load]);
 
   async function save(event) {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault();
+    if (!canUpdateContact) return;
+    setBusy(true); setError('');
     const data = new FormData(event.currentTarget);
     const payload = {
       status: data.get('status'),
@@ -150,6 +204,32 @@ export function ContactDetailPage() {
     setBusy(true);
     try { await deleteContact(id); navigate('/crm/contacts'); }
     catch (requestError) { setError(requestError.message); setBusy(false); }
+  }
+
+  async function createRelation(payload) {
+    setBusy(true); setError('');
+    try {
+      const { targetId, ...metadata } = payload;
+      await createCommercialRelation({
+        contactId: id,
+        opportunityId: targetId,
+        ...metadata
+      });
+      setNotice('Relacion comercial creada.');
+      await load();
+      return true;
+    } catch (requestError) { setError(requestError.message); return false; }
+    finally { setBusy(false); }
+  }
+
+  async function removeRelation(relationId) {
+    setBusy(true); setError('');
+    try {
+      await deleteCommercialRelation(relationId);
+      setNotice('Relacion comercial eliminada.');
+      await load();
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
   }
 
   async function openInternalConversation() {
@@ -218,6 +298,7 @@ export function ContactDetailPage() {
   }
 
   if (loading) return <PageShell eyebrow="CRM" title="Ficha de contacto"><CrmLoading /></PageShell>;
+  if (loadError) return <PageShell eyebrow="CRM" title="Ficha de contacto"><CrmLoadError message={loadError} onRetry={load} /></PageShell>;
   return (
     <PageShell eyebrow="CRM" title={contact?.name || 'Contacto'} description="Ficha operativa, campos personalizados y timeline comercial.">
       <div><Button as={Link} to="/crm/contacts" variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button></div>
@@ -246,10 +327,22 @@ export function ContactDetailPage() {
               <fieldset className="md:col-span-2 rounded-md border border-slate-200 p-3"><legend className="px-1 text-xs font-semibold">Tags</legend><div className="flex flex-wrap gap-3">{tags.filter((tag) => tag.status === 'active').map((tag) => <label key={tag._id} className="flex items-center gap-1 text-sm"><input type="checkbox" name="tags" value={tag._id} defaultChecked={contact.tags?.some((current) => current._id === tag._id)} />{tag.name}</label>)}</div></fieldset>
               {fields.map((field) => <CustomFieldInput key={field._id} field={field} defaultValue={contact.customFields?.[field.key]} />)}
             </> : null}
-            <div className="md:col-span-2 flex gap-3"><Button type="submit" disabled={busy}><Save className="h-4 w-4" />Guardar</Button>{user.role === 'ADMIN' ? <Button variant="danger" onClick={archive} disabled={busy}><Archive className="h-4 w-4" />Archivar</Button> : null}</div>
+            <div className="md:col-span-2 flex gap-3">{canUpdateContact ? <Button type="submit" disabled={busy}><Save className="h-4 w-4" />Guardar</Button> : null}{user.role === 'ADMIN' && permissions.has('contacts:manage') ? <Button variant="danger" onClick={archive} disabled={busy}><Archive className="h-4 w-4" />Archivar</Button> : null}</div>
           </form>
         </Card>
         <div className="space-y-6">
+          <CommunicationPreferencesCard contactId={id} />
+          {canReadAttribution ? <MarketingAttributionCard attribution={contact.attribution} /> : null}
+          {canReadOpportunities ? <CommercialRelationsCard
+            context="contact"
+            primaryRecords={opportunities.filter((opportunity) => opportunity.contactId?._id === id)}
+            relations={relations}
+            options={opportunities}
+            busy={busy}
+            canManage={canManageRelations}
+            onCreate={createRelation}
+            onDelete={removeRelation}
+          /> : null}
           <Card>
             <CardHeader title="Reputacion y fidelizacion" description="Acciones vinculadas a este contacto" />
             <div className="space-y-4 p-5">
@@ -286,10 +379,10 @@ export function ContactDetailPage() {
               {!appointments.length ? <p className="text-sm text-slate-500">No hay citas asociadas.</p> : null}
             </div>
           </Card>
-          <Card>
+          {canAddNote ? <Card>
             <CardHeader title="Agregar nota" />
             <form onSubmit={note} className="space-y-3 p-5"><textarea required name="text" maxLength="5000" className={`${inputClass} min-h-28`} placeholder="Resultado de llamada, objecion o siguiente paso" /><Button type="submit" disabled={busy}><StickyNote className="h-4 w-4" />Guardar nota</Button></form>
-          </Card>
+          </Card> : null}
           <Card>
             <CardHeader title="Timeline" description={`${timeline.length} eventos relacionados`} />
             <div className="max-h-[650px] space-y-3 overflow-y-auto p-5">

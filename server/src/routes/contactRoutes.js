@@ -10,6 +10,7 @@ import {
   CRM_PRIORITIES
 } from '../models/Contact.js';
 import { Tag } from '../models/Tag.js';
+import { CrmList } from '../models/CrmList.js';
 import { Note } from '../models/Note.js';
 import { ActivityLog } from '../models/ActivityLog.js';
 import { Task } from '../models/Task.js';
@@ -23,12 +24,39 @@ import { refreshCompanyOnboarding } from '../utils/onboarding.js';
 import { assignedResourceScope, tenantFields, validateCrmAssignee } from '../utils/crmScope.js';
 import { validateCustomFieldValues } from '../utils/customFields.js';
 import { cleanString, EMAIL_PATTERN, isValidObjectId } from '../utils/validation.js';
+import { tagScopeFilter } from '../utils/crmOrganization.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
+import { CommunicationPolicyService, normalizeSuppressionValue } from '../modules/communications/CommunicationPolicyService.js';
+import { SuppressionEntry } from '../models/SuppressionEntry.js';
+import { ContactConsent } from '../models/ContactConsent.js';
 
 const router = Router();
 const editableDetails = new Set(['ADMIN', 'SUPERVISOR']);
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
+const attributionPermissions = [
+  'attribution:read',
+  'attribution:read_team',
+  'attribution:read_assigned',
+  'attribution:read_all'
+];
+const activeDndConditions = [
+  { 'communicationPreferences.globalDnd': true },
+  { 'metadata.doNotDisturb': { $in: [true, 'true', 'active', 'enabled', 'on'] } },
+  { 'metadata.dnd': { $in: [true, 'true', 'active', 'enabled', 'on'] } },
+  { 'metadata.optOut': { $in: [true, 'true', 'active', 'enabled', 'on'] } },
+  { 'metadata.preferences.doNotDisturb': { $in: [true, 'true', 'active', 'enabled', 'on'] } },
+  {
+    'metadata.communicationPreferences.doNotDisturb': {
+      $in: [true, 'true', 'active', 'enabled', 'on']
+    }
+  }
+];
+
+function canReadAttribution(user) {
+  return attributionPermissions.some((permission) => hasUserPermission(user, permission));
+}
 
 function parseDate(value, field) {
   if (value === null || value === '') return null;
@@ -41,9 +69,60 @@ async function validateTags(companyId, values) {
   if (!Array.isArray(values)) throw badRequest('tags debe ser un arreglo');
   if (values.some((id) => !isValidObjectId(id))) throw badRequest('tag invalido');
   const unique = [...new Set(values.map(String))];
-  const count = await Tag.countDocuments({ _id: { $in: unique }, companyId, status: 'active' });
+  const count = await Tag.countDocuments({
+    _id: { $in: unique },
+    companyId,
+    status: 'active',
+    ...tagScopeFilter('contact')
+  });
   if (count !== unique.length) throw badRequest('Uno o mas tags no pertenecen a la empresa');
   return unique;
+}
+
+async function applyImportedCommunication({ user, contact, row, importReference }) {
+  for (const channel of ['whatsapp', 'sms', 'email', 'call']) {
+    const status = cleanString(row[`consent_${channel}`]);
+    if (!status) continue;
+    const consentText = cleanString(row[`consent_${channel}_text`]);
+    const legalBasis = cleanString(row[`consent_${channel}_legal_basis`]);
+    if (status === 'opted_in' && !consentText && !legalBasis) {
+      throw badRequest(
+        `consent_${channel}=opted_in requiere texto o base legal de consentimiento`
+      );
+    }
+    await CommunicationPolicyService.recordConsent({
+      companyId: user.companyId,
+      distributorId: user.distributorId,
+      contactId: contact._id,
+      channel,
+      status,
+      source: 'import',
+      sourceReference: cleanString(row[`consent_${channel}_reference`]) || importReference,
+      legalBasis,
+      consentText,
+      consentVersion: cleanString(row[`consent_${channel}_version`]),
+      reason: cleanString(row[`consent_${channel}_reason`]),
+      recordedBy: user._id,
+      evidence: { importReference }
+    });
+  }
+  const identifiers = [
+    contact.email
+      ? { type: 'email', normalizedValue: normalizeSuppressionValue('email', contact.email) }
+      : null,
+    contact.phone
+      ? { type: 'phone', normalizedValue: normalizeSuppressionValue('phone', contact.phone) }
+      : null
+  ].filter(Boolean);
+  if (!identifiers.length) return false;
+  return Boolean(await SuppressionEntry.exists({
+    companyId: user.companyId,
+    status: 'active',
+    $and: [
+      { $or: identifiers },
+      { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }
+    ]
+  }));
 }
 
 async function buildPayload(user, body, { creating = false } = {}) {
@@ -114,9 +193,76 @@ async function buildPayload(user, body, { creating = false } = {}) {
   return data;
 }
 
-function addFilters(filter, query) {
+async function addFilters(filter, query, user) {
   for (const field of ['status', 'lifecycleStage', 'source', 'priority', 'city']) {
     if (cleanString(query[field])) filter[field] = cleanString(query[field]);
+  }
+  if (query.dnd === 'true') {
+    filter.$and = [...(filter.$and || []), { $or: activeDndConditions }];
+  }
+  if (query.dnd === 'false') {
+    filter.$and = [...(filter.$and || []), { $nor: activeDndConditions }];
+  }
+  if (cleanString(query.preferredChannel)) {
+    filter['communicationPreferences.preferredChannel'] = cleanString(query.preferredChannel);
+  }
+  if (cleanString(query.consentStatus) || cleanString(query.consentChannel)) {
+    if (!readPermissionsForConsent(user)) {
+      throw Object.assign(new Error('No tienes permiso para filtrar por consentimiento'), {
+        status: 403
+      });
+    }
+    const consentFilter = { companyId: filter.companyId };
+    if (cleanString(query.consentStatus)) consentFilter.status = cleanString(query.consentStatus);
+    if (cleanString(query.consentChannel)) {
+      consentFilter.channel = CommunicationPolicyService.normalizeChannel(query.consentChannel);
+    }
+    const contactIds = await ContactConsent.find(consentFilter).distinct('contactId');
+    filter._id = { $in: contactIds };
+  }
+  const hasMarketingFilter = [
+    'channel',
+    'campaign',
+    'consultedProduct',
+    'purchasedProduct'
+  ].some((field) => cleanString(query[field]));
+  if (hasMarketingFilter && !canReadAttribution(user)) {
+    throw Object.assign(new Error('No tienes permiso para filtrar por atribucion'), {
+      status: 403
+    });
+  }
+  if (cleanString(query.channel)) {
+    const channel = cleanString(query.channel);
+    filter.$and = [...(filter.$and || []), {
+      $or: [
+        { 'attribution.entryChannel': channel },
+        { 'attribution.channel': channel },
+        { 'metadata.channel': channel }
+      ]
+    }];
+  }
+  if (cleanString(query.campaign)) {
+    const campaign = new RegExp(escapeRegExp(cleanString(query.campaign)), 'i');
+    filter.$and = [...(filter.$and || []), {
+      $or: [
+        { 'attribution.campaignName': campaign },
+        { 'attribution.utmCampaign': campaign },
+        { 'attribution.externalCampaignId': campaign },
+        { 'metadata.campaign': campaign }
+      ]
+    }];
+  }
+  if (cleanString(query.consultedProduct)) {
+    filter['attribution.consultedProduct'] = new RegExp(
+      escapeRegExp(cleanString(query.consultedProduct)),
+      'i'
+    );
+  }
+  if (cleanString(query.purchasedProduct)) {
+    filter['attribution.purchasedProduct'] = new RegExp(
+      escapeRegExp(cleanString(query.purchasedProduct)),
+      'i'
+    );
   }
   if (cleanString(query.assignedTo)) {
     const requested = cleanString(query.assignedTo);
@@ -126,12 +272,35 @@ function addFilters(filter, query) {
       current.$in?.some((id) => id.toString() === requested);
     filter.assignedTo = allowed ? requested : { $in: [] };
   }
-  if (query.tag) filter.tags = query.tag;
+  if (query.tag) {
+    if (!isValidObjectId(query.tag)) throw badRequest('tag invalido');
+    const tag = await Tag.exists({
+      _id: query.tag,
+      companyId: filter.companyId,
+      status: 'active',
+      ...tagScopeFilter('contact')
+    });
+    if (!tag) throw badRequest('El tag no pertenece a contactos');
+    filter.tags = query.tag;
+  }
+  if (query.list) {
+    if (!isValidObjectId(query.list)) throw badRequest('list invalida');
+    const list = await CrmList.findOne({
+      _id: query.list,
+      companyId: filter.companyId,
+      entityType: 'contact',
+      status: 'active'
+    }).select('memberIds');
+    if (!list) throw badRequest('La lista no pertenece a contactos');
+    filter.lists = list._id;
+  }
   if (query.search) {
-    const expression = new RegExp(escapeRegExp(cleanString(query.search)), 'i');
+    const search = cleanString(query.search);
+    const expression = new RegExp(escapeRegExp(search), 'i');
     filter.$or = [
       { name: expression }, { fullName: expression }, { phone: expression },
-      { secondaryPhone: expression }, { email: expression }
+      { secondaryPhone: expression }, { email: expression },
+      ...(isValidObjectId(search) ? [{ _id: search }] : [])
     ];
   }
   const dateRanges = [
@@ -159,11 +328,27 @@ function addFilters(filter, query) {
   return filter;
 }
 
-const populateContact = (query) => query
-  .populate('assignedTo', 'name email role supervisorId')
-  .populate('tags', 'name color status')
+function readPermissionsForConsent(user) {
+  return ['consent:read', 'consent:read_team', 'consent:read_assigned']
+    .some((permission) => hasUserPermission(user, permission));
+}
+
+const populateContact = (query, user = null) => {
+  if (user && !canReadAttribution(user)) {
+    query.select('-attribution');
+  }
+  return query.populate('assignedTo', 'name email role supervisorId')
+  .populate('tags', 'name color status scope')
+  .populate('lists', 'name description entityType status')
+  .populate('attribution.campaignId', 'name status channel source')
+  .populate('attribution.integrationId', 'name provider status')
+  .populate('attribution.formId', 'name slug status')
+  .populate('attribution.landingPageId', 'name slug status')
+  .populate('attribution.funnelId', 'name slug status')
+  .populate('attribution.funnelStepId', 'name slug status')
   .populate('createdBy updatedBy', 'name email role')
   .populate('notes.createdBy', 'name email role');
+};
 
 router.use(authMiddleware);
 router.use(roleMiddleware('ADMIN', 'SUPERVISOR', 'CALLCENTER'));
@@ -171,21 +356,31 @@ router.use(requireAnyPermission('contacts:manage', 'contacts:read_team', 'contac
 router.use(requireModule('crm'));
 router.use(requireModule('contacts'));
 
-router.get('/export', async (req, res, next) => {
+router.get('/export', requireAnyPermission('contacts:export'), async (req, res, next) => {
   try {
-    const filter = addFilters(await assignedResourceScope(req.user), req.query);
-    const contacts = await populateContact(Contact.find(filter).sort({ createdAt: -1 })).lean();
+    const filter = await addFilters(
+      await assignedResourceScope(req.user),
+      req.query,
+      req.user
+    );
+    const contacts = await populateContact(
+      Contact.find(filter).sort({ createdAt: -1 }),
+      req.user
+    ).lean();
     const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const header = [
       'name', 'phone', 'email', 'source', 'status', 'lifecycleStage', 'assignedTo',
-      'tags', 'lastContactAt', 'nextFollowUpAt', 'createdAt'
+      'tags', 'lastContactAt', 'nextFollowUpAt', 'createdAt', 'globalDnd',
+      'preferredChannel'
     ];
     const rows = contacts.map((contact) => [
       contact.name, contact.phone, contact.email, contact.source, contact.status,
       contact.lifecycleStage, contact.assignedTo?.name,
       contact.tags?.map((tag) => tag.name).join('|'),
       contact.lastContactAt?.toISOString?.() || '', contact.nextFollowUpAt?.toISOString?.() || '',
-      contact.createdAt?.toISOString?.() || ''
+      contact.createdAt?.toISOString?.() || '',
+      contact.communicationPreferences?.globalDnd ? 'true' : 'false',
+      contact.communicationPreferences?.preferredChannel || ''
     ].map(csvCell).join(','));
     await recordActivity({
       user: req.user,
@@ -201,17 +396,23 @@ router.get('/export', async (req, res, next) => {
   }
 });
 
-router.post('/import', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.post('/import', roleMiddleware('ADMIN'), requireAnyPermission('contacts:import'), async (req, res, next) => {
   try {
     if (!Array.isArray(req.body.contacts)) return res.status(400).json({ message: 'contacts debe ser un arreglo JSON' });
     if (req.body.contacts.length > 1000) return res.status(400).json({ message: 'Maximo 1000 contactos por importacion' });
-    const summary = { created: 0, updated: 0, duplicates: 0, errors: [] };
+    const summary = { created: 0, updated: 0, duplicates: 0, suppressed: 0, errors: [] };
+    const importReference = cleanString(req.body.importReference) || `import:${Date.now()}`;
     for (let index = 0; index < req.body.contacts.length; index += 1) {
       try {
         const row = { ...req.body.contacts[index] };
         if (typeof row.tags === 'string') {
           const names = row.tags.split('|').map((name) => name.trim().toLocaleLowerCase('es')).filter(Boolean);
-          const tags = await Tag.find({ companyId: req.user.companyId, normalizedName: { $in: names }, status: 'active' }).select('_id');
+          const tags = await Tag.find({
+            companyId: req.user.companyId,
+            normalizedName: { $in: names },
+            status: 'active',
+            ...tagScopeFilter('contact')
+          }).select('_id');
           row.tags = tags.map((tag) => tag._id);
         }
         if (row.assignedTo && !isValidObjectId(row.assignedTo)) {
@@ -240,15 +441,27 @@ router.post('/import', roleMiddleware('ADMIN'), async (req, res, next) => {
             await existing.save();
             summary.updated += 1;
           }
+          if (await applyImportedCommunication({
+            user: req.user,
+            contact: existing,
+            row,
+            importReference
+          })) summary.suppressed += 1;
           continue;
         }
         await checkPlatformLimit(req.user.distributorId, 'contacts');
-        await Contact.create({
+        const created = await Contact.create({
           ...payload,
           ...tenantFields(req.user),
           createdBy: req.user._id,
           updatedBy: req.user._id
         });
+        if (await applyImportedCommunication({
+          user: req.user,
+          contact: created,
+          row,
+          importReference
+        })) summary.suppressed += 1;
         summary.created += 1;
       } catch (error) {
         summary.errors.push({ row: index + 1, message: error.message });
@@ -269,16 +482,23 @@ router.post('/import', roleMiddleware('ADMIN'), async (req, res, next) => {
 
 router.get('/', async (req, res, next) => {
   try {
-    const filter = addFilters(await assignedResourceScope(req.user), req.query);
+    const filter = await addFilters(
+      await assignedResourceScope(req.user),
+      req.query,
+      req.user
+    );
     const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
-    const contacts = await populateContact(Contact.find(filter).sort({ createdAt: -1 }).limit(limit));
+    const contacts = await populateContact(
+      Contact.find(filter).sort({ createdAt: -1 }).limit(limit),
+      req.user
+    );
     res.json(contacts);
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.post('/', roleMiddleware('ADMIN'), requireAnyPermission('contacts:manage'), async (req, res, next) => {
   try {
     await checkPlatformLimit(req.user.distributorId, 'contacts');
     const contact = await Contact.create({
@@ -294,7 +514,7 @@ router.post('/', roleMiddleware('ADMIN'), async (req, res, next) => {
       metadata: { contactId: contact._id }
     });
     await refreshCompanyOnboarding(req.user.companyId);
-    res.status(201).json(await populateContact(Contact.findById(contact._id)));
+    res.status(201).json(await populateContact(Contact.findById(contact._id), req.user));
   } catch (error) {
     next(error);
   }
@@ -344,7 +564,7 @@ router.get('/:id', async (req, res, next) => {
       _id: req.params.id,
       ...(await assignedResourceScope(req.user)),
       archivedAt: null
-    }));
+    }), req.user);
     if (!contact) return res.status(404).json({ message: 'Contacto no encontrado' });
     res.json(contact);
   } catch (error) {
@@ -387,16 +607,27 @@ async function updateContact(req, res, next) {
     if (previous.nextFollowUpAt !== (contact.nextFollowUpAt?.toISOString() || null)) {
       await recordActivity({ user: req.user, type: 'follow_up_updated', summary: `Seguimiento actualizado: ${contact.name}`, metadata: { contactId: contact._id, from: previous.nextFollowUpAt, to: contact.nextFollowUpAt } });
     }
-    res.json(await populateContact(Contact.findById(contact._id)));
+    res.json(await populateContact(Contact.findById(contact._id), req.user));
   } catch (error) {
     next(error);
   }
 }
 
-router.patch('/:id', updateContact);
-router.put('/:id', updateContact);
+router.patch(
+  '/:id',
+  requireAnyPermission('contacts:manage', 'contacts:update_team', 'contacts:update_assigned'),
+  updateContact
+);
+router.put(
+  '/:id',
+  requireAnyPermission('contacts:manage', 'contacts:update_team', 'contacts:update_assigned'),
+  updateContact
+);
 
-router.post('/:id/notes', async (req, res, next) => {
+router.post(
+  '/:id/notes',
+  requireAnyPermission('notes:manage', 'notes:create_team', 'notes:create_assigned', 'contacts:notes'),
+  async (req, res, next) => {
   try {
     const text = cleanString(req.body.text);
     if (!text) return res.status(400).json({ message: 'El texto de la nota es requerido' });
@@ -413,13 +644,14 @@ router.post('/:id/notes', async (req, res, next) => {
       visibility: req.body.visibility === 'internal' ? 'internal' : 'team'
     });
     await recordActivity({ user: req.user, type: 'note_added', summary: `Nota agregada a ${contact.name}`, metadata: { contactId: contact._id } });
-    res.status(201).json(await populateContact(Contact.findById(contact._id)));
+    res.status(201).json(await populateContact(Contact.findById(contact._id), req.user));
   } catch (error) {
     next(error);
   }
-});
+  }
+);
 
-router.delete('/:id', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.delete('/:id', roleMiddleware('ADMIN'), requireAnyPermission('contacts:manage'), async (req, res, next) => {
   try {
     const contact = await Contact.findOneAndUpdate(
       { _id: req.params.id, companyId: req.user.companyId, archivedAt: null },

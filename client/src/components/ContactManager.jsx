@@ -10,7 +10,11 @@ import {
 import { Badge } from './Badge.jsx';
 import { Button } from './Button.jsx';
 import { Card, CardHeader } from './Card.jsx';
+import { FormField } from './FormField.jsx';
 import { Table } from './Table.jsx';
+
+const fieldClass =
+  'w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100';
 
 export function ContactManager({
   contacts,
@@ -20,6 +24,8 @@ export function ContactManager({
   canDelete = false,
   canEditDetails = false,
   canAssign = false,
+  canUpdate = true,
+  canAddNote = true,
   onCreate,
   onUpdate,
   onDelete,
@@ -103,27 +109,33 @@ export function ContactManager({
       <Card id="contactos">
         <CardHeader title={title} description={description} />
         <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-[1fr_220px]">
-          <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="min-h-10 w-full border-0 bg-transparent text-sm outline-none"
-              placeholder="Buscar por nombre, telefono o email"
-            />
-          </label>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className="rounded-md border border-slate-200 px-3 py-2.5 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            {CONTACT_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <FormField label="Buscar contactos" htmlFor="contact-search">
+            <div className="flex items-center gap-2 rounded-md border border-slate-200 px-3 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100">
+              <Search className="h-4 w-4 text-slate-400" />
+              <input
+                id="contact-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="min-h-10 w-full border-0 bg-transparent text-sm outline-none"
+                placeholder="Nombre, telefono o email"
+              />
+            </div>
+          </FormField>
+          <FormField label="Estado" htmlFor="contact-status-filter">
+            <select
+              id="contact-status-filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className={fieldClass}
+            >
+              <option value="">Todos los estados</option>
+              {CONTACT_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FormField>
         </div>
         <Table
           data={filteredContacts.map((contact) => ({ ...contact, id: contact._id }))}
@@ -171,30 +183,41 @@ export function ContactManager({
             <CardHeader title="Crear contacto" description="Alta real dentro de esta empresa." />
             <form className="space-y-4 p-5" onSubmit={handleCreate}>
               <div className="grid gap-3 sm:grid-cols-2">
-                <input required name="name" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Nombre" />
-                <input required name="phone" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Telefono" />
+                <FormField label="Nombre" htmlFor="contact-create-name" required>
+                  <input id="contact-create-name" required name="name" className={fieldClass} placeholder="Nombre completo" />
+                </FormField>
+                <FormField label="Telefono" htmlFor="contact-create-phone" required>
+                  <input id="contact-create-phone" required name="phone" className={fieldClass} placeholder="+593..." />
+                </FormField>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <input type="email" name="email" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Email" />
-                <input name="source" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Origen" />
+                <FormField label="Email" htmlFor="contact-create-email">
+                  <input id="contact-create-email" type="email" name="email" className={fieldClass} placeholder="contacto@empresa.com" />
+                </FormField>
+                <FormField label="Origen" htmlFor="contact-create-source">
+                  <input id="contact-create-source" name="source" className={fieldClass} placeholder="Ej. Referido" />
+                </FormField>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <select name="status" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" defaultValue="nuevo">
-                  {CONTACT_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-                <select name="assignedTo" className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" defaultValue="">
-                  <option value="">Sin asignar</option>
-                  {agents.map((agent) => (
-                    <option key={agent._id} value={agent._id}>{agent.name}</option>
-                  ))}
-                </select>
+                <FormField label="Estado" htmlFor="contact-create-status">
+                  <select id="contact-create-status" name="status" className={fieldClass} defaultValue="nuevo">
+                    {CONTACT_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Responsable" htmlFor="contact-create-assignee">
+                  <select id="contact-create-assignee" name="assignedTo" className={fieldClass} defaultValue="">
+                    <option value="">Sin asignar</option>
+                    {agents.map((agent) => (
+                      <option key={agent._id} value={agent._id}>{agent.name}</option>
+                    ))}
+                  </select>
+                </FormField>
               </div>
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-500">Proximo seguimiento</span>
-                <input type="datetime-local" name="nextFollowUpAt" className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
-              </label>
+              <FormField label="Proximo seguimiento" htmlFor="contact-create-follow-up">
+                <input id="contact-create-follow-up" type="datetime-local" name="nextFollowUpAt" className={fieldClass} />
+              </FormField>
               <Button className="w-full" type="submit" disabled={busy}>
                 <Plus className="h-4 w-4" />
                 {busy ? 'Guardando...' : 'Crear contacto'}
@@ -214,16 +237,24 @@ export function ContactManager({
           />
           {selectedContact ? (
             <div key={selectedContact._id} className="space-y-5 p-5">
-              <form className="space-y-4" onSubmit={handleUpdate}>
+              {canUpdate ? <form className="space-y-4" onSubmit={handleUpdate}>
                 {canEditDetails ? (
                   <>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input required name="name" defaultValue={selectedContact.name} className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
-                      <input required name="phone" defaultValue={selectedContact.phone} className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" />
+                      <FormField label="Nombre" htmlFor="contact-edit-name" required>
+                        <input id="contact-edit-name" required name="name" defaultValue={selectedContact.name} className={fieldClass} />
+                      </FormField>
+                      <FormField label="Telefono" htmlFor="contact-edit-phone" required>
+                        <input id="contact-edit-phone" required name="phone" defaultValue={selectedContact.phone} className={fieldClass} />
+                      </FormField>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input type="email" name="email" defaultValue={selectedContact.email || ''} className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Email" />
-                      <input name="source" defaultValue={selectedContact.source || ''} className="rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Origen" />
+                      <FormField label="Email" htmlFor="contact-edit-email">
+                        <input id="contact-edit-email" type="email" name="email" defaultValue={selectedContact.email || ''} className={fieldClass} placeholder="contacto@empresa.com" />
+                      </FormField>
+                      <FormField label="Origen" htmlFor="contact-edit-source">
+                        <input id="contact-edit-source" name="source" defaultValue={selectedContact.source || ''} className={fieldClass} placeholder="Ej. Referido" />
+                      </FormField>
                     </div>
                   </>
                 ) : (
@@ -234,22 +265,27 @@ export function ContactManager({
                   </div>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <select name="status" defaultValue={selectedContact.status} className="rounded-md border border-slate-200 px-3 py-2.5 text-sm">
-                    {CONTACT_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  {canAssign ? (
-                    <select
-                      name="assignedTo"
-                      defaultValue={idOf(selectedContact.assignedTo) || ''}
-                      className="rounded-md border border-slate-200 px-3 py-2.5 text-sm"
-                    >
-                      <option value="">Sin asignar</option>
-                      {agents.map((agent) => (
-                        <option key={agent._id} value={agent._id}>{agent.name}</option>
+                  <FormField label="Estado" htmlFor="contact-edit-status">
+                    <select id="contact-edit-status" name="status" defaultValue={selectedContact.status} className={fieldClass}>
+                      {CONTACT_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
                     </select>
+                  </FormField>
+                  {canAssign ? (
+                    <FormField label="Responsable" htmlFor="contact-edit-assignee">
+                      <select
+                        id="contact-edit-assignee"
+                        name="assignedTo"
+                        defaultValue={idOf(selectedContact.assignedTo) || ''}
+                        className={fieldClass}
+                      >
+                        <option value="">Sin asignar</option>
+                        {agents.map((agent) => (
+                          <option key={agent._id} value={agent._id}>{agent.name}</option>
+                        ))}
+                      </select>
+                    </FormField>
                   ) : null}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -278,7 +314,7 @@ export function ContactManager({
                     </Button>
                   ) : null}
                 </div>
-              </form>
+              </form> : null}
 
               <div className="border-t border-slate-100 pt-5">
                 <div className="mb-3 flex items-center gap-2">
@@ -299,13 +335,15 @@ export function ContactManager({
                     <p className="text-sm text-slate-500">Sin notas registradas.</p>
                   )}
                 </div>
-                <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleAddNote}>
-                  <textarea required maxLength="2000" name="text" className="min-h-20 flex-1 rounded-md border border-slate-200 px-3 py-2.5 text-sm" placeholder="Agregar una nota persistente" />
+                {canAddNote ? <form className="flex flex-col items-end gap-3 sm:flex-row" onSubmit={handleAddNote}>
+                  <FormField className="w-full flex-1" label="Nueva nota" htmlFor="contact-note" hint="La nota queda guardada en el historial del contacto.">
+                    <textarea id="contact-note" required maxLength="2000" name="text" className={`${fieldClass} min-h-20`} placeholder="Resultado de la llamada o siguiente paso" />
+                  </FormField>
                   <Button type="submit" disabled={busy}>
                     <StickyNote className="h-4 w-4" />
                     Agregar nota
                   </Button>
-                </form>
+                </form> : null}
               </div>
             </div>
           ) : (

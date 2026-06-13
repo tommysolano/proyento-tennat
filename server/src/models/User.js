@@ -44,6 +44,15 @@ const userSchema = new mongoose.Schema(
       ref: 'User',
       default: null
     },
+    permissions: {
+      type: [String],
+      default: undefined
+    },
+    permissionTemplate: {
+      type: String,
+      default: '',
+      trim: true
+    },
     status: {
       type: String,
       enum: ['active', 'inactive', 'pending'],

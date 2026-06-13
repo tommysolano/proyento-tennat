@@ -272,12 +272,12 @@ export const MODULE_REGISTRY = [
   {
     key: 'integrations',
     name: 'Integraciones',
-    description: 'Conectores externos futuros.',
-    version: '0.1.0',
+    description: 'Webhooks entrantes, mapeo seguro y eventos externos por empresa.',
+    version: '1.0.0',
     enabledByDefault: false,
     requiredPermissions: [],
     requiredPlanFeatures: ['integrations'],
-    status: 'planned'
+    status: 'active'
   }
 ];
 

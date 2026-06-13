@@ -6,6 +6,7 @@ import { Note } from '../../models/Note.js';
 import { Opportunity } from '../../models/Opportunity.js';
 import { PipelineStage } from '../../models/PipelineStage.js';
 import { Tag } from '../../models/Tag.js';
+import { tagScopeFilter } from '../../utils/crmOrganization.js';
 import { Task } from '../../models/Task.js';
 import { User } from '../../models/User.js';
 import { NotificationService } from '../notifications/NotificationService.js';
@@ -120,7 +121,12 @@ export class WorkflowActionExecutor {
       case 'contact.remove_tag': {
         const [contact, tag] = await Promise.all([
           Contact.findOne({ _id: entityId(context, 'contact', config.contactId), companyId, archivedAt: null }),
-          Tag.findOne({ _id: config.tagId, companyId, status: 'active' })
+          Tag.findOne({
+            _id: config.tagId,
+            companyId,
+            status: 'active',
+            ...tagScopeFilter('contact')
+          })
         ]);
         if (!contact || !tag) throw badRequest('Contacto o tag no encontrado en la empresa');
         const from = contact.tags.map(String);

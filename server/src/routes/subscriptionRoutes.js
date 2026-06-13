@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertDistributorModulesAuthorized } from '../core/modules/moduleAccess.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Company } from '../models/Company.js';
@@ -48,6 +49,7 @@ async function validateTenantReferences(companyId, planId, distributorId) {
       status: 400
     });
   }
+  await assertDistributorModulesAuthorized(distributorId, plan.includedModules);
 
   return { company, plan };
 }

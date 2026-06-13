@@ -7,6 +7,7 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Funnel } from '../models/Funnel.js';
 import { FunnelStep } from '../models/FunnelStep.js';
 import { FunnelService } from '../modules/funnels/FunnelService.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
 
 const router = Router();
 const stepRouter = Router();
@@ -20,6 +21,14 @@ function scope(req) {
   return { companyId: req.user.companyId };
 }
 
+function canReadAttribution(user) {
+  return [
+    'attribution:read',
+    'attribution:read_team',
+    'attribution:read_all'
+  ].some((permission) => hasUserPermission(user, permission));
+}
+
 router.use(authMiddleware);
 router.use(roleMiddleware('SUPERADMIN', 'ADMIN', 'SUPERVISOR'));
 router.use(requireModule('funnels'));
@@ -31,7 +40,9 @@ router.get(
     try {
       const filter = scope(req);
       if (req.query.status) filter.status = req.query.status;
-      res.json(await Funnel.find(filter).sort({ createdAt: -1 }).limit(500));
+      let query = Funnel.find(filter).sort({ createdAt: -1 }).limit(500);
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      res.json(await query);
     } catch (error) {
       next(error);
     }
@@ -53,14 +64,14 @@ router.get(
     try {
       const funnel = await Funnel.findOne({ _id: req.params.id, ...scope(req) }).select('_id companyId');
       if (!funnel) return res.status(404).json({ message: 'Funnel no encontrado' });
-      res.json(
-        await FunnelStep.find({ companyId: funnel.companyId, funnelId: funnel._id })
+      let query = FunnelStep.find({ companyId: funnel.companyId, funnelId: funnel._id })
           .populate('landingPageId', 'name slug status')
           .populate('formId', 'name slug status')
           .populate('bookingLinkId', 'title slug status')
           .populate('satisfactionSurveyId', 'name slug status type')
-          .sort({ order: 1 })
-      );
+          .sort({ order: 1 });
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      res.json(await query);
     } catch (error) {
       next(error);
     }
@@ -98,7 +109,9 @@ router.get(
   requireAnyPermission('funnels:manage', 'funnels:read_team', 'funnels:read_all'),
   async (req, res, next) => {
     try {
-      const funnel = await Funnel.findOne({ _id: req.params.id, ...scope(req) });
+      let query = Funnel.findOne({ _id: req.params.id, ...scope(req) });
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      const funnel = await query;
       if (!funnel) return res.status(404).json({ message: 'Funnel no encontrado' });
       res.json(funnel);
     } catch (error) {
@@ -142,7 +155,9 @@ stepRouter.get(
   requireAnyPermission('funnels:manage', 'funnels:read_team', 'funnels:read_all'),
   async (req, res, next) => {
     try {
-      const step = await FunnelStep.findOne({ _id: req.params.id, ...scope(req) });
+      let query = FunnelStep.findOne({ _id: req.params.id, ...scope(req) });
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      const step = await query;
       if (!step) return res.status(404).json({ message: 'Step no encontrado' });
       res.json(step);
     } catch (error) {

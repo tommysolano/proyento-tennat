@@ -29,12 +29,14 @@ import {
   getContacts,
   getConversationMessages,
   getConversations,
+  getContactCommunicationStatus,
   getMediaContentObjectUrl,
   getMessageTemplates,
   getOpportunities,
   getTasks,
   getUsers,
   getWorkflowRuns,
+  evaluateCommunicationPolicy,
   markConversationRead,
   reopenConversation,
   retryMessage,
@@ -52,6 +54,7 @@ import {
   inputClass,
   localDate
 } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
@@ -219,8 +222,8 @@ function AppointmentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <Card className="w-full max-w-xl p-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
+      <Card className="max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto p-5" role="dialog" aria-modal="true">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-lg font-bold text-slate-900">Agendar desde la conversacion</p>
@@ -237,22 +240,32 @@ function AppointmentModal({
         ) : null}
         {!loading && !error && selectedCalendar ? (
           <form className="mt-4 space-y-3" onSubmit={submit}>
-            <select className={inputClass} value={selectedCalendar._id} onChange={(event) => setCalendarId(event.target.value)}>
-              {calendars.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-            </select>
-            <input required name="title" className={inputClass} defaultValue={`Cita con ${conversation.contactId?.name || 'contacto'}`} />
+            <FormField label="Calendario" htmlFor="inbox-appointment-calendar">
+              <select id="inbox-appointment-calendar" className={inputClass} value={selectedCalendar._id} onChange={(event) => setCalendarId(event.target.value)}>
+                {calendars.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Titulo de la cita" htmlFor="inbox-appointment-title" required>
+              <input id="inbox-appointment-title" required name="title" className={inputClass} defaultValue={`Cita con ${conversation.contactId?.name || 'contacto'}`} />
+            </FormField>
             <div className="grid gap-3 sm:grid-cols-2">
-              <input required name="startAt" type="datetime-local" min={localDateTimeInput(new Date())} defaultValue={localDateTimeInput()} className={inputClass} />
-              <input required name="duration" type="number" min="5" max="1440" defaultValue={selectedCalendar.settings?.appointmentDurationMinutes || 30} className={inputClass} />
+              <FormField label="Fecha y hora" htmlFor="inbox-appointment-start" required>
+                <input id="inbox-appointment-start" required name="startAt" type="datetime-local" min={localDateTimeInput(new Date())} defaultValue={localDateTimeInput()} className={inputClass} />
+              </FormField>
+              <FormField label="Duracion (minutos)" htmlFor="inbox-appointment-duration" required>
+                <input id="inbox-appointment-duration" required name="duration" type="number" min="5" max="1440" defaultValue={selectedCalendar.settings?.appointmentDurationMinutes || 30} className={inputClass} />
+              </FormField>
             </div>
-            <select name="assignedTo" className={inputClass} defaultValue="">
-              <option value="">Responsable del calendario</option>
-              {members.map((member) => (
-                <option key={member._id || member} value={member._id || member}>
-                  {member.name || 'Usuario del calendario'}
-                </option>
-              ))}
-            </select>
+            <FormField label="Responsable" htmlFor="inbox-appointment-assignee">
+              <select id="inbox-appointment-assignee" name="assignedTo" className={inputClass} defaultValue="">
+                <option value="">Responsable del calendario</option>
+                {members.map((member) => (
+                  <option key={member._id || member} value={member._id || member}>
+                    {member.name || 'Usuario del calendario'}
+                  </option>
+                ))}
+              </select>
+            </FormField>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={onClose}>Cancelar</Button>
               <Button type="submit" disabled={busy || !members.length}>
@@ -318,6 +331,10 @@ export function InboxPage() {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [quickReplyId, setQuickReplyId] = useState('');
   const [providerTemplateId, setProviderTemplateId] = useState('');
+  const [messageCategory, setMessageCategory] = useState('reply');
+  const [communication, setCommunication] = useState(null);
+  const [communicationLoading, setCommunicationLoading] = useState(false);
+  const [communicationError, setCommunicationError] = useState('');
   const messagesRequest = useRef(0);
   const detailRequest = useRef(0);
 
@@ -437,6 +454,46 @@ export function InboxPage() {
     setDetailLoading(false);
   }, [selected?.contactId?._id, user.role]);
 
+  const loadCommunication = useCallback(async () => {
+    const contactId = selected?.contactId?._id;
+    if (!contactId || !selectedId || selected?.channel === 'internal') {
+      setCommunication(selected?.channel === 'internal'
+        ? { globalDnd: false, policy: { allowed: true, reasonCode: 'INTERNAL' } }
+        : null);
+      setCommunicationError('');
+      setCommunicationLoading(false);
+      return;
+    }
+    setCommunicationLoading(true);
+    setCommunicationError('');
+    try {
+      const [status, policy] = await Promise.all([
+        getContactCommunicationStatus(contactId, {
+          channel: selected.channel,
+          conversationId: selectedId
+        }),
+        evaluateCommunicationPolicy({
+          contactId,
+          channel: selected.channel,
+          conversationId: selectedId,
+          category: messageCategory
+        })
+      ]);
+      setCommunication({ ...status, policy });
+    } catch (requestError) {
+      setCommunication(null);
+      setCommunicationError(requestError.message);
+    } finally {
+      setCommunicationLoading(false);
+    }
+  }, [
+    messageCategory,
+    selected?.channel,
+    selected?.contactId?._id,
+    selected?.lastInboundAt,
+    selectedId
+  ]);
+
   const applyConversation = useCallback((updated) => {
     if (!updated?._id) return;
     setConversations((current) =>
@@ -460,6 +517,7 @@ export function InboxPage() {
     markConversationRead(selectedId).then(applyConversation).catch(() => null);
   }, [applyConversation, loadMessages, selectedId, setSearchParams]);
   useEffect(() => { loadDetail(); }, [loadDetail]);
+  useEffect(() => { loadCommunication(); }, [loadCommunication]);
   useEffect(() => {
     const disconnect = connectRealtime(
       (realtimeEvent) => {
@@ -496,12 +554,23 @@ export function InboxPage() {
     () => templatesForConversation(templates, selected?.channel),
     [selected?.channel, templates]
   );
-  const dnd = contactDndStatus(selected?.contactId);
+  const legacyDnd = contactDndStatus(selected?.contactId);
+  const dnd = {
+    configured: communication ? true : legacyDnd.configured,
+    active: communication?.globalDnd ?? legacyDnd.active
+  };
   const selectedTemplateId = providerTemplateId || quickReplyId;
   const composerBlocked =
     !selected ||
     ['resolved', 'closed', 'archived'].includes(selected.status) ||
-    (selected.channel !== 'internal' && dnd.active);
+    (
+      selected.channel !== 'internal' &&
+      (
+        communicationLoading ||
+        Boolean(communicationError) ||
+        communication?.policy?.allowed === false
+      )
+    );
 
   async function mutateConversation(action, success, { remove = false } = {}) {
     setBusy(true);
@@ -538,7 +607,10 @@ export function InboxPage() {
       fileSize: messageFile?.size || 0,
       conversationStatus: selected?.status,
       dndActive: dnd.active,
-      channel: selected?.channel
+      channel: selected?.channel,
+      category: messageCategory,
+      policyAllowed: communication?.policy?.allowed !== false,
+      policyReason: communication?.policy?.reasonMessage
     });
     if (draftError) {
       setComposerError(draftError);
@@ -550,10 +622,11 @@ export function InboxPage() {
     setNotice('');
     try {
       const sent = messageFile
-        ? await uploadConversationMedia(selectedId, messageFile, messageText)
+        ? await uploadConversationMedia(selectedId, messageFile, messageText, messageCategory)
         : await sendMessage(selectedId, {
             text: messageText,
             type: messageType,
+            category: messageCategory,
             templateId: selectedTemplateId || undefined,
             media: mediaUrl ? { url: mediaUrl, status: 'available' } : undefined
           });
@@ -810,6 +883,8 @@ export function InboxPage() {
                       <p>Estado: <strong>{selected.contactId?.status || '-'}</strong></p>
                       <p>Ciclo: <strong>{selected.contactId?.lifecycleStage || '-'}</strong></p>
                       <p>DND: <strong className={dnd.active ? 'text-rose-700' : ''}>{dnd.active ? 'Activo' : dnd.configured ? 'Inactivo' : 'No configurado'}</strong></p>
+                      <p>Consentimiento: <strong>{communication?.consents?.[communication?.policy?.evaluatedChannel]?.status || 'unknown'}</strong></p>
+                      {communication?.policy?.reasonCode ? <p>Politica: <strong>{communication.policy.reasonCode}</strong></p> : null}
                       <p>Tags: {(selected.contactId?.tags || []).map((tag) => tag.name).join(', ') || 'Sin tags'}</p>
                     </div>
                   </DetailSection>
@@ -854,7 +929,8 @@ export function InboxPage() {
                           <span>{message.status}</span>
                           {message.status === 'failed' ? <button className="font-bold underline" onClick={() => runMessageAction(() => retryMessage(message._id), 'Reintento creado.')}>Reintentar</button> : null}
                         </div>
-                        {message.error ? <p className="mt-1 text-xs font-semibold text-rose-200">{message.error}</p> : null}
+                        {message.errorMessage || message.error ? <p className="mt-1 text-xs font-semibold text-rose-200">{message.errorMessage || message.error}</p> : null}
+                        {message.reasonCode ? <p className="mt-1 text-[11px] opacity-80">{message.reasonCode}{message.attempts ? ` · intento ${message.attempts}` : ''}</p> : null}
                       </div>
                     </div>
                   )) : null}
@@ -879,7 +955,10 @@ export function InboxPage() {
                         const template = templateGroups.quickReplies.find((item) => item._id === id);
                         setQuickReplyId(id);
                         setProviderTemplateId('');
-                        if (template) setMessageText(template.content);
+                        if (template) {
+                          setMessageText(template.content);
+                          setMessageCategory(template.messageCategory || 'reply');
+                        }
                       }}
                     >
                       <option value="">Respuesta rapida (opcional)</option>
@@ -893,6 +972,10 @@ export function InboxPage() {
                         onChange={(event) => {
                           setProviderTemplateId(event.target.value);
                           setQuickReplyId('');
+                          const template = templateGroups.providerTemplates.find(
+                            (item) => item._id === event.target.value
+                          );
+                          if (template) setMessageCategory(template.messageCategory || 'commercial');
                         }}
                       >
                         <option value="">Plantilla del proveedor (opcional)</option>
@@ -906,14 +989,24 @@ export function InboxPage() {
                       <option value="audio">Audio por URL publica</option>
                       <option value="video">Video por URL publica</option>
                     </select>
+                    <select className={inputClass} value={messageCategory} onChange={(event) => setMessageCategory(event.target.value)}>
+                      <option value="reply">Respuesta a conversacion</option>
+                      <option value="commercial">Comercial</option>
+                      <option value="transactional">Transaccional</option>
+                      <option value="operational">Operativo</option>
+                    </select>
                     <input value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} type="url" className={inputClass} placeholder="URL publica del adjunto (opcional)" />
                     <input key={fileInputKey} type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,video/mp4,application/pdf" className={inputClass} onChange={(event) => setMessageFile(event.target.files?.[0] || null)} />
                     <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} className={`${inputClass} min-h-20`} placeholder="Escribe una respuesta. Una respuesta rapida puede completar el contenido." />
                     {composerBlocked ? (
                       <p className="rounded-md bg-amber-50 p-2 text-xs font-medium text-amber-800">
-                        {dnd.active && selected.channel !== 'internal'
-                          ? 'El contacto tiene No molestar activo.'
-                          : 'La conversacion debe estar abierta para enviar mensajes.'}
+                        {communicationLoading
+                          ? 'Evaluando consentimiento y reglas de envio...'
+                          : communicationError
+                            ? `No se pudo validar el envio: ${communicationError}`
+                            : communication?.policy?.reasonMessage ||
+                              'La conversacion debe estar abierta para enviar mensajes.'}
+                        {communicationError ? <button type="button" className="ml-2 font-bold underline" onClick={loadCommunication}>Reintentar</button> : null}
                       </p>
                     ) : null}
                     {composerError ? <p className="text-xs font-medium text-rose-700">{composerError}</p> : null}

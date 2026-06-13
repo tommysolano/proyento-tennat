@@ -30,6 +30,7 @@ import { ChannelSettingsPage } from '../pages/inbox/ChannelSettingsPage.jsx';
 import { MessageTemplatesPage } from '../pages/inbox/MessageTemplatesPage.jsx';
 import { NotificationsPage } from '../pages/inbox/NotificationsPage.jsx';
 import { RoutingRulesPage } from '../pages/inbox/RoutingRulesPage.jsx';
+import { CommunicationSettingsPage } from '../pages/inbox/CommunicationSettingsPage.jsx';
 import { OpsPage } from '../pages/ops/OpsPage.jsx';
 import { CalendarPage } from '../pages/calendar/CalendarPage.jsx';
 import { CalendarSettingsPage } from '../pages/calendar/CalendarSettingsPage.jsx';
@@ -54,6 +55,11 @@ import {
   FunnelsPage,
   PublicFunnelPage
 } from '../pages/marketing/FunnelsPage.jsx';
+import {
+  CampaignsPage,
+  IntegrationsPage,
+  MarketingReportsPage
+} from '../pages/marketing/MarketingOperationsPage.jsx';
 import {
   ReputationPage,
   ReviewRequestsPage,
@@ -208,6 +214,10 @@ export const router = createBrowserRouter([
               { path: '/marketing/submissions', element: <FormsPage mode="submissions" /> },
               { path: '/marketing/funnels', element: <FunnelsPage /> }
               ,
+              { path: '/marketing/campaigns', element: <CampaignsPage /> },
+              { path: '/marketing/integrations', element: <IntegrationsPage /> },
+              { path: '/marketing/reports', element: <MarketingReportsPage /> },
+              { path: '/inbox/communication-policy', element: <CommunicationSettingsPage /> },
               { path: '/reputation/referrals', element: <ReferralsPage /> }
             ]
           },

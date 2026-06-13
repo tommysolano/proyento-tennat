@@ -1,4 +1,4 @@
-import { CheckCircle2, ContactRound, ListTodo, MessageSquare, PhoneCall, Target, TimerReset, Trophy } from 'lucide-react';
+import { CheckCircle2, ContactRound, Headphones, ListTodo, MessageSquare, PhoneCall, Target, TimerReset, Trophy } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -9,14 +9,31 @@ import {
   getInboxMetrics,
   updateContact
 } from '../../api.js';
+import { LoadingState, ModuleUnavailableState } from '../../components/AsyncState.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { ContactManager } from '../../components/ContactManager.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { formatDate } from '../../utils/contacts.js';
 
 export function CallCenterDashboard() {
+  const { access } = useAuth();
+  const permissions = new Set(access.permissions || []);
+  const modules = new Set(access.modules || []);
+  const canUseContacts =
+    modules.has('crm') &&
+    modules.has('contacts') &&
+    permissions.has('contacts:read_assigned');
+  const canUseInbox =
+    modules.has('conversations') &&
+    modules.has('inbox') &&
+    permissions.has('conversations:read_assigned');
+  const canReadActivity = permissions.has('activity:read_self');
+  const canUpdateContacts = permissions.has('contacts:update_assigned');
+  const canAddContactNotes =
+    permissions.has('contacts:notes') || permissions.has('notes:create_assigned');
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
   const [crmSummary, setCrmSummary] = useState(null);
@@ -25,27 +42,43 @@ export function CallCenterDashboard() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [moduleWarning, setModuleWarning] = useState('');
 
   const loadDashboard = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     setError('');
+    setModuleWarning('');
     try {
-      const [contactData, activityData, crmData, inboxData] = await Promise.all([
-        getContacts(),
-        getActivityLogs(),
-        getCrmDashboard(),
-        getInboxMetrics()
-      ]);
+      const optionalErrors = [];
+      const activityData = canReadActivity
+        ? await getActivityLogs().catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return [];
+          })
+        : [];
+      const [contactData, crmData] = canUseContacts
+        ? await Promise.all([getContacts(), getCrmDashboard()]).catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return [[], null];
+          })
+        : [[], null];
+      const inboxData = canUseInbox
+        ? await getInboxMetrics().catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return null;
+          })
+        : null;
       setContacts(contactData);
       setActivities(activityData);
       setCrmSummary(crmData);
       setInboxSummary(inboxData);
+      setModuleWarning([...new Set(optionalErrors)].join(' '));
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       if (showLoader) setLoading(false);
     }
-  }, []);
+  }, [canReadActivity, canUseContacts, canUseInbox]);
 
   useEffect(() => {
     loadDashboard();
@@ -83,9 +116,7 @@ export function CallCenterDashboard() {
         title="Dashboard del call center"
         description="Cargando contactos asignados..."
       >
-        <Card className="p-8 text-center text-sm text-slate-500">
-          Cargando datos desde la API...
-        </Card>
+        <LoadingState label="Cargando contactos y actividad asignada..." />
       </PageShell>
     );
   }
@@ -106,14 +137,19 @@ export function CallCenterDashboard() {
           {error}
         </div>
       ) : null}
+      {moduleWarning ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          Algunos modulos no pudieron cargarse: {moduleWarning}
+        </div>
+      ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      {canUseContacts ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Asignados" value={contacts.length} helper="Solo tu cartera" icon={ContactRound} tone="cyan" />
         <MetricCard label="Nuevos" value={contacts.filter((contact) => contact.status === 'nuevo').length} helper="Pendientes de primer contacto" icon={TimerReset} tone="amber" />
         <MetricCard label="Contactados" value={contacts.filter((contact) => contact.status === 'contactado').length} helper="Gestion iniciada" icon={PhoneCall} tone="cyan" />
         <MetricCard label="Seguimiento" value={contacts.filter((contact) => contact.status === 'seguimiento').length} helper={`${followUps.length} con fecha programada`} icon={Target} tone="emerald" />
         <MetricCard label="Cerrados" value={contacts.filter((contact) => contact.status === 'cerrado').length} helper="Gestion finalizada" icon={CheckCircle2} tone="slate" />
-      </div>
+      </div> : null}
       {crmSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Mis oportunidades" value={crmSummary.opportunitiesOpen} helper="Abiertas" icon={Target} tone="cyan" />
         <MetricCard label="Ganadas" value={crmSummary.opportunitiesWon} helper="Oportunidades propias" icon={Trophy} tone="emerald" />
@@ -145,16 +181,25 @@ export function CallCenterDashboard() {
         />
       </Card> : null}
 
-      <ContactManager
-        contacts={contacts}
-        busy={busy}
-        onUpdate={handleUpdateContact}
-        onAddNote={handleAddNote}
-        title="Mis contactos asignados"
-        description="Busqueda, filtros y ficha operativa con permisos limitados."
-      />
+      {canUseContacts ? (
+        <ContactManager
+          contacts={contacts}
+          busy={busy}
+          canUpdate={canUpdateContacts}
+          canAddNote={canAddContactNotes}
+          onUpdate={handleUpdateContact}
+          onAddNote={handleAddNote}
+          title="Mis contactos asignados"
+          description="Busqueda, filtros y ficha operativa con permisos limitados."
+        />
+      ) : (
+        <ModuleUnavailableState
+          title="Contactos no disponibles"
+          description="Tu acceso no incluye contactos asignados o el modulo CRM no esta activo."
+        />
+      )}
 
-      <Card id="actividad">
+      {canReadActivity ? <Card id="actividad">
         <CardHeader title="Mi actividad" description="Cambios de estado, notas y seguimientos registrados por la API." />
         <Table
           data={activities.map((item) => ({
@@ -169,7 +214,7 @@ export function CallCenterDashboard() {
             { key: 'summary', header: 'Resumen' }
           ]}
         />
-      </Card>
+      </Card> : null}
     </PageShell>
   );
 }

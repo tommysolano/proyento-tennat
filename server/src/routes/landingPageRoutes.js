@@ -6,6 +6,7 @@ import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { LandingPage } from '../models/LandingPage.js';
 import { FunnelService } from '../modules/funnels/FunnelService.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
 
 const router = Router();
 
@@ -16,6 +17,12 @@ function scope(req) {
       : {};
   }
   return { companyId: req.user.companyId };
+}
+
+function canReadAttribution(user) {
+  return ['attribution:read', 'attribution:read_all'].some((permission) =>
+    hasUserPermission(user, permission)
+  );
 }
 
 router.use(authMiddleware);
@@ -29,7 +36,9 @@ router.get(
     try {
       const filter = scope(req);
       if (req.query.status) filter.status = req.query.status;
-      res.json(await LandingPage.find(filter).sort({ createdAt: -1 }).limit(500));
+      let query = LandingPage.find(filter).sort({ createdAt: -1 }).limit(500);
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      res.json(await query);
     } catch (error) {
       next(error);
     }
@@ -65,9 +74,11 @@ router.get(
   requireAnyPermission('landing_pages:manage', 'landing_pages:read_all'),
   async (req, res, next) => {
     try {
-      const page = await LandingPage.findOne({ _id: req.params.id, ...scope(req) })
+      let query = LandingPage.findOne({ _id: req.params.id, ...scope(req) })
         .populate('settings.associatedFormId', 'name slug status')
         .populate('settings.associatedBookingLinkId', 'title slug status publicEnabled');
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      const page = await query;
       if (!page) return res.status(404).json({ message: 'Landing page no encontrada' });
       res.json(page);
     } catch (error) {

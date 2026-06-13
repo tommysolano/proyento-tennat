@@ -29,12 +29,14 @@ import {
   updatePlatformSubscription
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { LoadingState } from '../../components/AsyncState.jsx';
 import {
   BillingPlanSummary,
   CurrencySelect
 } from '../../components/BillingPlanSummary.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { FormField, FormSection } from '../../components/FormField.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
@@ -53,7 +55,41 @@ const PLATFORM_MODULES = [
   'core', 'crm', 'contacts', 'calendar', 'bookings', 'automations',
   'workflows', 'forms', 'surveys', 'landing_pages', 'funnels',
   'reputation', 'reviews', 'testimonials', 'coupons', 'referrals', 'loyalty',
-  'billing', 'reporting'
+  'billing', 'reporting', 'integrations'
+];
+
+const platformPlanLimits = [
+  { name: 'companies', label: 'Empresas', hint: 'Cantidad maxima de empresas que puede crear el distribuidor.' },
+  { name: 'users', label: 'Usuarios' },
+  { name: 'contacts', label: 'Contactos' },
+  { name: 'modules', label: 'Modulos' },
+  { name: 'storageMb', label: 'Almacenamiento general (MB)' },
+  { name: 'messages', label: 'Mensajes', hint: 'Cantidad maxima de mensajes permitidos.' },
+  { name: 'whatsappMessages', label: 'Mensajes WhatsApp' },
+  { name: 'mediaStorageMb', label: 'Media (MB)', hint: 'Espacio maximo para archivos multimedia.' },
+  { name: 'mediaFiles', label: 'Archivos multimedia', hint: 'Cantidad maxima de archivos permitidos.' },
+  { name: 'conversations', label: 'Conversaciones' },
+  { name: 'calendars', label: 'Calendarios' },
+  { name: 'appointments', label: 'Citas por mes' },
+  { name: 'bookingLinks', label: 'Enlaces de reserva' },
+  { name: 'workflows', label: 'Workflows' },
+  { name: 'workflowRunsPerMonth', label: 'Ejecuciones de workflow por mes' },
+  { name: 'workflowActionsPerMonth', label: 'Acciones de workflow por mes' },
+  { name: 'forms', label: 'Formularios' },
+  { name: 'formSubmissionsPerMonth', label: 'Respuestas de formularios por mes', hint: 'Envios recibidos entre todos los formularios.' },
+  { name: 'landingPages', label: 'Landing pages' },
+  { name: 'funnels', label: 'Funnels' },
+  { name: 'funnelSteps', label: 'Pasos de funnel' },
+  { name: 'pageViewsPerMonth', label: 'Vistas de pagina por mes' },
+  { name: 'reviewRequestsPerMonth', label: 'Solicitudes de resena por mes' },
+  { name: 'reviews', label: 'Resenas almacenadas', hint: 'Cantidad maxima de resenas guardadas.' },
+  { name: 'reviewWidgets', label: 'Widgets de resenas' },
+  { name: 'surveys', label: 'Encuestas de satisfaccion' },
+  { name: 'surveyResponsesPerMonth', label: 'Respuestas de encuesta por mes' },
+  { name: 'coupons', label: 'Cupones' },
+  { name: 'couponRedemptionsPerMonth', label: 'Canjes de cupon por mes' },
+  { name: 'referralPrograms', label: 'Programas de referidos' },
+  { name: 'referralsPerMonth', label: 'Referidos por mes' }
 ];
 
 function money(value, currency = 'USD') {
@@ -474,7 +510,7 @@ export function SuperAdminDashboard({ section = 'all' }) {
         title="Panel del programador"
         description="Cargando operaciones SaaS desde la API..."
       >
-        <Card className="p-8 text-center text-sm text-slate-500">Cargando plataforma...</Card>
+        <LoadingState label="Cargando distribuidores, planes y operacion global..." />
       </PageShell>
     );
   }
@@ -557,18 +593,36 @@ export function SuperAdminDashboard({ section = 'all' }) {
           <Card>
             <CardHeader title="Crear distribuidor" description="Crea el tenant y su usuario DISTRIBUTOR en un solo flujo." />
             <form className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreateDistributor}>
-              <input required name="name" className={inputClass} placeholder="Nombre comercial" />
-              <input required name="slug" className={inputClass} placeholder="slug-unico" />
-              <input required name="ownerName" className={inputClass} placeholder="Nombre del owner" />
-              <input required type="email" name="email" className={inputClass} placeholder="Email comercial" />
-              <input name="phone" className={inputClass} placeholder="Telefono" />
-              <input name="region" className={inputClass} placeholder="Region" defaultValue="LatAm" />
-              <input required type="email" name="userEmail" className={inputClass} placeholder="Email de acceso" />
-              <input required minLength="8" type="password" name="password" className={inputClass} placeholder="Password temporal" />
-              <select name="status" className={inputClass}>
-                <option value="trial">Trial</option>
-                <option value="active">Activo</option>
-              </select>
+              <FormField label="Nombre comercial" htmlFor="distributor-name" required>
+                <input id="distributor-name" required name="name" className={inputClass} placeholder="Ej. Partner Ecuador" />
+              </FormField>
+              <FormField label="Slug" htmlFor="distributor-slug" hint="Identificador unico en minusculas y con guiones." required>
+                <input id="distributor-slug" required name="slug" className={inputClass} placeholder="partner-ecuador" />
+              </FormField>
+              <FormField label="Nombre del responsable" htmlFor="distributor-owner" required>
+                <input id="distributor-owner" required name="ownerName" className={inputClass} placeholder="Nombre completo" />
+              </FormField>
+              <FormField label="Email comercial" htmlFor="distributor-email" required>
+                <input id="distributor-email" required type="email" name="email" className={inputClass} placeholder="ventas@partner.com" />
+              </FormField>
+              <FormField label="Telefono" htmlFor="distributor-phone">
+                <input id="distributor-phone" name="phone" className={inputClass} placeholder="+593..." />
+              </FormField>
+              <FormField label="Region" htmlFor="distributor-region">
+                <input id="distributor-region" name="region" className={inputClass} placeholder="Region" defaultValue="LatAm" />
+              </FormField>
+              <FormField label="Email de acceso" htmlFor="distributor-user-email" hint="Credencial del usuario DISTRIBUTOR." required>
+                <input id="distributor-user-email" required type="email" name="userEmail" className={inputClass} placeholder="admin@partner.com" />
+              </FormField>
+              <FormField label="Contrasena temporal" htmlFor="distributor-password" hint="Minimo 8 caracteres." required>
+                <input id="distributor-password" required minLength="8" type="password" name="password" className={inputClass} placeholder="Minimo 8 caracteres" />
+              </FormField>
+              <FormField label="Estado inicial" htmlFor="distributor-status">
+                <select id="distributor-status" name="status" className={inputClass}>
+                  <option value="trial">Trial</option>
+                  <option value="active">Activo</option>
+                </select>
+              </FormField>
               <Button className="md:col-span-2 xl:col-span-3" type="submit" disabled={Boolean(busy)}>
                 <Plus className="h-4 w-4" />
                 {busy === 'distributor-create' ? 'Creando...' : 'Crear distribuidor y usuario'}
@@ -615,57 +669,52 @@ export function SuperAdminDashboard({ section = 'all' }) {
           <Card>
             <CardHeader title="Crear plan interno" description="Limites aplicados por el backend." />
             <form className="space-y-3 p-5" onSubmit={handleCreatePlan}>
-              <input required name="name" className={inputClass} placeholder="Nombre" />
-              <input required name="code" className={inputClass} placeholder="codigo-unico" />
-              <textarea name="description" className={inputClass} placeholder="Descripcion" />
-              <div className="grid grid-cols-2 gap-3">
-                <input required min="0" step="0.01" type="number" name="price" className={inputClass} placeholder="Precio" />
-                <CurrencySelect name="currency" className={inputClass} defaultValue="USD" />
-              </div>
-              <select name="billingCycle" className={inputClass}>
-                <option value="monthly">Mensual</option>
-                <option value="yearly">Anual</option>
-              </select>
-              <div className="grid grid-cols-2 gap-3">
-                <input required min="0" type="number" name="companies" title="Cantidad maxima de empresas permitidas al distribuidor." className={inputClass} placeholder="Empresas" />
-                <input required min="0" type="number" name="users" className={inputClass} placeholder="Usuarios" />
-                <input required min="0" type="number" name="contacts" className={inputClass} placeholder="Contactos" />
-                <input required min="0" type="number" name="modules" className={inputClass} placeholder="Modulos" />
-                <input required min="0" type="number" name="storageMb" className={inputClass} placeholder="Storage MB" />
-                <input required min="0" type="number" name="messages" title="Cantidad maxima de mensajes permitidos." className={inputClass} placeholder="Mensajes" />
-                <input required min="0" type="number" name="whatsappMessages" className={inputClass} placeholder="Mensajes WhatsApp" />
-                <input required min="0" type="number" name="mediaStorageMb" title="Espacio maximo para archivos multimedia, medido en MB." className={inputClass} placeholder="Media MB" />
-                <input required min="0" type="number" name="mediaFiles" title="Cantidad maxima de archivos multimedia." className={inputClass} placeholder="Archivos media" />
-                <input required min="0" type="number" name="conversations" className={inputClass} placeholder="Conversaciones" />
-                <input required min="0" type="number" name="calendars" className={inputClass} placeholder="Calendarios" />
-                <input required min="0" type="number" name="appointments" className={inputClass} placeholder="Citas/mes" />
-                <input required min="0" type="number" name="bookingLinks" className={inputClass} placeholder="Enlaces de reserva" />
-                <input required min="0" type="number" name="workflows" className={inputClass} placeholder="Workflows" />
-                <input required min="0" type="number" name="workflowRunsPerMonth" className={inputClass} placeholder="Runs workflow/mes" />
-                <input required min="0" type="number" name="workflowActionsPerMonth" className={inputClass} placeholder="Acciones workflow/mes" />
-                <input required min="0" type="number" name="forms" className={inputClass} placeholder="Formularios" />
-                <input required min="0" type="number" name="formSubmissionsPerMonth" title="Respuestas de formularios permitidas por mes." className={inputClass} placeholder="Submissions/mes" />
-                <input required min="0" type="number" name="landingPages" className={inputClass} placeholder="Landing pages" />
-                <input required min="0" type="number" name="funnels" className={inputClass} placeholder="Funnels" />
-                <input required min="0" type="number" name="funnelSteps" className={inputClass} placeholder="Steps de funnel" />
-                <input required min="0" type="number" name="pageViewsPerMonth" className={inputClass} placeholder="Page views/mes" />
-                <input required min="0" type="number" name="reviewRequestsPerMonth" className={inputClass} placeholder="Solicitudes review/mes" />
-                <input required min="0" type="number" name="reviews" title="Cantidad maxima de reviews almacenadas." className={inputClass} placeholder="Reviews" />
-                <input required min="0" type="number" name="reviewWidgets" className={inputClass} placeholder="Widgets review" />
-                <input required min="0" type="number" name="surveys" className={inputClass} placeholder="Encuestas satisfaccion" />
-                <input required min="0" type="number" name="surveyResponsesPerMonth" className={inputClass} placeholder="Respuestas encuesta/mes" />
-                <input required min="0" type="number" name="coupons" className={inputClass} placeholder="Cupones" />
-                <input required min="0" type="number" name="couponRedemptionsPerMonth" className={inputClass} placeholder="Redenciones/mes" />
-                <input required min="0" type="number" name="referralPrograms" className={inputClass} placeholder="Programas referidos" />
-                <input required min="0" type="number" name="referralsPerMonth" className={inputClass} placeholder="Referidos/mes" />
-              </div>
-              <fieldset className="rounded-lg border border-slate-200 p-3">
-                <legend className="px-1 text-xs font-semibold text-slate-600">
-                  Modulos incluidos
-                </legend>
+              <FormSection step="1" title="Informacion basica" description="Define la identidad, precio y ciclo del plan de plataforma.">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField label="Nombre" htmlFor="platform-plan-name" required>
+                    <input id="platform-plan-name" required name="name" className={inputClass} placeholder="Ej. Partner Pro" />
+                  </FormField>
+                  <FormField label="Codigo unico" htmlFor="platform-plan-code" hint="Usa minusculas, numeros y guiones." required>
+                    <input id="platform-plan-code" required name="code" className={inputClass} placeholder="partner-pro" />
+                  </FormField>
+                  <FormField label="Precio" htmlFor="platform-plan-price" required>
+                    <input id="platform-plan-price" required min="0" step="0.01" type="number" name="price" className={inputClass} placeholder="0.00" />
+                  </FormField>
+                  <FormField label="Moneda" htmlFor="platform-plan-currency">
+                    <CurrencySelect id="platform-plan-currency" name="currency" className={inputClass} defaultValue="USD" />
+                  </FormField>
+                  <FormField label="Ciclo de facturacion" htmlFor="platform-plan-cycle">
+                    <select id="platform-plan-cycle" name="billingCycle" className={inputClass}>
+                      <option value="monthly">Mensual</option>
+                      <option value="yearly">Anual</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Descripcion" htmlFor="platform-plan-description" className="sm:col-span-2">
+                    <textarea id="platform-plan-description" name="description" className={`${inputClass} min-h-20`} placeholder="Describe el alcance comercial del plan." />
+                  </FormField>
+                </div>
+              </FormSection>
+              <FormSection step="2" title="Limites operativos" description="El valor 0 mantiene el limite sin tope configurado.">
+                <div className="grid grid-cols-2 gap-3">
+                  {platformPlanLimits.map((field) => (
+                    <FormField key={field.name} label={field.label} htmlFor={`platform-plan-${field.name}`} hint={field.hint} required>
+                      <input
+                        id={`platform-plan-${field.name}`}
+                        required
+                        min="0"
+                        type="number"
+                        name={field.name}
+                        className={inputClass}
+                        placeholder="0"
+                      />
+                    </FormField>
+                  ))}
+                </div>
+              </FormSection>
+              <FormSection step="3" title="Modulos incluidos" description="Estos modulos definen el techo disponible para el distribuidor.">
                 <div className="grid gap-2 sm:grid-cols-2">
                   {PLATFORM_MODULES.map((moduleKey) => (
-                    <label key={moduleKey} className="flex items-center gap-2 text-xs text-slate-600">
+                    <label key={moduleKey} className="flex items-center gap-2 rounded-md border border-slate-200 p-2 text-xs text-slate-600">
                       <input
                         type="checkbox"
                         checked={platformPlanModules.includes(moduleKey)}
@@ -681,8 +730,10 @@ export function SuperAdminDashboard({ section = 'all' }) {
                     </label>
                   ))}
                 </div>
-              </fieldset>
-              <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
+              </FormSection>
+              <FormSection step="4" title="Revision" description="El plan se crea activo y podra asignarse a distribuidores.">
+                <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear plan</Button>
+              </FormSection>
             </form>
           </Card>
         </div>
@@ -721,21 +772,31 @@ export function SuperAdminDashboard({ section = 'all' }) {
           <Card>
             <CardHeader title="Asignar plan" description="Solo una suscripcion vigente por distribuidor." />
             <form className="space-y-3 p-5" onSubmit={handleCreateSubscription}>
-              <select required name="distributorId" defaultValue="" className={inputClass}>
-                <option value="" disabled>Selecciona distribuidor</option>
-                {distributors.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-              </select>
-              <select required name="platformPlanId" value={selectedPlatformPlanId} onChange={(event) => setSelectedPlatformPlanId(event.target.value)} className={inputClass}>
-                <option value="" disabled>Selecciona plan</option>
-                {plans.filter((item) => item.status === 'active').map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-              </select>
-              <select name="status" value={platformSubscriptionStatus} onChange={(event) => setPlatformSubscriptionStatus(event.target.value)} className={inputClass}>
-                <option value="trial">Trial</option>
-                <option value="active">Activa</option>
-              </select>
-              <label className="block text-xs font-semibold text-slate-500">Inicio<input type="datetime-local" name="startsAt" defaultValue={localDateTimeInput()} className={`${inputClass} mt-1`} /></label>
+              <FormField label="Distribuidor" htmlFor="platform-subscription-distributor" required>
+                <select id="platform-subscription-distributor" required name="distributorId" defaultValue="" className={inputClass}>
+                  <option value="" disabled>Selecciona distribuidor</option>
+                  {distributors.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Plan de plataforma" htmlFor="platform-subscription-plan" required>
+                <select id="platform-subscription-plan" required name="platformPlanId" value={selectedPlatformPlanId} onChange={(event) => setSelectedPlatformPlanId(event.target.value)} className={inputClass}>
+                  <option value="" disabled>Selecciona plan</option>
+                  {plans.filter((item) => item.status === 'active').map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Estado inicial" htmlFor="platform-subscription-status" hint="El trial no genera facturas hasta que la suscripcion se active.">
+                <select id="platform-subscription-status" name="status" value={platformSubscriptionStatus} onChange={(event) => setPlatformSubscriptionStatus(event.target.value)} className={inputClass}>
+                  <option value="trial">Trial</option>
+                  <option value="active">Activa</option>
+                </select>
+              </FormField>
+              <FormField label="Inicio" htmlFor="platform-subscription-start">
+                <input id="platform-subscription-start" type="datetime-local" name="startsAt" defaultValue={localDateTimeInput()} className={inputClass} />
+              </FormField>
               {platformSubscriptionStatus === 'trial' ? (
-                <label title="Durante el trial no se pueden generar facturas." className="block text-xs font-semibold text-slate-500">Fin de trial<input required type="datetime-local" name="trialEndsAt" defaultValue={addDaysDateTimeInput(14)} className={`${inputClass} mt-1`} /></label>
+                <FormField label="Fin de trial" htmlFor="platform-subscription-trial-end" hint="Durante el trial no se pueden generar facturas." required>
+                  <input id="platform-subscription-trial-end" required type="datetime-local" name="trialEndsAt" defaultValue={addDaysDateTimeInput(14)} className={inputClass} />
+                </FormField>
               ) : null}
               <BillingPlanSummary plan={selectedPlatformPlan} trial={platformSubscriptionStatus === 'trial'} />
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Crear suscripcion</Button>
@@ -802,35 +863,61 @@ export function SuperAdminDashboard({ section = 'all' }) {
             <Card>
               <CardHeader title="Crear factura manual" description="Subtotal y total se calculan en servidor." />
               <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={handleCreateInvoice}>
-                <select required name="subscriptionId" value={invoiceSubscriptionId} onChange={(event) => handleInvoiceSubscription(event.target.value)} className={inputClass}>
-                  <option value="" disabled>Suscripcion activa</option>
-                  {subscriptions.filter((item) => item.status === 'active').map((item) => <option key={item._id} value={item._id}>{item.distributorId?.name} - {item.platformPlanId?.name}</option>)}
-                </select>
-                <input value={selectedInvoiceSubscription?.distributorId?.name || ''} readOnly className={inputClass} placeholder="Distribuidor vinculado" />
-                <input required name="description" value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} className={inputClass} placeholder="Concepto" />
-                <input required min="0" step="0.01" type="number" name="amount" value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} className={inputClass} placeholder="Monto" />
-                <input min="0" step="0.01" type="number" name="tax" className={inputClass} placeholder="Impuesto" defaultValue="0" />
-                <input name="currency" className={inputClass} value={invoiceCurrency} readOnly title="La moneda proviene del plan." />
-                <input required type="date" name="dueDate" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} className={inputClass} />
+                <FormField label="Suscripcion activa" htmlFor="invoice-subscription" required>
+                  <select id="invoice-subscription" required name="subscriptionId" value={invoiceSubscriptionId} onChange={(event) => handleInvoiceSubscription(event.target.value)} className={inputClass}>
+                    <option value="" disabled>Selecciona una suscripcion</option>
+                    {subscriptions.filter((item) => item.status === 'active').map((item) => <option key={item._id} value={item._id}>{item.distributorId?.name} - {item.platformPlanId?.name}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Distribuidor vinculado" htmlFor="invoice-distributor">
+                  <input id="invoice-distributor" value={selectedInvoiceSubscription?.distributorId?.name || ''} readOnly className={inputClass} />
+                </FormField>
+                <FormField label="Concepto" htmlFor="invoice-description" required>
+                  <input id="invoice-description" required name="description" value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} className={inputClass} placeholder="Suscripcion mensual" />
+                </FormField>
+                <FormField label="Monto" htmlFor="invoice-amount" required>
+                  <input id="invoice-amount" required min="0" step="0.01" type="number" name="amount" value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} className={inputClass} placeholder="0.00" />
+                </FormField>
+                <FormField label="Impuesto" htmlFor="invoice-tax">
+                  <input id="invoice-tax" min="0" step="0.01" type="number" name="tax" className={inputClass} placeholder="0.00" defaultValue="0" />
+                </FormField>
+                <FormField label="Moneda" htmlFor="invoice-currency" hint="La moneda proviene del plan seleccionado.">
+                  <input id="invoice-currency" name="currency" className={inputClass} value={invoiceCurrency} readOnly />
+                </FormField>
+                <FormField label="Fecha de vencimiento" htmlFor="invoice-due-date" required>
+                  <input id="invoice-due-date" required type="date" name="dueDate" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} className={inputClass} />
+                </FormField>
                 <Button type="submit" disabled={Boolean(busy) || !selectedInvoiceSubscription}>Crear factura</Button>
               </form>
             </Card>
             <Card>
               <CardHeader title="Registrar pago manual" description="Marca la factura pagada al cubrir su total." />
               <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={handleCreatePayment}>
-                <select required name="invoiceId" value={paymentInvoiceId} onChange={(event) => handlePaymentInvoice(event.target.value)} className={inputClass}>
-                  <option value="" disabled>Factura pendiente</option>
-                  {invoices.filter((item) => ['open', 'overdue'].includes(item.status)).map((item) => <option key={item._id} value={item._id}>{item.number} - {money(item.balanceDue ?? item.total, item.currency)}</option>)}
-                </select>
-                <input required min="0.01" max={selectedPaymentInvoice?.balanceDue ?? selectedPaymentInvoice?.total} step="0.01" type="number" name="amount" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className={inputClass} placeholder="Monto pendiente" />
-                <input name="currency" className={inputClass} value={paymentCurrency} readOnly />
-                <select name="method" className={inputClass}>
-                  <option value="transfer">Transferencia</option>
-                  <option value="cash">Efectivo</option>
-                  <option value="manual">Manual</option>
-                </select>
-                <input name="description" value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} className={inputClass} placeholder="Descripcion del pago" />
-                <input required type="date" name="paidAt" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className={inputClass} />
+                <FormField label="Factura pendiente" htmlFor="payment-invoice" required>
+                  <select id="payment-invoice" required name="invoiceId" value={paymentInvoiceId} onChange={(event) => handlePaymentInvoice(event.target.value)} className={inputClass}>
+                    <option value="" disabled>Selecciona una factura</option>
+                    {invoices.filter((item) => ['open', 'overdue'].includes(item.status)).map((item) => <option key={item._id} value={item._id}>{item.number} - {money(item.balanceDue ?? item.total, item.currency)}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Monto recibido" htmlFor="payment-amount" required>
+                  <input id="payment-amount" required min="0.01" max={selectedPaymentInvoice?.balanceDue ?? selectedPaymentInvoice?.total} step="0.01" type="number" name="amount" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className={inputClass} placeholder="0.00" />
+                </FormField>
+                <FormField label="Moneda" htmlFor="payment-currency">
+                  <input id="payment-currency" name="currency" className={inputClass} value={paymentCurrency} readOnly />
+                </FormField>
+                <FormField label="Metodo" htmlFor="payment-method">
+                  <select id="payment-method" name="method" className={inputClass}>
+                    <option value="transfer">Transferencia</option>
+                    <option value="cash">Efectivo</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                </FormField>
+                <FormField label="Descripcion" htmlFor="payment-description">
+                  <input id="payment-description" name="description" value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} className={inputClass} placeholder="Referencia o comprobante" />
+                </FormField>
+                <FormField label="Fecha de pago" htmlFor="payment-date" required>
+                  <input id="payment-date" required type="date" name="paidAt" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className={inputClass} />
+                </FormField>
                 <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600 md:col-span-2">
                   Distribuidor: {distributorNames.get(String(selectedPaymentInvoice?.customerId)) || '-'}
                   {' | '}Suscripcion: {selectedPaymentInvoice?.subscriptionId || '-'}
@@ -862,36 +949,45 @@ export function SuperAdminDashboard({ section = 'all' }) {
           <Card>
             <CardHeader title="Entitlement" description="Override por distribuidor o plan." />
             <form className="space-y-3 p-5" onSubmit={handleEntitlement}>
-              <select
-                required
-                name="scopeType"
-                className={inputClass}
-                value={moduleScopeType}
-                onChange={(event) => setModuleScopeType(event.target.value)}
-              >
-                <option value="distributor">Distribuidor</option>
-                <option value="platform_plan">Plan plataforma</option>
-              </select>
-              <select required name="scopeId" defaultValue="" className={inputClass}>
-                <option value="" disabled>Selecciona scope</option>
-                {moduleScopeType === 'distributor'
-                  ? distributors.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)
-                  : plans.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-              </select>
-              <select required name="moduleKey" defaultValue="" className={inputClass}>
-                <option value="" disabled>Selecciona modulo</option>
-                {modules.registry.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
-              </select>
-              <select name="enabled" className={inputClass}>
-                <option value="true">Activado</option>
-                <option value="false">Desactivado</option>
-              </select>
+              <FormField label="Tipo de alcance" htmlFor="entitlement-scope-type" hint="El override puede afectar a un distribuidor o a un plan completo." required>
+                <select
+                  id="entitlement-scope-type"
+                  required
+                  name="scopeType"
+                  className={inputClass}
+                  value={moduleScopeType}
+                  onChange={(event) => setModuleScopeType(event.target.value)}
+                >
+                  <option value="distributor">Distribuidor</option>
+                  <option value="platform_plan">Plan plataforma</option>
+                </select>
+              </FormField>
+              <FormField label="Distribuidor o plan" htmlFor="entitlement-scope" required>
+                <select id="entitlement-scope" required name="scopeId" defaultValue="" className={inputClass}>
+                  <option value="" disabled>Selecciona el alcance</option>
+                  {moduleScopeType === 'distributor'
+                    ? distributors.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)
+                    : plans.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Modulo" htmlFor="entitlement-module" required>
+                <select id="entitlement-module" required name="moduleKey" defaultValue="" className={inputClass}>
+                  <option value="" disabled>Selecciona modulo</option>
+                  {modules.registry.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Disponibilidad" htmlFor="entitlement-enabled" hint="Este valor reemplaza la configuracion heredada para el alcance seleccionado.">
+                <select id="entitlement-enabled" name="enabled" className={inputClass}>
+                  <option value="true">Activado</option>
+                  <option value="false">Desactivado</option>
+                </select>
+              </FormField>
               <Button className="w-full" type="submit" disabled={Boolean(busy)}>Guardar entitlement</Button>
             </form>
             <div className="border-t border-slate-100 p-5 text-sm text-slate-500">
               {modules.entitlements.length
                 ? `${modules.entitlements.length} overrides configurados.`
-                : 'No hay overrides; se usa el plan o enabledByDefault.'}
+                : 'No hay overrides; se usan los modulos incluidos en el plan de plataforma.'}
             </div>
           </Card>
         </div>

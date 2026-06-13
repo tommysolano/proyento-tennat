@@ -17,6 +17,7 @@ import superAdminRoutes from './routes/superAdminRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import crmCatalogRoutes from './routes/crmCatalogRoutes.js';
+import crmOrganizationRoutes from './routes/crmOrganizationRoutes.js';
 import crmDashboardRoutes from './routes/crmDashboardRoutes.js';
 import noteRoutes from './routes/noteRoutes.js';
 import opportunityRoutes from './routes/opportunityRoutes.js';
@@ -54,6 +55,11 @@ import publicSurveyRoutes from './routes/publicSurveyRoutes.js';
 import couponRoutes, { couponRedemptionRoutes } from './routes/couponRoutes.js';
 import referralProgramRoutes, { referralRoutes } from './routes/referralRoutes.js';
 import publicReferralRoutes from './routes/publicReferralRoutes.js';
+import campaignRoutes from './routes/campaignRoutes.js';
+import integrationRoutes from './routes/integrationRoutes.js';
+import integrationWebhookRoutes from './routes/integrationWebhookRoutes.js';
+import marketingReportRoutes from './routes/marketingReportRoutes.js';
+import communicationRoutes from './routes/communicationRoutes.js';
 import { logger } from './utils/logger.js';
 import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
 
@@ -90,7 +96,7 @@ app.use(
   express.json({
     limit: '2mb',
     verify: (req, res, buffer) => {
-      if (req.originalUrl.startsWith('/api/webhooks/whatsapp/')) {
+      if (req.originalUrl.startsWith('/api/webhooks/')) {
         req.rawBody = Buffer.from(buffer);
       }
     }
@@ -114,6 +120,7 @@ app.use('/api/plans', planRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/crm', crmCatalogRoutes);
+app.use('/api/crm', crmOrganizationRoutes);
 app.use('/api/crm', crmDashboardRoutes);
 app.use('/api/pipelines', pipelineRoutes);
 app.use('/api/opportunities', opportunityRoutes);
@@ -124,6 +131,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/message-templates', messageTemplateRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/channel-configs', channelConfigRoutes);
+app.use('/api/webhooks/integrations', integrationWebhookRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/realtime', realtimeRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -144,6 +152,10 @@ app.use('/api/public/pages', publicLandingPageRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/funnel-steps', funnelStepRoutes);
 app.use('/api/public/funnels', publicFunnelRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/integrations', integrationRoutes);
+app.use('/api/marketing/reports', marketingReportRoutes);
+app.use('/api/communications', communicationRoutes);
 app.use('/api/reputation', reputationRoutes);
 app.use('/api/review-requests', reviewRequestRoutes);
 app.use('/api/reviews', reviewRoutes);
@@ -189,6 +201,18 @@ app.use((error, req, res, next) => {
         ? `${duplicateField} ya esta registrado`
         : status >= 500 && process.env.NODE_ENV === 'production'
           ? 'Error interno del servidor'
-          : safeError.message || 'Error interno del servidor'
+          : safeError.message || 'Error interno del servidor',
+    ...(typeof error.code === 'string' ? { reasonCode: error.code } : {}),
+    ...(error.policy
+      ? {
+          policy: {
+            allowed: false,
+            reasonCode: error.policy.reasonCode,
+            reasonMessage: error.policy.reasonMessage,
+            evaluatedChannel: error.policy.evaluatedChannel,
+            evaluatedAt: error.policy.evaluatedAt
+          }
+        }
+      : {})
   });
 });

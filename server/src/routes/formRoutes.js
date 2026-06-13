@@ -7,6 +7,7 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Form } from '../models/Form.js';
 import { FormSubmission } from '../models/FormSubmission.js';
 import { FormsService } from '../modules/forms/FormsService.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
 
 const router = Router();
 
@@ -27,6 +28,14 @@ async function ensureSurveyAccess(user, type) {
   }
 }
 
+function canReadAttribution(user) {
+  return [
+    'attribution:read',
+    'attribution:read_team',
+    'attribution:read_all'
+  ].some((permission) => hasUserPermission(user, permission));
+}
+
 router.use(authMiddleware);
 router.use(roleMiddleware('SUPERADMIN', 'ADMIN', 'SUPERVISOR'));
 router.use(requireModule('forms'));
@@ -43,12 +52,12 @@ router.get(
         const safe = String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         filter.name = new RegExp(safe, 'i');
       }
-      res.json(
-        await Form.find(filter)
+      let query = Form.find(filter)
           .populate('createdBy updatedBy', 'name email role')
           .sort({ createdAt: -1 })
-          .limit(500)
-      );
+          .limit(500);
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      res.json(await query);
     } catch (error) {
       next(error);
     }
@@ -77,13 +86,13 @@ router.get(
       if (!form) return res.status(404).json({ message: 'Formulario no encontrado' });
       const filter = { formId: form._id, companyId: form.companyId };
       if (req.query.status) filter.status = req.query.status;
-      res.json(
-        await FormSubmission.find(filter)
+      let query = FormSubmission.find(filter)
           .populate('contactId', 'name email phone status')
           .populate('opportunityId', 'title status value currency')
           .sort({ createdAt: -1 })
-          .limit(Math.min(Number(req.query.limit) || 250, 500))
-      );
+          .limit(Math.min(Number(req.query.limit) || 250, 500));
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      res.json(await query);
     } catch (error) {
       next(error);
     }
@@ -109,12 +118,14 @@ router.get(
   requireAnyPermission('forms:read', 'forms:read_team', 'forms:read_all'),
   async (req, res, next) => {
     try {
-      const form = await Form.findOne({ _id: req.params.id, ...scope(req) })
+      let query = Form.findOne({ _id: req.params.id, ...scope(req) })
         .populate('settings.assignTo settings.notifyUsers', 'name email role')
         .populate('settings.addTags', 'name color')
         .populate('settings.pipelineId', 'name')
         .populate('settings.stageId', 'name')
         .populate('settings.bookingLinkId', 'title slug');
+      if (!canReadAttribution(req.user)) query = query.select('-attribution');
+      const form = await query;
       if (!form) return res.status(404).json({ message: 'Formulario no encontrado' });
       res.json(form);
     } catch (error) {

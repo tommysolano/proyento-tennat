@@ -17,6 +17,7 @@ import {
   connectRealtime,
   createAppointment,
   getAppointmentMetrics,
+  getAppointmentAnalytics,
   getAppointments,
   getCalendarAvailability,
   getCalendars,
@@ -27,19 +28,30 @@ import {
   updateAppointmentStatus
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { AppointmentAnalyticsPanel } from '../../components/AppointmentAnalyticsPanel.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import {
+  CrmLoadError,
   CrmLoading,
   CrmNotice,
   inputClass,
   localDate
 } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const views = ['day', 'week', 'month', 'list'];
 const activeStatuses = ['scheduled', 'confirmed'];
+const statusLabels = {
+  scheduled: 'Programada',
+  confirmed: 'Confirmada',
+  completed: 'Completada',
+  cancelled: 'Cancelada',
+  no_show: 'No asistio',
+  rescheduled: 'Reprogramada'
+};
 
 function dateInput(date) {
   const copy = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -98,7 +110,9 @@ function AppointmentCard({ item, busy, onStatus, onReschedule }) {
             {new Date(item.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
-        <Badge tone={appointmentTone(item.status)}>{item.status.replaceAll('_', ' ')}</Badge>
+        <Badge tone={appointmentTone(item.status)}>
+          {statusLabels[item.status] || item.status}
+        </Badge>
       </div>
       <div className="mt-3 space-y-1 text-xs text-slate-600">
         <p className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" />{item.contactId?.name || 'Sin contacto'}</p>
@@ -143,6 +157,8 @@ export function CalendarPage() {
   const [opportunities, setOpportunities] = useState([]);
   const [users, setUsers] = useState([]);
   const [metrics, setMetrics] = useState({});
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsError, setAnalyticsError] = useState('');
   const [availability, setAvailability] = useState([]);
   const [filters, setFilters] = useState({
     calendarId: '',
@@ -154,11 +170,13 @@ export function CalendarPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const range = useMemo(() => rangeFor(anchor, view), [anchor, view]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setLoadError('');
+    setAnalyticsError('');
     try {
       const requestFilters = {
         from: range.start.toISOString(),
@@ -169,14 +187,31 @@ export function CalendarPage() {
         assignedTo: filters.assignedTo,
         status: filters.status
       };
-      const [calendarData, appointmentData, metricData, contactData, opportunityData, userData] =
+      const analyticsRequest = getAppointmentAnalytics({
+        from: requestFilters.from,
+        to: requestFilters.to,
+        calendarId: requestFilters.calendarId,
+        assignedTo: requestFilters.assignedTo
+      })
+        .then((data) => ({ data }))
+        .catch((requestError) => ({ error: requestError.message }));
+      const [
+        calendarData,
+        appointmentData,
+        metricData,
+        contactData,
+        opportunityData,
+        userData,
+        analyticsResult
+      ] =
         await Promise.all([
           getCalendars({ status: 'active' }),
           getAppointments(requestFilters),
-          getAppointmentMetrics(),
+          getAppointmentMetrics().catch(() => ({})),
           getContacts({ limit: 500 }),
           getOpportunities(),
-          user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers()
+          user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
+          analyticsRequest
         ]);
       setCalendars(calendarData);
       setAppointments(appointmentData);
@@ -184,8 +219,10 @@ export function CalendarPage() {
       setContacts(contactData);
       setOpportunities(opportunityData);
       setUsers(userData);
+      setAnalytics(analyticsResult.data || null);
+      setAnalyticsError(analyticsResult.error || '');
     } catch (requestError) {
-      setError(requestError.message);
+      setLoadError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -346,15 +383,25 @@ export function CalendarPage() {
 
       <Card>
         <div className="grid gap-3 p-4 md:grid-cols-3">
-          <select className={inputClass} value={filters.calendarId} onChange={(event) => setFilters((current) => ({ ...current, calendarId: event.target.value }))}>
-            <option value="">Todos los calendarios</option>
-            {calendars.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-          </select>
-          {user.role !== 'CALLCENTER' ? <select className={inputClass} value={filters.assignedTo} onChange={(event) => setFilters((current) => ({ ...current, assignedTo: event.target.value }))}><option value="">Todos los responsables</option>{users.filter((item) => ['ADMIN', 'SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select> : <div />}
-          <select className={inputClass} value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
-            <option value="">Todos los estados</option>
-            {['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show', 'rescheduled'].map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
+          <FormField label="Calendario" htmlFor="calendar-filter-calendar">
+            <select id="calendar-filter-calendar" className={inputClass} value={filters.calendarId} onChange={(event) => setFilters((current) => ({ ...current, calendarId: event.target.value }))}>
+              <option value="">Todos los calendarios</option>
+              {calendars.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+            </select>
+          </FormField>
+          {user.role !== 'CALLCENTER' ? (
+            <FormField label="Responsable" htmlFor="calendar-filter-assignee">
+              <select id="calendar-filter-assignee" className={inputClass} value={filters.assignedTo} onChange={(event) => setFilters((current) => ({ ...current, assignedTo: event.target.value }))}><option value="">Todos los responsables</option>{users.filter((item) => ['ADMIN', 'SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select>
+            </FormField>
+          ) : <div />}
+          <FormField label="Estado de la cita" htmlFor="calendar-filter-status">
+            <select id="calendar-filter-status" className={inputClass} value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+              <option value="">Todos los estados</option>
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </FormField>
         </div>
       </Card>
 
@@ -381,6 +428,13 @@ export function CalendarPage() {
           {!availability.length ? <p className="text-sm text-slate-500">No hay slots disponibles en este rango.</p> : null}
         </div>
       </Card>
+
+      <AppointmentAnalyticsPanel
+        report={analytics}
+        loading={loading}
+        error={analyticsError}
+        onRetry={load}
+      />
 
       {showCreate ? (
         <Card>
@@ -440,7 +494,9 @@ export function CalendarPage() {
           <p className="font-semibold text-slate-800">{range.start.toLocaleDateString()} - {new Date(range.end.getTime() - 1).toLocaleDateString()}</p>
           <Button variant="ghost" onClick={load}><RotateCcw className="h-4 w-4" />Actualizar</Button>
         </div>
-        {loading ? <CrmLoading label="Cargando agenda..." /> : days.length ? (
+        {loading ? <CrmLoading label="Cargando agenda..." /> : loadError ? (
+          <div className="p-4"><CrmLoadError message={loadError} onRetry={load} /></div>
+        ) : days.length ? (
           <div className={`grid divide-y divide-slate-100 ${view === 'week' ? 'lg:grid-cols-7 lg:divide-x lg:divide-y-0' : ''}`}>
             {days.map((day) => {
               const key = dateInput(day);

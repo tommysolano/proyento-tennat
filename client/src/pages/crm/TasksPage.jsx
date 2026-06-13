@@ -12,6 +12,7 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { CrmLoading, CrmNotice, inputClass, localDate } from '../../components/CrmCommon.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
@@ -88,12 +89,26 @@ export function TasksPage() {
       <Card>
         <CardHeader title="Crear tarea" />
         <form onSubmit={create} className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-          <input required name="title" className={inputClass} placeholder="Titulo" />
-          <input name="description" className={inputClass} placeholder="Descripcion" />
-          <select required name="related" className={inputClass}><option value="">Relacionar con...</option>{contacts.map((contact) => <option key={contact._id} value={`contact:${contact._id}`}>Contacto: {contact.name}</option>)}{opportunities.map((item) => <option key={item._id} value={`opportunity:${item._id}`}>Oportunidad: {item.title}</option>)}</select>
-          {user.role !== 'CALLCENTER' ? <select required name="assignedTo" className={inputClass}><option value="">Responsable</option>{users.filter((current) => ['SUPERVISOR', 'CALLCENTER'].includes(current.role) || current._id === user._id).map((current) => <option key={current._id} value={current._id}>{current.name}</option>)}</select> : null}
-          <input type="datetime-local" name="dueAt" className={inputClass} />
-          <select name="priority" defaultValue="medium" className={inputClass}>{['low', 'medium', 'high'].map((value) => <option key={value}>{value}</option>)}</select>
+          <FormField label="Titulo" htmlFor="task-title" required>
+            <input id="task-title" required name="title" className={inputClass} placeholder="Ej. Llamar al contacto" />
+          </FormField>
+          <FormField label="Descripcion" htmlFor="task-description">
+            <input id="task-description" name="description" className={inputClass} placeholder="Contexto o resultado esperado" />
+          </FormField>
+          <FormField label="Relacion" htmlFor="task-related" required>
+            <select id="task-related" required name="related" className={inputClass}><option value="">Relacionar con...</option>{contacts.map((contact) => <option key={contact._id} value={`contact:${contact._id}`}>Contacto: {contact.name}</option>)}{opportunities.map((item) => <option key={item._id} value={`opportunity:${item._id}`}>Oportunidad: {item.title}</option>)}</select>
+          </FormField>
+          {user.role !== 'CALLCENTER' ? (
+            <FormField label="Responsable" htmlFor="task-assignee" required>
+              <select id="task-assignee" required name="assignedTo" className={inputClass}><option value="">Selecciona responsable</option>{users.filter((current) => ['SUPERVISOR', 'CALLCENTER'].includes(current.role) || current._id === user._id).map((current) => <option key={current._id} value={current._id}>{current.name}</option>)}</select>
+            </FormField>
+          ) : null}
+          <FormField label="Fecha de vencimiento" htmlFor="task-due-at">
+            <input id="task-due-at" type="datetime-local" name="dueAt" className={inputClass} />
+          </FormField>
+          <FormField label="Prioridad" htmlFor="task-priority">
+            <select id="task-priority" name="priority" defaultValue="medium" className={inputClass}>{['low', 'medium', 'high'].map((value) => <option key={value}>{value}</option>)}</select>
+          </FormField>
           <Button type="submit" disabled={busy}><Plus className="h-4 w-4" />Crear tarea</Button>
         </form>
       </Card>

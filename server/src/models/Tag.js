@@ -12,6 +12,11 @@ const tagSchema = new mongoose.Schema(
       match: [/^#[0-9a-fA-F]{6}$/, 'color debe usar formato hexadecimal']
     },
     description: { type: String, trim: true, default: '' },
+    scope: {
+      type: String,
+      enum: ['contact', 'opportunity', 'appointment', 'workflow'],
+      default: 'contact'
+    },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
@@ -20,5 +25,6 @@ const tagSchema = new mongoose.Schema(
 );
 
 tagSchema.index({ companyId: 1, normalizedName: 1 }, { unique: true });
+tagSchema.index({ companyId: 1, scope: 1, status: 1, name: 1 });
 
 export const Tag = mongoose.model('Tag', tagSchema);

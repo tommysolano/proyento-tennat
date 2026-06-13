@@ -27,6 +27,7 @@ import { getStorageProvider } from '../modules/storage/index.js';
 import { validateMedia } from '../modules/storage/mediaValidation.js';
 import { checkUsageLimit, trackUsage } from '../utils/usage.js';
 import { logger } from '../utils/logger.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
 
 const router = Router();
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
@@ -42,7 +43,7 @@ function populateConversation(query) {
   return query
     .populate({
       path: 'contactId',
-      select: 'name fullName phone email source status lifecycleStage assignedTo tags metadata',
+      select: 'name fullName phone email source status lifecycleStage assignedTo tags metadata communicationPreferences',
       populate: { path: 'tags', select: 'name color' }
     })
     .populate('assignedTo', 'name email role supervisorId')
@@ -320,7 +321,27 @@ router.get('/:id/messages', async (req, res, next) => {
       .populate('sentBy', 'name email role')
       .sort({ createdAt: 1 })
       .limit(1000);
-    res.json(messages);
+    const canReadDiagnostics = [
+      'message_diagnostics:read',
+      'message_diagnostics:read_team',
+      'message_diagnostics:read_assigned'
+    ].some((permission) => hasUserPermission(req.user, permission));
+    res.json(messages.map((message) => {
+      const value = message.toJSON();
+      if (!canReadDiagnostics) {
+        for (const field of [
+          'reasonCode',
+          'providerCode',
+          'blockedByRule',
+          'integrationId',
+          'errorMessage',
+          'attempts',
+          'lastAttemptAt',
+          'error'
+        ]) delete value[field];
+      }
+      return value;
+    }));
   } catch (error) {
     next(error);
   }
@@ -362,13 +383,16 @@ router.post(
       conversation,
       text: req.body.text || template?.content || '',
       type: providerTemplate ? 'template' : req.body.type || 'text',
+      category: template?.messageCategory || req.body.category || '',
       template: providerTemplate
         ? {
             name: template.providerTemplateId || template.name,
             language: { code: template.language }
           }
         : null,
-      media: req.body.media || {}
+      media: req.body.media || {},
+      adminOverride: req.body.adminOverride === true,
+      overrideReason: cleanString(req.body.overrideReason)
     });
     res.status(201).json(await message.populate('sentBy', 'name email role'));
   } catch (error) {
@@ -431,6 +455,7 @@ router.post(
         conversation,
         text: cleanString(req.body.caption),
         type,
+        category: req.body.category || '',
         media: {
           filename: stored.filename,
           mimeType: stored.mimeType,

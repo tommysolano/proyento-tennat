@@ -10,14 +10,32 @@ import {
   updateContact
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { LoadingState, ModuleUnavailableState } from '../../components/AsyncState.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { ContactManager } from '../../components/ContactManager.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { formatDate, idOf } from '../../utils/contacts.js';
 
 export function SupervisorDashboard() {
+  const { access } = useAuth();
+  const permissions = new Set(access.permissions || []);
+  const modules = new Set(access.modules || []);
+  const canUseContacts =
+    modules.has('crm') &&
+    modules.has('contacts') &&
+    permissions.has('contacts:read_team');
+  const canUseInbox =
+    modules.has('conversations') &&
+    modules.has('inbox') &&
+    permissions.has('conversations:read_team');
+  const canReadUsers = permissions.has('users:read_team');
+  const canReadActivity = permissions.has('activity:read_team');
+  const canUpdateContacts = permissions.has('contacts:update_team');
+  const canAssignContacts = permissions.has('contacts:assign_team');
+  const canAddContactNotes = permissions.has('notes:create_team');
   const [agents, setAgents] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -27,29 +45,50 @@ export function SupervisorDashboard() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [moduleWarning, setModuleWarning] = useState('');
 
   const loadDashboard = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     setError('');
+    setModuleWarning('');
     try {
-      const [agentData, contactData, activityData, crmData, inboxData] = await Promise.all([
-        getUsers(),
-        getContacts(),
-        getActivityLogs(),
-        getCrmDashboard(),
-        getInboxMetrics()
-      ]);
+      const optionalErrors = [];
+      const agentData = canReadUsers
+        ? await getUsers().catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return [];
+          })
+        : [];
+      const activityData = canReadActivity
+        ? await getActivityLogs().catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return [];
+          })
+        : [];
+      const [contactData, crmData] = canUseContacts
+        ? await Promise.all([getContacts(), getCrmDashboard()]).catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return [[], null];
+          })
+        : [[], null];
+      const inboxData = canUseInbox
+        ? await getInboxMetrics().catch((requestError) => {
+            optionalErrors.push(requestError.message);
+            return null;
+          })
+        : null;
       setAgents(agentData);
       setContacts(contactData);
       setActivities(activityData);
       setCrmSummary(crmData);
       setInboxSummary(inboxData);
+      setModuleWarning([...new Set(optionalErrors)].join(' '));
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       if (showLoader) setLoading(false);
     }
-  }, []);
+  }, [canReadActivity, canReadUsers, canUseContacts, canUseInbox]);
 
   useEffect(() => {
     loadDashboard();
@@ -93,9 +132,7 @@ export function SupervisorDashboard() {
         title="Dashboard de supervision"
         description="Cargando equipo y contactos reales..."
       >
-        <Card className="p-8 text-center text-sm text-slate-500">
-          Cargando datos desde la API...
-        </Card>
+        <LoadingState label="Cargando equipo, contactos y actividad..." />
       </PageShell>
     );
   }
@@ -116,12 +153,21 @@ export function SupervisorDashboard() {
           {error}
         </div>
       ) : null}
+      {moduleWarning ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          Algunos modulos no pudieron cargarse: {moduleWarning}
+        </div>
+      ) : null}
 
       <div id="metricas" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Agentes del equipo" value={agents.length} helper={`${agents.filter((agent) => agent.status === 'active').length} activos`} icon={UsersRound} tone="cyan" />
-        <MetricCard label="Contactos asignados" value={contacts.length} helper="Solo contactos del equipo" icon={Headphones} tone="emerald" />
-        <MetricCard label="En seguimiento" value={contacts.filter((contact) => contact.status === 'seguimiento').length} helper="Pendientes de nueva gestion" icon={ListTodo} tone="amber" />
-        <MetricCard label="Cerrados" value={contacts.filter((contact) => contact.status === 'cerrado').length} helper="Gestion finalizada" icon={CheckCircle2} tone="slate" />
+        {canUseContacts ? (
+          <>
+            <MetricCard label="Contactos asignados" value={contacts.length} helper="Solo contactos del equipo" icon={Headphones} tone="emerald" />
+            <MetricCard label="En seguimiento" value={contacts.filter((contact) => contact.status === 'seguimiento').length} helper="Pendientes de nueva gestion" icon={ListTodo} tone="amber" />
+            <MetricCard label="Cerrados" value={contacts.filter((contact) => contact.status === 'cerrado').length} helper="Gestion finalizada" icon={CheckCircle2} tone="slate" />
+          </>
+        ) : null}
       </div>
       {crmSummary ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Oportunidades abiertas" value={crmSummary.opportunitiesOpen} helper="Del equipo" icon={Target} tone="cyan" />
@@ -136,7 +182,7 @@ export function SupervisorDashboard() {
         <MetricCard label="Sin responder" value={inboxSummary.unanswered} helper="Ultimo mensaje inbound" icon={MessageSquare} tone="slate" />
       </div> : null}
 
-      <Card id="agentes">
+      {canReadUsers ? <Card id="agentes">
         <CardHeader
           title="Agentes del equipo"
           description="CALLCENTER con supervisorId asociado al supervisor autenticado."
@@ -159,21 +205,30 @@ export function SupervisorDashboard() {
             }
           ]}
         />
-      </Card>
+      </Card> : null}
 
-      <ContactManager
-        contacts={contacts}
-        agents={agents.filter((agent) => agent.status === 'active')}
-        busy={busy}
-        canEditDetails
-        canAssign
-        onUpdate={handleUpdateContact}
-        onAddNote={handleAddNote}
-        title="Contactos del equipo"
-        description="Filtra, edita y reasigna solo entre agentes vinculados a tu equipo."
-      />
+      {canUseContacts ? (
+        <ContactManager
+          contacts={contacts}
+          agents={agents.filter((agent) => agent.status === 'active')}
+          busy={busy}
+          canEditDetails={canUpdateContacts}
+          canAssign={canAssignContacts}
+          canUpdate={canUpdateContacts || canAssignContacts}
+          canAddNote={canAddContactNotes}
+          onUpdate={handleUpdateContact}
+          onAddNote={handleAddNote}
+          title="Contactos del equipo"
+          description="Filtra, edita y reasigna solo entre agentes vinculados a tu equipo."
+        />
+      ) : (
+        <ModuleUnavailableState
+          title="CRM del equipo no disponible"
+          description="Tu rol no tiene permiso o el plan de la empresa no incluye CRM y contactos."
+        />
+      )}
 
-      <Card id="actividad">
+      {canReadActivity ? <Card id="actividad">
         <CardHeader title="Actividad del equipo" description="Eventos recientes de agentes y supervisor." />
         <Table
           data={teamActivities.map((item) => ({
@@ -190,7 +245,7 @@ export function SupervisorDashboard() {
             { key: 'summary', header: 'Resumen' }
           ]}
         />
-      </Card>
+      </Card> : null}
     </PageShell>
   );
 }

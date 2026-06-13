@@ -8,6 +8,7 @@ import { Conversation } from '../models/Conversation.js';
 import { User } from '../models/User.js';
 import { Company } from '../models/Company.js';
 import { CalendarService } from '../modules/calendar/CalendarService.js';
+import { AppointmentAnalyticsService } from '../modules/calendar/AppointmentAnalyticsService.js';
 import { conversationScope } from '../modules/conversations/conversationScope.js';
 import {
   assertRelatedResource,
@@ -22,6 +23,28 @@ import {
 } from '../modules/calendar/calendarTime.js';
 
 const router = Router();
+const appointmentRead = requireAnyPermission(
+  'appointments:manage',
+  'appointments:manage_team',
+  'appointments:manage_assigned',
+  'appointments:read_team',
+  'appointments:read_assigned'
+);
+const appointmentCreate = requireAnyPermission(
+  'appointments:manage',
+  'appointments:manage_team',
+  'appointments:manage_assigned'
+);
+const appointmentUpdate = requireAnyPermission(
+  'appointments:manage',
+  'appointments:update_team',
+  'appointments:update_assigned'
+);
+const appointmentAnalytics = requireAnyPermission(
+  'appointment_analytics:read',
+  'appointment_analytics:read_team',
+  'appointment_analytics:read_assigned'
+);
 
 function dateValue(value, field) {
   const date = new Date(value);
@@ -91,7 +114,27 @@ router.param('id', (req, res, next, id) => {
   next();
 });
 
-router.get('/metrics', async (req, res, next) => {
+router.get('/analytics', appointmentAnalytics, async (req, res, next) => {
+  try {
+    for (const field of ['calendarId', 'assignedTo']) {
+      if (req.query[field] && !isValidObjectId(req.query[field])) {
+        return res.status(400).json({ message: `${field} invalido` });
+      }
+    }
+    const company = await Company.findById(req.user.companyId).select('settings.timezone');
+    res.json(
+      await AppointmentAnalyticsService.report({
+        user: req.user,
+        query: req.query,
+        timeZone: company?.settings?.timezone || 'America/Guayaquil'
+      })
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/metrics', appointmentAnalytics, async (req, res, next) => {
   try {
     const scope = await assignedResourceScope(req.user);
     const now = new Date();
@@ -140,7 +183,7 @@ router.get('/metrics', async (req, res, next) => {
   }
 });
 
-router.get('/', async (req, res, next) => {
+router.get('/', appointmentRead, async (req, res, next) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 300, 1), 1000);
     res.json(
@@ -155,7 +198,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', appointmentCreate, async (req, res, next) => {
   try {
     if (req.body.contactId) {
       await assertRelatedResource(req.user, 'contact', req.body.contactId);
@@ -165,12 +208,13 @@ router.post('/', async (req, res, next) => {
     }
     let metadata =
       req.body.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {};
-    if (metadata.conversationId) {
-      if (!isValidObjectId(metadata.conversationId)) {
+    const conversationId = metadata.conversationId || req.body.conversationId;
+    if (conversationId) {
+      if (!isValidObjectId(conversationId)) {
         return res.status(400).json({ message: 'metadata.conversationId invalido' });
       }
       const conversation = await Conversation.findOne({
-        _id: metadata.conversationId,
+        _id: conversationId,
         ...(await conversationScope(req.user)),
         archivedAt: null
       }).select('_id contactId');
@@ -197,7 +241,12 @@ router.post('/', async (req, res, next) => {
         actor: req.user,
         companyId: req.user.companyId,
         distributorId: req.user.distributorId || null,
-        body: { ...req.body, metadata, ...(assignedTo ? { assignedTo } : {}) },
+        body: {
+          ...req.body,
+          metadata,
+          conversationId: metadata.conversationId || req.body.conversationId || null,
+          ...(assignedTo ? { assignedTo } : {})
+        },
         source: req.body.source || 'manual'
       })
     );
@@ -206,7 +255,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', appointmentRead, async (req, res, next) => {
   try {
     const appointment = await CalendarService.populateAppointment(
       Appointment.findOne({
@@ -221,7 +270,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.patch('/:id', async (req, res, next) => {
+router.patch('/:id', appointmentUpdate, async (req, res, next) => {
   try {
     const appointment = await Appointment.findOne({
       _id: req.params.id,
@@ -262,7 +311,7 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
-router.patch('/:id/status', async (req, res, next) => {
+router.patch('/:id/status', appointmentUpdate, async (req, res, next) => {
   try {
     const appointment = await Appointment.findOne({
       _id: req.params.id,
@@ -282,7 +331,7 @@ router.patch('/:id/status', async (req, res, next) => {
   }
 });
 
-router.patch('/:id/reschedule', async (req, res, next) => {
+router.patch('/:id/reschedule', appointmentUpdate, async (req, res, next) => {
   try {
     const appointment = await Appointment.findOne({
       _id: req.params.id,
@@ -326,11 +375,11 @@ function statusAction(status) {
   };
 }
 
-router.patch('/:id/cancel', statusAction('cancelled'));
-router.patch('/:id/complete', statusAction('completed'));
-router.patch('/:id/no-show', statusAction('no_show'));
+router.patch('/:id/cancel', appointmentUpdate, statusAction('cancelled'));
+router.patch('/:id/complete', appointmentUpdate, statusAction('completed'));
+router.patch('/:id/no-show', appointmentUpdate, statusAction('no_show'));
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', appointmentUpdate, async (req, res, next) => {
   try {
     const appointment = await Appointment.findOne({
       _id: req.params.id,

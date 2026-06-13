@@ -2,11 +2,16 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 export function HashScroll() {
-  const { hash, pathname } = useLocation();
+  const { hash, pathname, search } = useLocation();
 
   useEffect(() => {
     if (!hash) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const main = document.getElementById('main-content');
+      if (main) {
+        main.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
       return;
     }
 
@@ -16,7 +21,7 @@ export function HashScroll() {
         block: 'start'
       });
     });
-  }, [hash, pathname]);
+  }, [hash, pathname, search]);
 
   return null;
 }

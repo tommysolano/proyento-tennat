@@ -4,19 +4,21 @@ import {
   CreditCard,
   DollarSign,
   FileText,
+  LogIn,
   Plus,
   RefreshCcw,
   Settings,
   ShieldAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   createDistributorInvoice,
   createDistributorPayment,
   getDistributorBillingOverview,
   getDistributorCompanies,
   getDistributorInvoices,
+  getDistributorModules,
   getDistributorOnboarding,
   getDistributorPayments,
   getDistributorSettings,
@@ -29,9 +31,11 @@ import {
   updateDistributorSettings
 } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { LoadingState } from '../../components/AsyncState.jsx';
 import { BillingPlanSummary } from '../../components/BillingPlanSummary.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
@@ -70,7 +74,8 @@ const onboardingLabels = {
 };
 
 export function DistributorCommercePage({ section = 'finance' }) {
-  const { refreshSession } = useAuth();
+  const navigate = useNavigate();
+  const { impersonateAdmin, refreshSession } = useAuth();
   const [overview, setOverview] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -78,6 +83,10 @@ export function DistributorCommercePage({ section = 'finance' }) {
   const [payments, setPayments] = useState([]);
   const [settings, setSettings] = useState(null);
   const [onboarding, setOnboarding] = useState(null);
+  const [moduleCatalog, setModuleCatalog] = useState({
+    modules: [],
+    authorizedModuleKeys: []
+  });
   const [lineItems, setLineItems] = useState([
     { description: '', quantity: 1, unitPrice: 0, moduleKey: '' }
   ]);
@@ -109,16 +118,18 @@ export function DistributorCommercePage({ section = 'finance' }) {
     if (showLoader) setLoading(true);
     setError('');
     try {
-      const [companyData, planData, settingsData, onboardingData] = await Promise.all([
+      const [companyData, planData, settingsData, onboardingData, moduleData] = await Promise.all([
         getDistributorCompanies(),
         getPlans(),
         getDistributorSettings(),
-        getDistributorOnboarding()
+        getDistributorOnboarding(),
+        getDistributorModules()
       ]);
       setCompanies(companyData);
       setPlans(planData);
       setSettings(settingsData);
       setOnboarding(onboardingData);
+      setModuleCatalog(moduleData);
 
       const billingData = await Promise.all([
         getDistributorBillingOverview(),
@@ -201,6 +212,19 @@ export function DistributorCommercePage({ section = 'finance' }) {
       () => (reactivating ? reactivateCompany(company._id) : suspendCompany(company._id)),
       `Empresa ${reactivating ? 'reactivada' : 'suspendida'}.`
     );
+  }
+
+  async function handleEnterCompany(company) {
+    setBusy(`impersonate-${company._id}`);
+    setError('');
+    try {
+      const data = await impersonateAdmin(company._id);
+      navigate(data.redirectPath, { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
   }
 
   async function handleSubscription(event) {
@@ -407,9 +431,7 @@ export function DistributorCommercePage({ section = 'finance' }) {
   if (loading) {
     return (
       <PageShell eyebrow="Capa comercial" title="Operacion del distribuidor">
-        <Card className="p-8 text-center text-sm text-slate-500">
-          Cargando datos comerciales...
-        </Card>
+        <LoadingState label="Cargando operacion comercial y facturacion..." />
       </PageShell>
     );
   }
@@ -531,6 +553,14 @@ export function DistributorCommercePage({ section = 'finance' }) {
                   render: (row) => (
                     <div className="flex gap-2">
                       <Button as={Link} to={`/distributor/companies/${row._id}`} className="px-3" variant="secondary">Detalle</Button>
+                      <Button
+                        className="px-3"
+                        variant="secondary"
+                        disabled={!row.canImpersonate || Boolean(busy)}
+                        onClick={() => handleEnterCompany(row)}
+                      >
+                        <LogIn className="h-4 w-4" /> Entrar
+                      </Button>
                       <Button className="px-3" variant={row.status === 'suspended' ? 'primary' : 'danger'} onClick={() => handleCompanyStatus(row)}>
                         {row.status === 'suspended' ? 'Reactivar' : 'Suspender'}
                       </Button>
@@ -543,25 +573,35 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="Asignar o cambiar plan" description="Actualiza la suscripcion vigente de una empresa propia." />
             <form className="grid gap-3 p-5 md:grid-cols-4" onSubmit={handleSubscription}>
-              <select required name="companyId" value={selectedCompanyId} onChange={(event) => handleSubscriptionCompany(event.target.value)} className={inputClass}>
-                <option value="" disabled>Empresa</option>
-                {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
-              </select>
-              <select required disabled={!selectedCompanyId} name="planId" value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)} className={inputClass}>
-                <option value="" disabled>Plan</option>
-                {(selectedCompanyId ? plans : [])
-                  .filter((plan) => plan.status === 'active' || plan._id === selectedPlanId)
-                  .map((plan) => <option key={plan._id} value={plan._id}>{plan.name}</option>)}
-              </select>
-              <select name="status" value={subscriptionStatus} onChange={(event) => setSubscriptionStatus(event.target.value)} className={inputClass}>
-                <option value="active">Activa</option>
-                <option value="trial">Trial</option>
-                <option value="past_due">Past due</option>
-                <option value="suspended">Suspendida</option>
-              </select>
-              <input type="datetime-local" name="startsAt" value={subscriptionStartsAt} onChange={(event) => setSubscriptionStartsAt(event.target.value)} className={inputClass} title="Fecha de inicio de la suscripcion." />
+              <FormField label="Empresa" htmlFor="commerce-subscription-company" required>
+                <select id="commerce-subscription-company" required name="companyId" value={selectedCompanyId} onChange={(event) => handleSubscriptionCompany(event.target.value)} className={inputClass}>
+                  <option value="" disabled>Selecciona una empresa</option>
+                  {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Plan comercial" htmlFor="commerce-subscription-plan" required>
+                <select id="commerce-subscription-plan" required disabled={!selectedCompanyId} name="planId" value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)} className={inputClass}>
+                  <option value="" disabled>Selecciona un plan</option>
+                  {(selectedCompanyId ? plans : [])
+                    .filter((plan) => plan.status === 'active' || plan._id === selectedPlanId)
+                    .map((plan) => <option key={plan._id} value={plan._id}>{plan.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Estado" htmlFor="commerce-subscription-status" hint="El trial no puede facturarse hasta activarse.">
+                <select id="commerce-subscription-status" name="status" value={subscriptionStatus} onChange={(event) => setSubscriptionStatus(event.target.value)} className={inputClass}>
+                  <option value="active">Activa</option>
+                  <option value="trial">Trial</option>
+                  <option value="past_due">Past due</option>
+                  <option value="suspended">Suspendida</option>
+                </select>
+              </FormField>
+              <FormField label="Fecha de inicio" htmlFor="commerce-subscription-start">
+                <input id="commerce-subscription-start" type="datetime-local" name="startsAt" value={subscriptionStartsAt} onChange={(event) => setSubscriptionStartsAt(event.target.value)} className={inputClass} />
+              </FormField>
               {subscriptionStatus === 'trial' ? (
-                <input required type="datetime-local" name="trialEndsAt" value={subscriptionTrialEndsAt} onChange={(event) => setSubscriptionTrialEndsAt(event.target.value)} className={inputClass} title="Fin obligatorio del trial. Durante este periodo no se puede facturar." />
+                <FormField label="Fin de trial" htmlFor="commerce-subscription-trial-end" hint="Obligatorio. Durante este periodo no se puede facturar." required>
+                  <input id="commerce-subscription-trial-end" required type="datetime-local" name="trialEndsAt" value={subscriptionTrialEndsAt} onChange={(event) => setSubscriptionTrialEndsAt(event.target.value)} className={inputClass} />
+                </FormField>
               ) : null}
               <div className="md:col-span-4">
                 <BillingPlanSummary plan={selectedPlan} trial={subscriptionStatus === 'trial'} />
@@ -577,14 +617,18 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="Facturas emitidas" description="Filtrado local sobre datos tenant-safe de la API." />
             <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2">
-              <select value={invoiceCompanyFilter} onChange={(event) => setInvoiceCompanyFilter(event.target.value)} className={inputClass}>
-                <option value="">Todas las empresas</option>
-                {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
-              </select>
-              <select value={invoiceStatusFilter} onChange={(event) => setInvoiceStatusFilter(event.target.value)} className={inputClass}>
-                <option value="">Todos los estados</option>
-                {['draft', 'open', 'paid', 'overdue', 'void', 'uncollectible'].map((status) => <option key={status} value={status}>{status}</option>)}
-              </select>
+              <FormField label="Empresa" htmlFor="invoice-filter-company">
+                <select id="invoice-filter-company" value={invoiceCompanyFilter} onChange={(event) => setInvoiceCompanyFilter(event.target.value)} className={inputClass}>
+                  <option value="">Todas las empresas</option>
+                  {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Estado" htmlFor="invoice-filter-status">
+                <select id="invoice-filter-status" value={invoiceStatusFilter} onChange={(event) => setInvoiceStatusFilter(event.target.value)} className={inputClass}>
+                  <option value="">Todos los estados</option>
+                  {['draft', 'open', 'paid', 'overdue', 'void', 'uncollectible'].map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </FormField>
             </div>
             <Table
               data={visibleInvoices.map((invoice) => ({
@@ -617,24 +661,51 @@ export function DistributorCommercePage({ section = 'finance' }) {
             <CardHeader title="Crear factura manual" description="Subtotal, impuesto, total y numero se calculan en backend." />
             <form className="space-y-4 p-5" onSubmit={handleInvoice}>
               <div className="grid gap-3 md:grid-cols-4">
-                <select required name="subscriptionId" value={invoiceSubscriptionId} onChange={(event) => handleInvoiceSubscription(event.target.value)} className={inputClass}>
-                  <option value="" disabled>Suscripcion activa</option>
-                  {companies.filter((company) => company.subscription?.status === 'active').map((company) => <option key={company.subscription._id} value={company.subscription._id}>{company.name} - {company.subscription.planId?.name}</option>)}
-                </select>
-                <input value={invoiceCompany?.name || ''} readOnly className={inputClass} placeholder="Empresa vinculada" />
-                <input required type="date" name="dueDate" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} className={inputClass} />
-                <select name="status" className={inputClass}><option value="open">Open</option><option value="draft">Draft</option></select>
-                <input name="currency" className={inputClass} value={invoiceCurrency} readOnly title="La moneda proviene del plan de la suscripcion." />
-                <input min="0" step="0.01" type="number" name="taxRate" className={inputClass} defaultValue={billingSettings.taxRate || 0} placeholder="Impuesto %" />
+                <FormField label="Suscripcion activa" htmlFor="commerce-invoice-subscription" required>
+                  <select id="commerce-invoice-subscription" required name="subscriptionId" value={invoiceSubscriptionId} onChange={(event) => handleInvoiceSubscription(event.target.value)} className={inputClass}>
+                    <option value="" disabled>Selecciona una suscripcion</option>
+                    {companies.filter((company) => company.subscription?.status === 'active').map((company) => <option key={company.subscription._id} value={company.subscription._id}>{company.name} - {company.subscription.planId?.name}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Empresa vinculada" htmlFor="commerce-invoice-company">
+                  <input id="commerce-invoice-company" value={invoiceCompany?.name || ''} readOnly className={inputClass} />
+                </FormField>
+                <FormField label="Fecha de vencimiento" htmlFor="commerce-invoice-due" required>
+                  <input id="commerce-invoice-due" required type="date" name="dueDate" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} className={inputClass} />
+                </FormField>
+                <FormField label="Estado inicial" htmlFor="commerce-invoice-status">
+                  <select id="commerce-invoice-status" name="status" className={inputClass}><option value="open">Open</option><option value="draft">Draft</option></select>
+                </FormField>
+                <FormField label="Moneda" htmlFor="commerce-invoice-currency" hint="Proviene del plan de la suscripcion.">
+                  <input id="commerce-invoice-currency" name="currency" className={inputClass} value={invoiceCurrency} readOnly />
+                </FormField>
+                <FormField label="Impuesto (%)" htmlFor="commerce-invoice-tax">
+                  <input id="commerce-invoice-tax" min="0" step="0.01" type="number" name="taxRate" className={inputClass} defaultValue={billingSettings.taxRate || 0} placeholder="0" />
+                </FormField>
               </div>
               <div className="space-y-3">
                 {lineItems.map((item, index) => (
                   <div key={index} className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[2fr_0.6fr_0.8fr_1fr_auto]">
-                    <input required value={item.description} onChange={(event) => updateLineItem(index, 'description', event.target.value)} className={inputClass} placeholder="Descripcion" />
-                    <input required min="0" step="0.01" type="number" value={item.quantity} onChange={(event) => updateLineItem(index, 'quantity', event.target.value)} className={inputClass} placeholder="Cantidad" />
-                    <input required min="0" step="0.01" type="number" value={item.unitPrice} onChange={(event) => updateLineItem(index, 'unitPrice', event.target.value)} className={inputClass} placeholder="Precio" />
-                    <input value={item.moduleKey} onChange={(event) => updateLineItem(index, 'moduleKey', event.target.value)} className={inputClass} placeholder="Modulo opcional" />
-                    <Button variant="danger" className="px-3" disabled={lineItems.length === 1} onClick={() => setLineItems((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Quitar</Button>
+                    <FormField label="Descripcion">
+                      <input required value={item.description} onChange={(event) => updateLineItem(index, 'description', event.target.value)} className={inputClass} placeholder="Concepto facturado" />
+                    </FormField>
+                    <FormField label="Cantidad">
+                      <input required min="0" step="0.01" type="number" value={item.quantity} onChange={(event) => updateLineItem(index, 'quantity', event.target.value)} className={inputClass} placeholder="1" />
+                    </FormField>
+                    <FormField label="Precio unitario">
+                      <input required min="0" step="0.01" type="number" value={item.unitPrice} onChange={(event) => updateLineItem(index, 'unitPrice', event.target.value)} className={inputClass} placeholder="0.00" />
+                    </FormField>
+                    <FormField label="Modulo asociado">
+                      <select value={item.moduleKey} onChange={(event) => updateLineItem(index, 'moduleKey', event.target.value)} className={inputClass}>
+                        <option value="">Sin modulo</option>
+                        {moduleCatalog.modules
+                          .filter((module) => module.authorized)
+                          .map((module) => (
+                            <option key={module.key} value={module.key}>{module.name}</option>
+                          ))}
+                      </select>
+                    </FormField>
+                    <Button variant="danger" className="self-end px-3" disabled={lineItems.length === 1} onClick={() => setLineItems((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Quitar</Button>
                   </div>
                 ))}
               </div>
@@ -654,14 +725,18 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="Pagos recibidos" description="Pagos manuales de empresas al distribuidor." />
             <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2">
-              <select value={paymentCompanyFilter} onChange={(event) => setPaymentCompanyFilter(event.target.value)} className={inputClass}>
-                <option value="">Todas las empresas</option>
-                {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
-              </select>
-              <select value={paymentStatusFilter} onChange={(event) => setPaymentStatusFilter(event.target.value)} className={inputClass}>
-                <option value="">Todos los estados</option>
-                {['pending', 'succeeded', 'failed', 'refunded'].map((status) => <option key={status} value={status}>{status}</option>)}
-              </select>
+              <FormField label="Empresa" htmlFor="payment-filter-company">
+                <select id="payment-filter-company" value={paymentCompanyFilter} onChange={(event) => setPaymentCompanyFilter(event.target.value)} className={inputClass}>
+                  <option value="">Todas las empresas</option>
+                  {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Estado" htmlFor="payment-filter-status">
+                <select id="payment-filter-status" value={paymentStatusFilter} onChange={(event) => setPaymentStatusFilter(event.target.value)} className={inputClass}>
+                  <option value="">Todos los estados</option>
+                  {['pending', 'succeeded', 'failed', 'refunded'].map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </FormField>
             </div>
             <Table
               data={visiblePayments.map((payment) => ({
@@ -686,15 +761,27 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="Registrar pago" description="La factura cambia a paid cuando la suma cubre el total." />
             <form className="grid gap-3 p-5 md:grid-cols-4" onSubmit={handlePayment}>
-              <select required name="invoiceId" value={paymentInvoiceId} onChange={(event) => handlePaymentInvoice(event.target.value)} className={inputClass}>
-                <option value="" disabled>Factura pendiente</option>
-                {pendingInvoices.map((invoice) => <option key={invoice._id} value={invoice._id}>{invoice.number} - {companyNames.get(String(invoice.customerId))} - {money(invoice.balanceDue ?? invoice.total, invoice.currency)}</option>)}
-              </select>
-              <input required min="0.01" max={selectedPaymentInvoice?.balanceDue ?? selectedPaymentInvoice?.total} step="0.01" type="number" name="amount" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className={inputClass} placeholder="Monto pendiente" />
-              <input name="currency" className={inputClass} value={paymentCurrency} readOnly />
-              <select name="method" className={inputClass}><option value="transfer">Transferencia</option><option value="cash">Efectivo</option><option value="manual">Manual</option></select>
-              <input name="description" value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} className={`${inputClass} md:col-span-2`} placeholder="Descripcion del pago" />
-              <input required type="date" name="paidAt" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className={inputClass} />
+              <FormField label="Factura pendiente" htmlFor="commerce-payment-invoice" required>
+                <select id="commerce-payment-invoice" required name="invoiceId" value={paymentInvoiceId} onChange={(event) => handlePaymentInvoice(event.target.value)} className={inputClass}>
+                  <option value="" disabled>Selecciona una factura</option>
+                  {pendingInvoices.map((invoice) => <option key={invoice._id} value={invoice._id}>{invoice.number} - {companyNames.get(String(invoice.customerId))} - {money(invoice.balanceDue ?? invoice.total, invoice.currency)}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Monto recibido" htmlFor="commerce-payment-amount" required>
+                <input id="commerce-payment-amount" required min="0.01" max={selectedPaymentInvoice?.balanceDue ?? selectedPaymentInvoice?.total} step="0.01" type="number" name="amount" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className={inputClass} placeholder="0.00" />
+              </FormField>
+              <FormField label="Moneda" htmlFor="commerce-payment-currency">
+                <input id="commerce-payment-currency" name="currency" className={inputClass} value={paymentCurrency} readOnly />
+              </FormField>
+              <FormField label="Metodo" htmlFor="commerce-payment-method">
+                <select id="commerce-payment-method" name="method" className={inputClass}><option value="transfer">Transferencia</option><option value="cash">Efectivo</option><option value="manual">Manual</option></select>
+              </FormField>
+              <FormField label="Descripcion" htmlFor="commerce-payment-description" className="md:col-span-2">
+                <input id="commerce-payment-description" name="description" value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} className={inputClass} placeholder="Referencia o comprobante" />
+              </FormField>
+              <FormField label="Fecha de pago" htmlFor="commerce-payment-date" required>
+                <input id="commerce-payment-date" required type="date" name="paidAt" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className={inputClass} />
+              </FormField>
               <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 Empresa: {companyNames.get(String(selectedPaymentInvoice?.customerId)) || '-'}
                 <br />
@@ -710,19 +797,45 @@ export function DistributorCommercePage({ section = 'finance' }) {
         <Card>
           <CardHeader title="Configuracion comercial y billing" description="Valores usados al emitir facturas a empresas." />
           <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={handleSettings}>
-            <input required name="name" className={inputClass} defaultValue={settings?.name} placeholder="Nombre comercial" />
-            <input name="phone" className={inputClass} defaultValue={settings?.phone} placeholder="Telefono" />
-            <input name="defaultCurrency" className={inputClass} defaultValue={generalSettings.defaultCurrency || 'USD'} placeholder="Moneda por defecto" />
-            <input name="defaultLocale" className={inputClass} defaultValue={generalSettings.defaultLocale || 'es-EC'} placeholder="Idioma / locale" />
-            <input name="defaultTimezone" className={inputClass} defaultValue={generalSettings.defaultTimezone || 'America/Guayaquil'} placeholder="Zona horaria" />
-            <input name="currency" className={inputClass} defaultValue={billingSettings.currency || 'USD'} placeholder="Moneda de facturacion" />
-            <input required name="invoicePrefix" className={inputClass} defaultValue={billingSettings.invoicePrefix || 'FAC'} placeholder="Prefijo de facturas" />
-            <input min="0" step="0.01" type="number" name="taxRate" className={inputClass} defaultValue={billingSettings.taxRate || 0} placeholder="Impuesto %" />
-            <input min="0" type="number" name="gracePeriodDays" className={inputClass} defaultValue={billingSettings.gracePeriodDays || 0} placeholder="Dias de gracia" />
-            <input name="termsUrl" className={inputClass} defaultValue={generalSettings.termsUrl} placeholder="URL de terminos" />
-            <input name="privacyUrl" className={inputClass} defaultValue={generalSettings.privacyUrl} placeholder="URL de privacidad" />
-            <textarea name="paymentInstructions" className={inputClass} defaultValue={billingSettings.paymentInstructions} placeholder="Instrucciones de pago" />
-            <textarea name="termsAndConditions" className={`${inputClass} md:col-span-2`} defaultValue={billingSettings.termsAndConditions} placeholder="Terminos y condiciones de facturacion" />
+            <FormField label="Nombre comercial" htmlFor="settings-name" required>
+              <input id="settings-name" required name="name" className={inputClass} defaultValue={settings?.name} placeholder="Nombre visible" />
+            </FormField>
+            <FormField label="Telefono" htmlFor="settings-phone">
+              <input id="settings-phone" name="phone" className={inputClass} defaultValue={settings?.phone} placeholder="+593..." />
+            </FormField>
+            <FormField label="Moneda por defecto" htmlFor="settings-default-currency" hint="Codigo ISO de tres letras, por ejemplo USD.">
+              <input id="settings-default-currency" name="defaultCurrency" className={inputClass} defaultValue={generalSettings.defaultCurrency || 'USD'} placeholder="USD" />
+            </FormField>
+            <FormField label="Idioma / locale" htmlFor="settings-locale" hint="Formato regional usado en fechas y numeros.">
+              <input id="settings-locale" name="defaultLocale" className={inputClass} defaultValue={generalSettings.defaultLocale || 'es-EC'} placeholder="es-EC" />
+            </FormField>
+            <FormField label="Zona horaria" htmlFor="settings-timezone" hint="Nombre IANA, por ejemplo America/Guayaquil.">
+              <input id="settings-timezone" name="defaultTimezone" className={inputClass} defaultValue={generalSettings.defaultTimezone || 'America/Guayaquil'} placeholder="America/Guayaquil" />
+            </FormField>
+            <FormField label="Moneda de facturacion" htmlFor="settings-billing-currency">
+              <input id="settings-billing-currency" name="currency" className={inputClass} defaultValue={billingSettings.currency || 'USD'} placeholder="USD" />
+            </FormField>
+            <FormField label="Prefijo de facturas" htmlFor="settings-invoice-prefix" hint="Se usa para construir el numero visible de cada factura." required>
+              <input id="settings-invoice-prefix" required name="invoicePrefix" className={inputClass} defaultValue={billingSettings.invoicePrefix || 'FAC'} placeholder="FAC" />
+            </FormField>
+            <FormField label="Impuesto (%)" htmlFor="settings-tax-rate">
+              <input id="settings-tax-rate" min="0" step="0.01" type="number" name="taxRate" className={inputClass} defaultValue={billingSettings.taxRate || 0} placeholder="0" />
+            </FormField>
+            <FormField label="Dias de gracia" htmlFor="settings-grace-days" hint="Dias adicionales antes de considerar vencida una obligacion.">
+              <input id="settings-grace-days" min="0" type="number" name="gracePeriodDays" className={inputClass} defaultValue={billingSettings.gracePeriodDays || 0} placeholder="0" />
+            </FormField>
+            <FormField label="URL de terminos" htmlFor="settings-terms-url">
+              <input id="settings-terms-url" type="url" name="termsUrl" className={inputClass} defaultValue={generalSettings.termsUrl} placeholder="https://..." />
+            </FormField>
+            <FormField label="URL de privacidad" htmlFor="settings-privacy-url">
+              <input id="settings-privacy-url" type="url" name="privacyUrl" className={inputClass} defaultValue={generalSettings.privacyUrl} placeholder="https://..." />
+            </FormField>
+            <FormField label="Instrucciones de pago" htmlFor="settings-payment-instructions">
+              <textarea id="settings-payment-instructions" name="paymentInstructions" className={`${inputClass} min-h-24`} defaultValue={billingSettings.paymentInstructions} placeholder="Cuenta bancaria, referencia y pasos." />
+            </FormField>
+            <FormField label="Terminos de facturacion" htmlFor="settings-billing-terms" className="md:col-span-2">
+              <textarea id="settings-billing-terms" name="termsAndConditions" className={`${inputClass} min-h-24`} defaultValue={billingSettings.termsAndConditions} placeholder="Condiciones que apareceran en la factura." />
+            </FormField>
             <Button className="md:col-span-2" type="submit" disabled={Boolean(busy)}>
               <Settings className="h-4 w-4" /> Guardar configuracion
             </Button>
@@ -735,16 +848,36 @@ export function DistributorCommercePage({ section = 'finance' }) {
           <Card>
             <CardHeader title="White label" description="Marca, soporte y dominio preparado sin validacion DNS real." />
             <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={handleBranding}>
-              <input name="companyName" className={inputClass} defaultValue={branding.companyName} placeholder="Nombre de marca" />
-              <input name="logoUrl" className={inputClass} defaultValue={branding.logoUrl} placeholder="Logo URL" />
-              <input name="faviconUrl" className={inputClass} defaultValue={branding.faviconUrl} placeholder="Favicon URL" />
-              <input name="loginBackgroundUrl" className={inputClass} defaultValue={branding.loginBackgroundUrl} placeholder="Fondo de login URL" />
-              <label className="text-xs font-semibold text-slate-500">Color principal<input type="color" name="primaryColor" className={`${inputClass} mt-1 h-12`} defaultValue={branding.primaryColor || '#0e7490'} /></label>
-              <label className="text-xs font-semibold text-slate-500">Color secundario<input type="color" name="secondaryColor" className={`${inputClass} mt-1 h-12`} defaultValue={branding.secondaryColor || '#0f172a'} /></label>
-              <label className="text-xs font-semibold text-slate-500">Color de acento<input type="color" name="accentColor" className={`${inputClass} mt-1 h-12`} defaultValue={branding.accentColor || '#06b6d4'} /></label>
-              <input type="email" name="supportEmail" className={inputClass} defaultValue={branding.supportEmail} placeholder="Email de soporte" />
-              <input name="supportPhone" className={inputClass} defaultValue={branding.supportPhone} placeholder="Telefono de soporte" />
-              <input name="domain" className={inputClass} defaultValue={settings?.customDomain?.domain} placeholder="crm.midominio.com" />
+              <FormField label="Nombre de marca" htmlFor="branding-company-name">
+                <input id="branding-company-name" name="companyName" className={inputClass} defaultValue={branding.companyName} placeholder="Nombre visible" />
+              </FormField>
+              <FormField label="Logo URL" htmlFor="branding-logo-url" hint="URL publica HTTPS de la imagen.">
+                <input id="branding-logo-url" type="url" name="logoUrl" className={inputClass} defaultValue={branding.logoUrl} placeholder="https://..." />
+              </FormField>
+              <FormField label="Favicon URL" htmlFor="branding-favicon-url">
+                <input id="branding-favicon-url" type="url" name="faviconUrl" className={inputClass} defaultValue={branding.faviconUrl} placeholder="https://..." />
+              </FormField>
+              <FormField label="Fondo de login URL" htmlFor="branding-login-background">
+                <input id="branding-login-background" type="url" name="loginBackgroundUrl" className={inputClass} defaultValue={branding.loginBackgroundUrl} placeholder="https://..." />
+              </FormField>
+              <FormField label="Color principal" htmlFor="branding-primary-color">
+                <input id="branding-primary-color" type="color" name="primaryColor" className={`${inputClass} h-12`} defaultValue={branding.primaryColor || '#0e7490'} />
+              </FormField>
+              <FormField label="Color secundario" htmlFor="branding-secondary-color">
+                <input id="branding-secondary-color" type="color" name="secondaryColor" className={`${inputClass} h-12`} defaultValue={branding.secondaryColor || '#0f172a'} />
+              </FormField>
+              <FormField label="Color de acento" htmlFor="branding-accent-color">
+                <input id="branding-accent-color" type="color" name="accentColor" className={`${inputClass} h-12`} defaultValue={branding.accentColor || '#06b6d4'} />
+              </FormField>
+              <FormField label="Email de soporte" htmlFor="branding-support-email">
+                <input id="branding-support-email" type="email" name="supportEmail" className={inputClass} defaultValue={branding.supportEmail} placeholder="soporte@empresa.com" />
+              </FormField>
+              <FormField label="Telefono de soporte" htmlFor="branding-support-phone">
+                <input id="branding-support-phone" name="supportPhone" className={inputClass} defaultValue={branding.supportPhone} placeholder="+593..." />
+              </FormField>
+              <FormField label="Dominio personalizado" htmlFor="branding-domain" hint="Solo configura el valor; la validacion DNS sigue siendo externa.">
+                <input id="branding-domain" name="domain" className={inputClass} defaultValue={settings?.customDomain?.domain} placeholder="crm.midominio.com" />
+              </FormField>
               <Button className="md:col-span-2" type="submit" disabled={Boolean(busy)}>Guardar branding</Button>
             </form>
           </Card>

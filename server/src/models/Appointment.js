@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import { LOCATION_TYPES } from './Calendar.js';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
+import { normalizeOptionalObjectId } from '../utils/validation.js';
 
 export const APPOINTMENT_STATUSES = [
   'scheduled',
@@ -35,11 +37,29 @@ const appointmentSchema = new mongoose.Schema(
       default: null
     },
     calendarId: { type: mongoose.Schema.Types.ObjectId, ref: 'Calendar', required: true },
-    contactId: { type: mongoose.Schema.Types.ObjectId, ref: 'Contact', default: null },
+    contactId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Contact',
+      default: null,
+      set: normalizeOptionalObjectId
+    },
     opportunityId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Opportunity',
-      default: null
+      default: null,
+      set: normalizeOptionalObjectId
+    },
+    conversationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Conversation',
+      default: null,
+      set: normalizeOptionalObjectId
+    },
+    bookingLinkId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'BookingLink',
+      default: null,
+      set: normalizeOptionalObjectId
     },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true },
@@ -66,6 +86,7 @@ const appointmentSchema = new mongoose.Schema(
     reminderJobId: { type: mongoose.Schema.Types.ObjectId, ref: 'Job', default: null },
     reminderAt: { type: Date, default: null },
     reminderSentAt: { type: Date, default: null },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -83,5 +104,8 @@ appointmentSchema.index({ companyId: 1, calendarId: 1, startAt: 1, status: 1 });
 appointmentSchema.index({ companyId: 1, assignedTo: 1, startAt: 1, status: 1 });
 appointmentSchema.index({ companyId: 1, contactId: 1, startAt: -1 });
 appointmentSchema.index({ companyId: 1, opportunityId: 1, startAt: -1 });
+appointmentSchema.index({ companyId: 1, conversationId: 1, startAt: -1 });
+appointmentSchema.index({ companyId: 1, bookingLinkId: 1, startAt: -1 });
+appointmentSchema.index({ companyId: 1, 'attribution.campaignId': 1, startAt: -1 });
 
 export const Appointment = mongoose.model('Appointment', appointmentSchema);

@@ -19,6 +19,10 @@ export const ROLE_PERMISSIONS = {
     'forms:read_all',
     'landing_pages:read_all',
     'funnels:read_all',
+    'campaigns:read_all',
+    'integrations:read_all',
+    'marketing_reports:read_all',
+    'attribution:read_all',
     'reputation:read_all'
   ],
   DISTRIBUTOR: [
@@ -33,7 +37,12 @@ export const ROLE_PERMISSIONS = {
     'distributor_branding:manage',
     'companies:suspend',
     'modules:read',
-    'impersonation:start_admin'
+    'impersonation:start_admin',
+    'activity:read_distributor',
+    'campaigns:read_distributor',
+    'campaigns:manage_distributor',
+    'integrations:read_distributor',
+    'integrations:manage_distributor'
   ],
   ADMIN: [
     'users:manage',
@@ -71,10 +80,24 @@ export const ROLE_PERMISSIONS = {
     'media:upload',
     'channel_diagnostics:read',
     'channel_secrets:rotate',
+    'consent:read',
+    'consent:manage',
+    'consent:override',
+    'consent:export',
+    'dnd:read',
+    'dnd:manage',
+    'suppressions:manage',
+    'quiet_hours:manage',
+    'message_diagnostics:read',
+    'messages:send_commercial',
+    'messages:send_transactional',
+    'communication_reports:read',
     'calendars:manage',
     'appointments:manage',
+    'appointment_analytics:read',
     'booking_links:manage',
     'availability:manage',
+    'calendar_profiles:apply',
     'workflows:read',
     'workflows:manage',
     'workflows:test',
@@ -87,6 +110,13 @@ export const ROLE_PERMISSIONS = {
     'landing_pages:analytics',
     'funnels:manage',
     'funnels:analytics',
+    'campaigns:manage',
+    'campaigns:read',
+    'integrations:manage',
+    'integrations:read',
+    'integrations:events',
+    'attribution:read',
+    'marketing_reports:read',
     'reputation:manage',
     'reviews:manage',
     'review_requests:manage',
@@ -114,20 +144,35 @@ export const ROLE_PERMISSIONS = {
     'conversations:close_team',
     'message_templates:read',
     'activity:read_team',
+    'users:read_team',
     'notifications:read',
     'routing_rules:read',
     'media:read_team',
     'media:upload_team',
+    'consent:read_team',
+    'consent:manage_team',
+    'dnd:read_team',
+    'dnd:manage_team',
+    'message_diagnostics:read_team',
+    'messages:send_commercial',
+    'messages:send_transactional',
+    'communication_reports:read_team',
     'calendars:read_team',
     'appointments:manage_team',
     'appointments:read_team',
     'appointments:update_team',
+    'appointment_analytics:read_team',
     'availability:read_team',
     'workflows:read_team',
     'workflow_runs:read_team',
     'forms:read_team',
     'forms:submissions_read',
     'funnels:read_team',
+    'campaigns:read_team',
+    'integrations:read_team',
+    'integrations:events',
+    'attribution:read_team',
+    'marketing_reports:read_team',
     'reviews:read_team',
     'review_requests:create_team',
     'coupons:issue_team',
@@ -151,16 +196,74 @@ export const ROLE_PERMISSIONS = {
     'notifications:read',
     'media:read_assigned',
     'media:upload_assigned',
+    'consent:read_assigned',
+    'consent:record_assigned',
+    'dnd:read_assigned',
+    'communication_preferences:update_assigned',
+    'message_diagnostics:read_assigned',
+    'messages:send_commercial',
+    'messages:send_transactional',
     'calendars:read_assigned',
     'appointments:manage_assigned',
     'appointments:read_assigned',
     'appointments:update_assigned',
+    'appointment_analytics:read_assigned',
     'review_requests:create_assigned',
     'coupons:issue_assigned',
-    'reviews:read_assigned'
+    'reviews:read_assigned',
+    'activity:read_self',
+    'attribution:read_assigned'
   ]
 };
 
 export function hasPermission(role, permission) {
   return role === 'SUPERADMIN' || ROLE_PERMISSIONS[role]?.includes(permission) || false;
+}
+
+export function hasUserPermission(user, permission) {
+  if (!user) return false;
+  if (user.role === 'SUPERADMIN') return true;
+  if (Array.isArray(user.permissions)) {
+    if (hasPermission(user.role, permission) && user.permissions.includes(permission)) {
+      return true;
+    }
+    const legacyFallbacks = {
+      'consent:read': ['contacts:manage'],
+      'consent:read_team': ['contacts:read_team'],
+      'consent:read_assigned': ['contacts:read_assigned'],
+      'consent:manage': ['contacts:manage'],
+      'consent:override': ['conversations:manage'],
+      'consent:export': ['contacts:export'],
+      'consent:manage_team': ['contacts:update_team'],
+      'consent:record_assigned': ['contacts:update_assigned'],
+      'dnd:read': ['contacts:manage'],
+      'dnd:read_team': ['contacts:read_team'],
+      'dnd:read_assigned': ['contacts:read_assigned'],
+      'dnd:manage': ['contacts:manage'],
+      'suppressions:manage': ['channel_configs:manage'],
+      'quiet_hours:manage': ['channel_configs:manage'],
+      'dnd:manage_team': ['contacts:update_team'],
+      'communication_preferences:update_assigned': ['contacts:update_assigned'],
+      'message_diagnostics:read': ['conversations:read'],
+      'message_diagnostics:read_team': ['conversations:read_team'],
+      'message_diagnostics:read_assigned': ['conversations:read_assigned'],
+      'messages:send_commercial': [
+        'conversations:send',
+        'conversations:send_team',
+        'conversations:send_assigned'
+      ],
+      'messages:send_transactional': [
+        'conversations:send',
+        'conversations:send_team',
+        'conversations:send_assigned'
+      ],
+      'communication_reports:read': ['marketing_reports:read'],
+      'communication_reports:read_team': ['marketing_reports:read_team']
+    };
+    return Boolean(
+      hasPermission(user.role, permission) &&
+      legacyFallbacks[permission]?.some((legacy) => user.permissions.includes(legacy))
+    );
+  }
+  return hasPermission(user.role, permission);
 }

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getUserAuthorizedModules } from '../core/modules/moduleAccess.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireModule } from '../middleware/moduleMiddleware.js';
 import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
@@ -7,6 +8,7 @@ import { CustomField, CUSTOM_FIELD_TYPES } from '../models/CustomField.js';
 import { Segment } from '../models/Segment.js';
 import { Tag } from '../models/Tag.js';
 import { recordActivity } from '../utils/activity.js';
+import { tagScopeFilter } from '../utils/crmOrganization.js';
 import { tenantFields } from '../utils/crmScope.js';
 import { cleanString } from '../utils/validation.js';
 
@@ -18,28 +20,75 @@ const allowedFilterKeys = new Set([
 
 const normalizeName = (value) => cleanString(value).toLocaleLowerCase('es');
 const metadata = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+const tagScopes = ['contact', 'opportunity', 'appointment', 'workflow'];
+const tagScopeModules = {
+  contact: 'contacts',
+  opportunity: 'opportunities',
+  appointment: 'calendar',
+  workflow: 'workflows'
+};
+
+async function authorizedTagScopes(user) {
+  const modules = new Set(await getUserAuthorizedModules(user));
+  return tagScopes.filter((scope) => modules.has(tagScopeModules[scope]));
+}
 
 router.use(authMiddleware);
 router.use(roleMiddleware('ADMIN', 'SUPERVISOR', 'CALLCENTER'));
-router.use(requireAnyPermission('crm:manage', 'crm:read_team', 'contacts:read_assigned'));
+router.use(requireAnyPermission(
+  'crm:manage',
+  'crm:read_team',
+  'contacts:manage',
+  'contacts:read_team',
+  'contacts:read_assigned',
+  'opportunities:manage',
+  'opportunities:read_team',
+  'opportunities:read_assigned',
+  'tags:manage'
+));
 router.use(requireModule('crm'));
 
 router.get('/tags', async (req, res, next) => {
   try {
-    res.json(await Tag.find({ companyId: req.user.companyId }).sort({ name: 1 }));
+    const scope = cleanString(req.query.scope);
+    if (scope && !tagScopes.includes(scope)) {
+      return res.status(400).json({ message: 'scope de tag invalido' });
+    }
+    const scopes = await authorizedTagScopes(req.user);
+    if (scope && !scopes.includes(scope)) {
+      return res.status(403).json({ message: `El modulo para tags de ${scope} no esta autorizado` });
+    }
+    if (!scope && !scopes.length) return res.json([]);
+    const scopeFilter = scope
+      ? tagScopeFilter(scope)
+      : {
+          $or: [
+            ...scopes.filter((value) => value !== 'contact').map((value) => ({ scope: value })),
+            ...(scopes.includes('contact') ? tagScopeFilter('contact').$or : [])
+          ]
+        };
+    res.json(await Tag.find({ companyId: req.user.companyId, ...scopeFilter }).sort({ scope: 1, name: 1 }));
   } catch (error) { next(error); }
 });
 
-router.post('/tags', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.post('/tags', roleMiddleware('ADMIN'), requireAnyPermission('tags:manage'), async (req, res, next) => {
   try {
     const name = cleanString(req.body.name);
     if (!name) return res.status(400).json({ message: 'name es requerido' });
+    const scope = cleanString(req.body.scope) || 'contact';
+    if (!tagScopes.includes(scope)) {
+      return res.status(400).json({ message: 'scope de tag invalido' });
+    }
+    if (!(await authorizedTagScopes(req.user)).includes(scope)) {
+      return res.status(403).json({ message: `El modulo para tags de ${scope} no esta autorizado` });
+    }
     const tag = await Tag.create({
       ...tenantFields(req.user),
       name,
       normalizedName: normalizeName(name),
       color: req.body.color || '#0e7490',
       description: cleanString(req.body.description),
+      scope,
       createdBy: req.user._id,
       metadata: metadata(req.body.metadata)
     });
@@ -48,7 +97,7 @@ router.post('/tags', roleMiddleware('ADMIN'), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/tags/:id', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.patch('/tags/:id', roleMiddleware('ADMIN'), requireAnyPermission('tags:manage'), async (req, res, next) => {
   try {
     const tag = await Tag.findOne({ _id: req.params.id, companyId: req.user.companyId });
     if (!tag) return res.status(404).json({ message: 'Tag no encontrado' });
@@ -65,7 +114,7 @@ router.patch('/tags/:id', roleMiddleware('ADMIN'), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.delete('/tags/:id', roleMiddleware('ADMIN'), async (req, res, next) => {
+router.delete('/tags/:id', roleMiddleware('ADMIN'), requireAnyPermission('tags:manage'), async (req, res, next) => {
   try {
     const tag = await Tag.findOneAndUpdate(
       { _id: req.params.id, companyId: req.user.companyId },

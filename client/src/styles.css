@@ -23,6 +23,10 @@ body {
     radial-gradient(circle at top left, rgba(14, 165, 233, 0.14), transparent 32rem);
 }
 
+#root {
+  min-height: 100vh;
+}
+
 button,
 input,
 select,

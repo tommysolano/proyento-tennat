@@ -1,13 +1,15 @@
-import { ArrowLeft, Building2, ContactRound, CreditCard, UsersRound } from 'lucide-react';
+import { ArrowLeft, Building2, ContactRound, CreditCard, LogIn, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getDistributorCompanyDetail } from '../../api.js';
 import { Badge } from '../../components/Badge.jsx';
+import { ErrorState, LoadingState } from '../../components/AsyncState.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 function money(value, currency = 'USD') {
   return new Intl.NumberFormat('en-US', {
@@ -19,9 +21,12 @@ function money(value, currency = 'USD') {
 
 export function CompanyDetailForDistributor() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { impersonateAdmin } = useAuth();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [entering, setEntering] = useState(false);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -39,12 +44,31 @@ export function CompanyDetailForDistributor() {
     loadDetail();
   }, [loadDetail]);
 
+  async function handleEnterCompany() {
+    setEntering(true);
+    setError('');
+    try {
+      const data = await impersonateAdmin(id);
+      navigate(data.redirectPath, { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setEntering(false);
+    }
+  }
+
   if (loading) {
-    return <Card className="p-8 text-center text-sm text-slate-500">Cargando detalle...</Card>;
+    return <LoadingState label="Cargando detalle de la empresa..." />;
   }
 
   if (error || !detail) {
-    return <Card className="p-8 text-center text-sm text-rose-700">{error || 'Empresa no encontrada'}</Card>;
+    return (
+      <ErrorState
+        title={detail ? 'No se pudo actualizar la empresa' : 'No se pudo cargar la empresa'}
+        description={error || 'La empresa solicitada no esta disponible.'}
+        onAction={loadDetail}
+      />
+    );
   }
 
   const { company, users, subscription, invoices, payments, contactsTotal, activeModules } = detail;
@@ -55,9 +79,22 @@ export function CompanyDetailForDistributor() {
       title={company.name}
       description="Vista consolidada del tenant desde el distribuidor."
     >
-      <Button as={Link} to="/distributor/companies" variant="secondary" className="w-fit">
-        <ArrowLeft className="h-4 w-4" /> Volver a empresas
-      </Button>
+      <div className="flex flex-wrap gap-3">
+        <Button as={Link} to="/distributor/companies" variant="secondary" className="w-fit">
+          <ArrowLeft className="h-4 w-4" /> Volver a empresas
+        </Button>
+        <Button
+          onClick={handleEnterCompany}
+          disabled={
+            entering ||
+            !users.some((user) => user.role === 'ADMIN' && user.status === 'active') ||
+            !['active', 'trial'].includes(company.status)
+          }
+        >
+          <LogIn className="h-4 w-4" />
+          {entering ? 'Entrando...' : 'Entrar con acceso delegado'}
+        </Button>
+      </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Usuarios" value={users.length} helper="Usuarios del tenant" icon={UsersRound} tone="cyan" />
         <MetricCard label="Contactos" value={contactsTotal} helper="Contactos totales" icon={ContactRound} tone="emerald" />

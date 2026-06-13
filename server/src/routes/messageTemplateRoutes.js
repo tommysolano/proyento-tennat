@@ -6,11 +6,13 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import {
   MessageTemplate,
   TEMPLATE_CHANNELS,
+  TEMPLATE_MESSAGE_CATEGORIES,
   TEMPLATE_STATUSES,
   TEMPLATE_TYPES
 } from '../models/MessageTemplate.js';
 import { recordActivity } from '../utils/activity.js';
 import { cleanString, isValidObjectId } from '../utils/validation.js';
+import { hasUserPermission } from '../core/permissions/permissions.js';
 
 const router = Router();
 
@@ -62,6 +64,18 @@ router.post('/', roleMiddleware('ADMIN'), async (req, res, next) => {
     if (!name || !content) return res.status(400).json({ message: 'name y content son requeridos' });
     if (!TEMPLATE_CHANNELS.includes(req.body.channel)) return res.status(400).json({ message: 'channel invalido' });
     if (!TEMPLATE_TYPES.includes(req.body.type)) return res.status(400).json({ message: 'type invalido' });
+    const messageCategory =
+      req.body.messageCategory ||
+      (req.body.type === 'quick_reply' ? 'reply' : 'commercial');
+    if (!TEMPLATE_MESSAGE_CATEGORIES.includes(messageCategory)) {
+      return res.status(400).json({ message: 'messageCategory invalida' });
+    }
+    if (
+      ['transactional', 'operational'].includes(messageCategory) &&
+      !hasUserPermission(req.user, 'messages:send_transactional')
+    ) {
+      return res.status(403).json({ message: 'No tienes permiso para clasificar plantillas transaccionales' });
+    }
     const template = await MessageTemplate.create({
       companyId: req.user.companyId,
       distributorId: req.user.distributorId || null,
@@ -70,6 +84,7 @@ router.post('/', roleMiddleware('ADMIN'), async (req, res, next) => {
       type: req.body.type,
       language: cleanString(req.body.language) || 'es',
       category: cleanString(req.body.category) || 'utility',
+      messageCategory,
       content,
       variables: Array.isArray(req.body.variables) ? req.body.variables.map(cleanString).filter(Boolean) : [],
       status: req.body.status || 'draft',
@@ -118,6 +133,18 @@ router.patch('/:id', roleMiddleware('ADMIN'), async (req, res, next) => {
     if ('status' in req.body) {
       if (!TEMPLATE_STATUSES.includes(req.body.status)) return res.status(400).json({ message: 'status invalido' });
       template.status = req.body.status;
+    }
+    if ('messageCategory' in req.body) {
+      if (!TEMPLATE_MESSAGE_CATEGORIES.includes(req.body.messageCategory)) {
+        return res.status(400).json({ message: 'messageCategory invalida' });
+      }
+      if (
+        ['transactional', 'operational'].includes(req.body.messageCategory) &&
+        !hasUserPermission(req.user, 'messages:send_transactional')
+      ) {
+        return res.status(403).json({ message: 'No tienes permiso para clasificar plantillas transaccionales' });
+      }
+      template.messageCategory = req.body.messageCategory;
     }
     if ('variables' in req.body) {
       if (!Array.isArray(req.body.variables)) return res.status(400).json({ message: 'variables debe ser un arreglo' });

@@ -40,9 +40,14 @@ import {
   CrmNotice,
   inputClass
 } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import {
+  publicMarketingContext,
+  publicMarketingQuery
+} from '../../utils/publicMarketing.js';
 
 const fieldTypes = [
   'text', 'textarea', 'email', 'phone', 'number', 'date', 'select',
@@ -135,7 +140,8 @@ function normalizeForm(form) {
       ...field,
       order: index,
       options: field.options || [],
-      validation: field.validation || {}
+      validation: field.validation || {},
+      consentChannel: field.consentChannel || ''
     }))
   };
 }
@@ -300,13 +306,14 @@ export function FormsPage({ mode = 'forms' }) {
             <CardHeader title={`Submissions: ${selected.name}`} description={`${submissions.length} respuestas recientes`} />
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Estado</th><th className="p-3">Valores</th><th className="p-3">CRM</th></tr></thead>
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Estado</th><th className="p-3">Valores</th><th className="p-3">Atribucion</th><th className="p-3">CRM</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {submissions.map((item) => (
                     <tr key={item._id}>
                       <td className="p-3">{new Date(item.createdAt).toLocaleString()}</td>
                       <td className="p-3"><Badge tone={statusTone(item.status)}>{item.status}</Badge></td>
                       <td className="max-w-lg p-3 text-xs text-slate-600">{Object.entries(item.values || {}).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join(' · ') || '-'}</td>
+                      <td className="p-3 text-xs text-slate-600">{item.attribution?.campaignName || item.attribution?.utmCampaign || 'Sin campana'}<br />{item.attribution?.entryChannel || item.attribution?.channel || item.attribution?.utmSource || 'Sin canal'}</td>
                       <td className="p-3 text-xs">{item.contactId?.name || '-'}{item.opportunityId ? ` · ${item.opportunityId.title}` : ''}</td>
                     </tr>
                   ))}
@@ -339,7 +346,7 @@ export function FormBuilderPage() {
     const results = await Promise.allSettled([
       id ? getForm(id) : Promise.resolve(emptyForm),
       getUsers(),
-      getTags(),
+      getTags('contact'),
       getPipelines(),
       getBookingLinks(),
       getCustomFields()
@@ -433,6 +440,7 @@ export function FormBuilderPage() {
         defaultValue: '',
         order: form.fields.length,
         hidden: false,
+        consentChannel: '',
         validation: { maxLength: 5000 }
       }]
     });
@@ -500,18 +508,28 @@ export function FormBuilderPage() {
       <div><Button as={Link} to="/marketing/forms" variant="secondary">Volver</Button></div>
       <CrmNotice notice={notice} error={error} />
       <Card>
-        <CardHeader title="Definicion" />
+        <CardHeader title="1. Definicion" description="Identifica el formulario y configura su presentacion publica." />
         <div className="grid gap-4 p-5 md:grid-cols-2">
-          <label className="text-xs font-semibold">Nombre<input required className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-          <label className="text-xs font-semibold">Slug<input className={inputClass} value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></label>
-          <label className="text-xs font-semibold">Tipo<select className={inputClass} value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{formTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
-          <label className="text-xs font-semibold">Texto del boton<input className={inputClass} value={form.styling.buttonLabel} onChange={(event) => setForm({ ...form, styling: { ...form.styling, buttonLabel: event.target.value } })} /></label>
-          <label className="text-xs font-semibold md:col-span-2">Descripcion<textarea className={`${inputClass} min-h-20`} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+          <FormField label="Nombre" htmlFor="form-builder-name" required>
+            <input id="form-builder-name" required className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          </FormField>
+          <FormField label="Slug" htmlFor="form-builder-slug" hint="Identificador tecnico usado en la URL publica.">
+            <input id="form-builder-slug" className={inputClass} value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} />
+          </FormField>
+          <FormField label="Tipo" htmlFor="form-builder-type">
+            <select id="form-builder-type" className={inputClass} value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{formTypes.map((type) => <option key={type}>{type}</option>)}</select>
+          </FormField>
+          <FormField label="Texto del boton" htmlFor="form-builder-button-label">
+            <input id="form-builder-button-label" className={inputClass} value={form.styling.buttonLabel} onChange={(event) => setForm({ ...form, styling: { ...form.styling, buttonLabel: event.target.value } })} />
+          </FormField>
+          <FormField label="Descripcion" htmlFor="form-builder-description" className="md:col-span-2">
+            <textarea id="form-builder-description" className={`${inputClass} min-h-20`} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+          </FormField>
         </div>
       </Card>
 
       <Card>
-        <CardHeader title="Campos" description="Ordena con los botones; el key se usa para mappings y submissions." action={<Button variant="secondary" onClick={addField}><Plus className="h-4 w-4" />Campo</Button>} />
+        <CardHeader title="2. Campos" description="Ordena con los botones; el key es un identificador tecnico usado para mapeos y respuestas." action={<Button variant="secondary" onClick={addField}><Plus className="h-4 w-4" />Campo</Button>} />
         <div className="space-y-4 p-5">
           {form.fields.map((field, index) => (
             <div key={field._id || `${field.key}-${index}`} className="rounded-lg border border-slate-200 p-4">
@@ -521,6 +539,7 @@ export function FormBuilderPage() {
                 <label className="text-xs font-semibold">Tipo<select className={inputClass} value={field.type} onChange={(event) => updateField(index, { type: event.target.value })}>{fieldTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
                 <label className="text-xs font-semibold">Placeholder<input className={inputClass} value={field.placeholder} onChange={(event) => updateField(index, { placeholder: event.target.value })} /></label>
                 {['select', 'multiselect', 'radio'].includes(field.type) ? <label className="text-xs font-semibold md:col-span-2">Opciones separadas por coma<input className={inputClass} value={field.options.join(', ')} onChange={(event) => updateField(index, { options: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} /></label> : null}
+                {field.type === 'consent' ? <label className="text-xs font-semibold">Canal autorizado<select className={inputClass} value={field.consentChannel || ''} onChange={(event) => updateField(index, { consentChannel: event.target.value })}><option value="">Solo evidencia general</option>{['whatsapp', 'sms', 'email', 'call'].map((channel) => <option key={channel}>{channel}</option>)}</select></label> : null}
                 <label className="text-xs font-semibold md:col-span-2">Mapeo CRM<select className={inputClass} value={mappingValue(field.key)} onChange={(event) => setMapping(field.key, event.target.value)}><option value="">Sin mapeo</option>{Object.entries(standardMappings).map(([entity, fields]) => fields.map((target) => <option key={`${entity}-${target}`} value={`${entity}:${target}`}>{entity}.{target}</option>))}{options.customFields.map((custom) => <option key={custom._id} value={`${custom.entityType}:custom:${custom.key}`}>{custom.entityType}.customFields.{custom.key}</option>)}</select></label>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -536,7 +555,7 @@ export function FormBuilderPage() {
       </Card>
 
       <Card>
-        <CardHeader title="CRM, oportunidad y booking" />
+        <CardHeader title="3. Integracion y reglas" description="Define como cada envio se relaciona con CRM, oportunidades y reservas." />
         <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
           <label className="text-xs font-semibold">Duplicados<select className={inputClass} value={form.settings.duplicateStrategy} onChange={(event) => setSetting('duplicateStrategy', event.target.value)}>{['create_new', 'update_existing', 'ignore_duplicate'].map((value) => <option key={value}>{value}</option>)}</select></label>
           <label className="text-xs font-semibold">Estado inicial<select className={inputClass} value={form.settings.defaultContactStatus} onChange={(event) => setSetting('defaultContactStatus', event.target.value)}>{contactStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -559,7 +578,7 @@ export function FormBuilderPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Resultado publico" />
+        <CardHeader title="4. Resultado publico" description="Configura la respuesta posterior al envio y las protecciones basicas." />
         <div className="grid gap-4 p-5 md:grid-cols-2">
           <label className="text-xs font-semibold">Mensaje de exito<textarea className={`${inputClass} min-h-20`} value={form.settings.successMessage} onChange={(event) => setSetting('successMessage', event.target.value)} /></label>
           <label className="text-xs font-semibold">Redirect URL<input className={inputClass} value={form.settings.redirectUrl} onChange={(event) => setSetting('redirectUrl', event.target.value)} /></label>
@@ -607,7 +626,7 @@ export function PublicFormRenderer({ slug, source = {}, embedded = false }) {
     setLoading(true);
     setError('');
     setForm(null);
-    getPublicForm(slug)
+    getPublicForm(slug, publicMarketingQuery())
       .then((data) => {
         if (
           !data ||
@@ -642,6 +661,7 @@ export function PublicFormRenderer({ slug, source = {}, embedded = false }) {
         submissionToken: form.submissionToken,
         [form.settings.honeypotField]: event.currentTarget.elements[form.settings.honeypotField]?.value || '',
         source,
+        ...publicMarketingContext(),
         ...publicTracking()
       });
       setResult(response);

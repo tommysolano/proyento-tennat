@@ -159,6 +159,17 @@ export const createUser = (user) =>
     method: 'POST',
     body: JSON.stringify(user)
   });
+export const getPermissionTemplates = () => apiRequest('/users/permissions/templates');
+export const updateUserPermissions = (userId, payload) =>
+  apiRequest(`/users/${userId}/permissions`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+export const applyRolePermissions = (role, payload) =>
+  apiRequest(`/users/permissions/roles/${role}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
 
 export const getSubscriptions = () => apiRequest('/subscriptions');
 export const createSubscription = (subscription) =>
@@ -178,6 +189,45 @@ export function getContacts(filters = {}) {
 
 export const getContact = (contactId) => apiRequest(`/contacts/${contactId}`);
 export const getContactTimeline = (contactId) => apiRequest(`/contacts/${contactId}/timeline`);
+export const getContactCommunicationStatus = (contactId, filters = {}) =>
+  apiRequest(`/communications/contacts/${contactId}/status${queryString(filters)}`);
+export const updateContactConsent = (contactId, channel, payload) =>
+  apiRequest(`/communications/contacts/${contactId}/consents/${channel}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+export const updateContactDnd = (contactId, payload) =>
+  apiRequest(`/communications/contacts/${contactId}/dnd`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const updateContactCommunicationPreferences = (contactId, payload) =>
+  apiRequest(`/communications/contacts/${contactId}/preferences`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const evaluateCommunicationPolicy = (filters = {}) =>
+  apiRequest(`/communications/policy/evaluate${queryString(filters)}`);
+export const getCommunicationSettings = () => apiRequest('/communications/settings');
+export const updateCommunicationSettings = (payload) =>
+  apiRequest('/communications/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const getSuppressions = (filters = {}) =>
+  apiRequest(`/communications/suppressions${queryString(filters)}`);
+export const createSuppression = (payload) =>
+  apiRequest('/communications/suppressions', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const revokeSuppression = (id, reason = '') =>
+  apiRequest(`/communications/suppressions/${id}/revoke`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason })
+  });
+export const getCommunicationReport = (filters = {}) =>
+  apiRequest(`/communications/reports/overview${queryString(filters)}`);
 
 export const createContact = (contact) =>
   apiRequest('/contacts', {
@@ -227,10 +277,38 @@ export async function exportContacts(filters = {}) {
   URL.revokeObjectURL(url);
 }
 
-export const getTags = () => apiRequest('/crm/tags');
+export const getTags = (scope = '') => apiRequest(`/crm/tags${queryString({ scope })}`);
 export const createTag = (payload) => apiRequest('/crm/tags', { method: 'POST', body: JSON.stringify(payload) });
 export const updateTag = (id, payload) => apiRequest(`/crm/tags/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 export const deleteTag = (id) => apiRequest(`/crm/tags/${id}`, { method: 'DELETE' });
+
+export const getCrmLists = (entityType = '') =>
+  apiRequest(`/crm/lists${queryString({ entityType })}`);
+export const createCrmList = (payload) =>
+  apiRequest('/crm/lists', { method: 'POST', body: JSON.stringify(payload) });
+export const updateCrmList = (id, payload) =>
+  apiRequest(`/crm/lists/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const deleteCrmList = (id) =>
+  apiRequest(`/crm/lists/${id}`, { method: 'DELETE' });
+export const getCrmListMembers = (id) => apiRequest(`/crm/lists/${id}/members`);
+export const runCrmBulkAction = (entityType, payload) =>
+  apiRequest(`/crm/bulk/${entityType}`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const getCrmViewPreference = (module) =>
+  apiRequest(`/crm/view-preferences/${module}`);
+export const updateCrmViewPreference = (module, visibleColumns) =>
+  apiRequest(`/crm/view-preferences/${module}`, {
+    method: 'PUT',
+    body: JSON.stringify({ visibleColumns })
+  });
+export const getCommercialRelations = (filters) =>
+  apiRequest(`/crm/relations${queryString(filters)}`);
+export const createCommercialRelation = (payload) =>
+  apiRequest('/crm/relations', { method: 'POST', body: JSON.stringify(payload) });
+export const deleteCommercialRelation = (id) =>
+  apiRequest(`/crm/relations/${id}`, { method: 'DELETE' });
 
 export const getCustomFields = (entityType = '') => apiRequest(`/crm/custom-fields${queryString({ entityType })}`);
 export const createCustomField = (payload) => apiRequest('/crm/custom-fields', { method: 'POST', body: JSON.stringify(payload) });
@@ -316,10 +394,11 @@ export async function getMediaContentObjectUrl(messageId) {
   return URL.createObjectURL(await response.blob());
 }
 
-export async function uploadConversationMedia(conversationId, file, caption = '') {
+export async function uploadConversationMedia(conversationId, file, caption = '', category = '') {
   const form = new FormData();
   form.append('file', file);
   if (caption) form.append('caption', caption);
+  if (category) form.append('category', category);
   const response = await authenticatedFetch(
     `/conversations/${conversationId}/messages/media`,
     { method: 'POST', body: form }
@@ -403,6 +482,8 @@ export const getActivityLogs = () => apiRequest('/activity-logs');
 export const getCalendars = (filters = {}) =>
   apiRequest(`/calendars${queryString(filters)}`);
 export const getCalendar = (id) => apiRequest(`/calendars/${id}`);
+export const getCalendarProfiles = () =>
+  apiRequest('/calendars/configuration-profiles');
 export const createCalendar = (payload) =>
   apiRequest('/calendars', { method: 'POST', body: JSON.stringify(payload) });
 export const updateCalendar = (id, payload) =>
@@ -412,6 +493,11 @@ export const updateCalendar = (id, payload) =>
   });
 export const archiveCalendar = (id) =>
   apiRequest(`/calendars/${id}/archive`, { method: 'PATCH', body: '{}' });
+export const applyCalendarProfile = (id, profileKey, confirmOverwrite = false) =>
+  apiRequest(`/calendars/${id}/apply-profile`, {
+    method: 'POST',
+    body: JSON.stringify({ profileKey, confirmOverwrite })
+  });
 export const getCalendarAvailability = (id, filters = {}) =>
   apiRequest(`/calendars/${id}/availability${queryString(filters)}`);
 export const getAvailabilityRules = (id) =>
@@ -446,6 +532,8 @@ export const deleteAvailabilityException = (id) =>
 export const getAppointments = (filters = {}) =>
   apiRequest(`/appointments${queryString(filters)}`);
 export const getAppointmentMetrics = () => apiRequest('/appointments/metrics');
+export const getAppointmentAnalytics = (filters = {}) =>
+  apiRequest(`/appointments/analytics${queryString(filters)}`);
 export const createAppointment = (payload) =>
   apiRequest('/appointments', { method: 'POST', body: JSON.stringify(payload) });
 export const updateAppointment = (id, payload) =>
@@ -485,8 +573,10 @@ export const updateBookingLink = (id, payload) =>
 export const archiveBookingLink = (id) =>
   apiRequest(`/booking-links/${id}/archive`, { method: 'PATCH', body: '{}' });
 
-export const getPublicBookingLink = (slug) =>
-  apiRequest(`/public/bookings/${encodeURIComponent(slug)}`);
+export const getPublicBookingLink = (slug, filters = {}) =>
+  apiRequest(
+    `/public/bookings/${encodeURIComponent(slug)}${queryString(filters)}`
+  );
 export const getPublicBookingAvailability = (slug, filters = {}) =>
   apiRequest(
     `/public/bookings/${encodeURIComponent(slug)}/availability${queryString(filters)}`
@@ -574,6 +664,7 @@ export const getMyUsage = () => apiRequest('/billing/my-usage');
 
 export const getDistributorBillingOverview = () =>
   apiRequest('/distributor/billing/overview');
+export const getDistributorModules = () => apiRequest('/distributor/modules');
 export const getDistributorCompanies = () => apiRequest('/distributor/companies');
 export const getDistributorCompanyDetail = (companyId) =>
   apiRequest(`/distributor/companies/${companyId}/detail`);
@@ -688,8 +779,8 @@ export const archiveFormDefinition = (id) =>
 export const getFormSubmissions = (id, filters = {}) =>
   apiRequest(`/forms/${id}/submissions${queryString(filters)}`);
 export const getFormAnalytics = (id) => apiRequest(`/forms/${id}/analytics`);
-export const getPublicForm = (slug) =>
-  apiRequest(`/public/forms/${encodeURIComponent(slug)}`);
+export const getPublicForm = (slug, tracking = {}) =>
+  apiRequest(`/public/forms/${encodeURIComponent(slug)}${queryString(tracking)}`);
 export const submitPublicForm = (slug, payload) =>
   apiRequest(`/public/forms/${encodeURIComponent(slug)}/submit`, {
     method: 'POST',
@@ -717,8 +808,8 @@ export const archiveLandingPage = (id) =>
   apiRequest(`/landing-pages/${id}/archive`, { method: 'PATCH', body: '{}' });
 export const getLandingPageAnalytics = (id) =>
   apiRequest(`/landing-pages/${id}/analytics`);
-export const getPublicLandingPage = (slug) =>
-  apiRequest(`/public/pages/${encodeURIComponent(slug)}`);
+export const getPublicLandingPage = (slug, tracking = {}) =>
+  apiRequest(`/public/pages/${encodeURIComponent(slug)}${queryString(tracking)}`);
 export const trackLandingPageEvent = (slug, payload) =>
   apiRequest(`/public/pages/${encodeURIComponent(slug)}/events`, {
     method: 'POST',
@@ -759,17 +850,43 @@ export const publishFunnelStep = (id) =>
 export const archiveFunnelStep = (id) =>
   apiRequest(`/funnel-steps/${id}/archive`, { method: 'PATCH', body: '{}' });
 export const getFunnelAnalytics = (id) => apiRequest(`/funnels/${id}/analytics`);
-export const getPublicFunnel = (funnelSlug, stepSlug = '') =>
+export const getPublicFunnel = (funnelSlug, stepSlug = '', tracking = {}) =>
   apiRequest(
     `/public/funnels/${encodeURIComponent(funnelSlug)}${
       stepSlug ? `/${encodeURIComponent(stepSlug)}` : ''
-    }`
+    }${queryString(tracking)}`
   );
 export const trackFunnelEvent = (funnelSlug, stepSlug, payload) =>
   apiRequest(
     `/public/funnels/${encodeURIComponent(funnelSlug)}/${encodeURIComponent(stepSlug)}/events`,
     { method: 'POST', body: JSON.stringify(payload) }
   );
+
+export const getCampaigns = (filters = {}) =>
+  apiRequest(`/campaigns${queryString(filters)}`);
+export const createCampaign = (payload) =>
+  apiRequest('/campaigns', { method: 'POST', body: JSON.stringify(payload) });
+export const updateCampaign = (id, payload) =>
+  apiRequest(`/campaigns/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+export const getIntegrations = (filters = {}) =>
+  apiRequest(`/integrations${queryString(filters)}`);
+export const createIntegration = (payload) =>
+  apiRequest('/integrations', {
+    method: 'POST',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
+export const updateIntegration = (id, payload) =>
+  apiRequest(`/integrations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(normalizeMarketingPayload(payload))
+  });
+export const getIntegrationEvents = (id, filters = {}) =>
+  apiRequest(`/integrations/${id}/events${queryString(filters)}`);
+export const getMarketingReport = (filters = {}) =>
+  apiRequest(`/marketing/reports/overview${queryString(filters)}`);
 
 export const getReputationOverview = () => apiRequest('/reputation/overview');
 export const getContactReputation = (contactId) =>

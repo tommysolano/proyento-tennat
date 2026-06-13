@@ -9,6 +9,7 @@ export const ALERT_TYPES = [
   'message_failures',
   'usage_limit_reached',
   'credentials_error',
+  'integration_error',
   'workflow_failure',
   'workflow_action'
 ];

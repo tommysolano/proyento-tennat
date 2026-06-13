@@ -31,13 +31,23 @@ export function validateMessageDraft({
   fileSize = 0,
   conversationStatus = 'open',
   dndActive = false,
-  channel = ''
+  channel = '',
+  category = 'commercial',
+  policyAllowed = true,
+  policyReason = ''
 }) {
   if (['resolved', 'closed', 'archived'].includes(conversationStatus)) {
     return 'Reabre la conversacion antes de enviar mensajes.';
   }
-  if (channel !== 'internal' && dndActive) {
+  if (
+    channel !== 'internal' &&
+    dndActive &&
+    !['transactional', 'operational'].includes(category)
+  ) {
     return 'El contacto tiene No molestar activo.';
+  }
+  if (channel !== 'internal' && policyAllowed === false) {
+    return policyReason || 'La politica de comunicacion no permite este envio.';
   }
   if (type === 'text' && !String(text).trim() && !templateId) {
     return 'Escribe un mensaje o selecciona una plantilla.';
@@ -51,6 +61,7 @@ export function validateMessageDraft({
 export function contactDndStatus(contact) {
   const metadata = contact?.metadata || {};
   const candidates = [
+    contact?.communicationPreferences?.globalDnd,
     metadata.doNotDisturb,
     metadata.dnd,
     metadata.optOut,

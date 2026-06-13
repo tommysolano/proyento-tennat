@@ -14,9 +14,31 @@ import { getChannelAdapter, canonicalChannel } from './adapters/index.js';
 import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
 import { OperationalAlertService } from '../ops/OperationalAlertService.js';
 import { assertOutboundAllowed } from './conversationValidation.js';
+import { CommunicationPolicyService } from '../communications/CommunicationPolicyService.js';
+import { MESSAGE_CATEGORIES } from '../communications/communicationPolicyRules.js';
 
 function safePreview(text, fallback = '') {
   return String(text || fallback).slice(0, 500);
+}
+
+function defaultMessageCategory(conversation, now = new Date()) {
+  const inboundAt = conversation.lastInboundAt
+    ? new Date(conversation.lastInboundAt)
+    : null;
+  const outboundAt = conversation.lastOutboundAt
+    ? new Date(conversation.lastOutboundAt)
+    : null;
+  return inboundAt &&
+    now.getTime() - inboundAt.getTime() <= 24 * 60 * 60 * 1000 &&
+    (!outboundAt || inboundAt > outboundAt)
+    ? 'reply'
+    : 'commercial';
+}
+
+function outboundJobType(channel) {
+  return channel === 'whatsapp_cloud'
+    ? 'message.whatsapp.send'
+    : 'message.outbound.send';
 }
 
 async function activity({
@@ -260,6 +282,15 @@ export class ConversationService {
         externalMessageId: message.externalMessageId
       }
     });
+    await CommunicationPolicyService.processInboundOptOut({
+      companyId: conversation.companyId,
+      distributorId: conversation.distributorId,
+      contactId: conversation.contactId,
+      channel: conversation.channel,
+      text: message.text,
+      messageId: message._id,
+      recordedBy: actorId
+    }).catch(() => null);
     if (canonicalChannel(conversation.channel) === 'whatsapp_cloud') {
       await trackUsage({
         companyId: conversation.companyId,
@@ -282,18 +313,89 @@ export class ConversationService {
     text = '',
     type = 'text',
     template = null,
-    media = {}
+    media = {},
+    category = '',
+    adminOverride = false,
+    overrideReason = ''
   }) {
     const contact = await Contact.findOne({
       _id: conversation.contactId,
       companyId: conversation.companyId,
       archivedAt: null
-    }).select('_id metadata');
+    });
     if (!contact) {
       throw Object.assign(new Error('Contacto no disponible para envio'), { status: 404 });
     }
     assertOutboundAllowed({ conversation, contact, text, type, template, media });
     const canonical = canonicalChannel(conversation.channel);
+    const resolvedCategory = MESSAGE_CATEGORIES.includes(category)
+      ? category
+      : defaultMessageCategory(conversation);
+    const policy = canonical === 'internal'
+      ? {
+          allowed: true,
+          reasonCode: 'INTERNAL',
+          reasonMessage: 'La comunicacion interna no contacta al cliente.',
+          evaluatedChannel: 'other',
+          evaluatedAt: new Date(),
+          appliedRules: ['internal_message']
+        }
+      : await CommunicationPolicyService.evaluate({
+          companyId: conversation.companyId,
+          contactId: contact._id,
+          channel: canonical,
+          category: resolvedCategory,
+          conversation,
+          channelConfigId: conversation.channelConfigId,
+          user,
+          adminOverride,
+          overrideReason
+        });
+    if (!policy.allowed) {
+      const blocked = await Message.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        conversationId: conversation._id,
+        contactId: conversation.contactId,
+        channel: canonical,
+        direction: 'outbound',
+        type,
+        category: resolvedCategory,
+        text: String(text || '').trim(),
+        media,
+        status: 'blocked',
+        provider: canonical,
+        sentBy: user._id,
+        reasonCode: policy.reasonCode,
+        blockedByRule: policy.reasonCode,
+        errorMessage: policy.reasonMessage,
+        error: policy.reasonMessage,
+        metadata: {
+          policyEvaluation: sanitize(policy),
+          templateName: template?.name || ''
+        }
+      });
+      await activity({
+        user,
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        type: 'message_outbound_blocked',
+        summary: `Mensaje bloqueado: ${policy.reasonMessage}`,
+        metadata: {
+          conversationId: conversation._id,
+          contactId: conversation.contactId,
+          messageId: blocked._id,
+          reasonCode: policy.reasonCode,
+          category: resolvedCategory
+        }
+      });
+      const error = Object.assign(new Error(policy.reasonMessage), {
+        status: 409,
+        code: policy.reasonCode,
+        policy
+      });
+      throw error;
+    }
     if (canonical === 'whatsapp_cloud') {
       await checkUsageLimit({
         companyId: conversation.companyId,
@@ -310,17 +412,25 @@ export class ConversationService {
       channel: canonical,
       direction: 'outbound',
       type,
+      category: resolvedCategory,
       text: String(text || '').trim(),
       media,
-      status: 'pending',
+      status: policy.scheduled ? 'scheduled' : 'queued',
+      scheduledAt: policy.scheduleAt || null,
+      reasonCode: policy.reasonCode,
       provider: canonical,
       sentBy: user._id,
-      metadata: template
-        ? {
-            templateName: template.name || template,
-            providerTemplate: sanitize(template)
-          }
-        : {}
+      metadata: {
+        ...(template
+          ? {
+              templateName: template.name || template,
+              providerTemplate: sanitize(template)
+            }
+          : {}),
+        policyEvaluation: sanitize(policy),
+        adminOverride: Boolean(adminOverride),
+        overrideReason: adminOverride ? String(overrideReason || '').trim() : ''
+      }
     });
     await activity({
       user,
@@ -341,13 +451,14 @@ export class ConversationService {
     await conversation.save();
     realtimeConversation('message.created', conversation, { message: message.toJSON() });
 
-    if (canonical === 'whatsapp_cloud') {
+    if (canonical === 'whatsapp_cloud' || policy.scheduled) {
       await JobService.enqueue({
-        type: 'message.whatsapp.send',
+        type: outboundJobType(canonical),
         payload: {
           messageId: message._id,
           template
         },
+        runAt: policy.scheduleAt || new Date(),
         companyId: conversation.companyId,
         distributorId: conversation.distributorId,
         metadata: {
@@ -355,6 +466,21 @@ export class ConversationService {
           messageId: message._id
         }
       });
+      if (policy.scheduled) {
+        await activity({
+          user,
+          companyId: conversation.companyId,
+          distributorId: conversation.distributorId,
+          type: 'message_outbound_scheduled',
+          summary: 'Mensaje programado por horario silencioso',
+          metadata: {
+            conversationId: conversation._id,
+            contactId: conversation.contactId,
+            messageId: message._id,
+            scheduledAt: policy.scheduleAt
+          }
+        });
+      }
       return message;
     }
 
@@ -366,7 +492,9 @@ export class ConversationService {
     if (!message) {
       throw Object.assign(new Error('Mensaje outbound no encontrado'), { retryable: false });
     }
-    if (message.status === 'sent' && message.externalMessageId) return message;
+    if (['sent', 'delivered', 'read', 'blocked', 'skipped'].includes(message.status)) {
+      return message;
+    }
 
     const [conversation, contact] = await Promise.all([
       Conversation.findOne({
@@ -396,7 +524,77 @@ export class ConversationService {
         }).select('+credentials +verifyToken +webhookSecret')
       : null;
     const canonical = canonicalChannel(conversation.channel);
+    const sender = message.sentBy
+      ? await User.findOne({ _id: message.sentBy, companyId: message.companyId })
+      : null;
+    const policy = canonical === 'internal'
+      ? { allowed: true, reasonCode: 'INTERNAL', appliedRules: ['internal_message'] }
+      : await CommunicationPolicyService.evaluate({
+          companyId: message.companyId,
+          contactId: message.contactId,
+          channel: canonical,
+          category: message.category || 'commercial',
+          conversation,
+          channelConfigId: conversation.channelConfigId,
+          user: sender,
+          adminOverride: Boolean(message.metadata?.adminOverride),
+          overrideReason: message.metadata?.overrideReason || ''
+        });
+    if (!policy.allowed) {
+      message.status = 'blocked';
+      message.reasonCode = policy.reasonCode;
+      message.blockedByRule = policy.reasonCode;
+      message.errorMessage = policy.reasonMessage;
+      message.error = policy.reasonMessage;
+      message.failedAt = null;
+      message.metadata = {
+        ...(message.metadata || {}),
+        policyEvaluation: sanitize(policy)
+      };
+      await message.save();
+      realtimeConversation('message.status_updated', conversation, {
+        message: message.toJSON()
+      });
+      await activity({
+        actorId: message.sentBy,
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        type: 'message_outbound_blocked',
+        summary: `Mensaje bloqueado antes del envio: ${policy.reasonMessage}`,
+        metadata: {
+          conversationId: conversation._id,
+          contactId: conversation.contactId,
+          messageId: message._id,
+          reasonCode: policy.reasonCode
+        }
+      });
+      return message;
+    }
+    if (policy.scheduled && new Date(policy.scheduleAt) > new Date()) {
+      message.status = 'scheduled';
+      message.scheduledAt = policy.scheduleAt;
+      message.reasonCode = policy.reasonCode;
+      message.metadata = {
+        ...(message.metadata || {}),
+        policyEvaluation: sanitize(policy)
+      };
+      await message.save();
+      await JobService.enqueue({
+        type: outboundJobType(canonical),
+        payload: { messageId: message._id, template },
+        runAt: policy.scheduleAt,
+        companyId: message.companyId,
+        distributorId: message.distributorId,
+        metadata: {
+          conversationId: conversation._id,
+          messageId: message._id,
+          rescheduledByPolicy: true
+        }
+      });
+      return message;
+    }
     const adapter = getChannelAdapter(canonical, { channelConfig });
+    message.status = 'queued';
     message.attempts += 1;
     message.lastAttemptAt = new Date();
     const result = await adapter.sendMessage({
@@ -413,12 +611,16 @@ export class ConversationService {
     message.providerPayload = sanitize(result.providerPayload || {});
     message.externalMessageId = result.externalMessageId || message.externalMessageId || '';
     message.error = sanitize(result.error || '');
+    message.errorMessage = message.error;
+    message.providerCode = sanitize(result.providerCode || result.code || '');
+    message.reasonCode = result.success ? 'PROVIDER_ACCEPTED' : 'PROVIDER_ERROR';
+    message.blockedByRule = '';
     if (result.success) {
       message.status = result.status || 'sent';
       message.sentAt = message.sentAt || new Date();
       message.failedAt = null;
     } else if (result.retryable && (!job || job.attempts < job.maxAttempts)) {
-      message.status = 'pending';
+      message.status = 'queued';
       message.failedAt = null;
     } else {
       message.status = 'failed';

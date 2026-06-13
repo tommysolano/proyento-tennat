@@ -133,11 +133,49 @@ export function safeTrackingContext(req) {
       utm[key] = sanitizePlainText(req.query?.[key] || req.body?.utm?.[key], 200);
     }
   }
+  const suppliedAttribution = {
+    ...(req.body?.metadata?.attribution || {}),
+    ...(req.body?.attribution || {})
+  };
+  const attribution = {};
+  const publicFields = [
+    'campaign_id',
+    'campaign_name',
+    'adset_id',
+    'adset_name',
+    'ad_id',
+    'ad_name',
+    'source',
+    'medium',
+    'channel',
+    'pixel_id',
+    'tag_id',
+    'external_event_id',
+    'producto_consultado',
+    'producto_comprado',
+    'categoria_consultada',
+    'categoria_comprada',
+    'referencia_anuncio',
+    'canal_ingreso',
+    'consultedProduct',
+    'purchasedProduct',
+    'consultedCategory',
+    'purchasedCategory',
+    'adReference',
+    'entryChannel'
+  ];
+  for (const key of publicFields) {
+    const value = req.query?.[key] ?? suppliedAttribution[key];
+    if (value !== undefined && value !== null && value !== '') {
+      attribution[key] = sanitizePlainText(value, 500);
+    }
+  }
   return {
     ipHash: hashPublicValue(req.ip || req.socket?.remoteAddress || ''),
     userAgent,
     referrer,
     utm,
+    attribution,
     sessionId: sanitizePlainText(req.body?.sessionId || req.query?.sessionId || '', 100),
     visitorId: sanitizePlainText(req.body?.visitorId || req.query?.visitorId || '', 100)
   };

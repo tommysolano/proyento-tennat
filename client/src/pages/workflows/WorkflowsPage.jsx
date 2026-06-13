@@ -16,7 +16,8 @@ import {
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
-import { CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.jsx';
+import { CrmLoadError, CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -68,10 +69,12 @@ export function WorkflowsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const [workflows, catalogData] = await Promise.all([
         getWorkflows(filters),
@@ -80,7 +83,7 @@ export function WorkflowsPage() {
       setItems(workflows);
       setCatalog(catalogData);
     } catch (requestError) {
-      setError(requestError.message);
+      setLoadError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -116,23 +119,24 @@ export function WorkflowsPage() {
       <Card>
         <CardHeader title="Filtros" />
         <div className="grid gap-3 p-4 md:grid-cols-3">
-          <input
-            className={inputClass}
-            placeholder="Buscar por nombre"
-            value={filters.search}
-            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
-          />
-          <select className={inputClass} value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
-            <option value="">Todos los estados</option>
-            {['draft', 'active', 'paused', 'archived'].map((value) => <option key={value}>{value}</option>)}
-          </select>
-          <select className={inputClass} value={filters.eventType} onChange={(event) => setFilters({ ...filters, eventType: event.target.value })}>
-            <option value="">Todos los triggers</option>
-            {catalog.triggers.map((item) => <option key={item.eventType} value={item.eventType}>{item.label}{item.status === 'planned' ? ' (planned)' : ''}</option>)}
-          </select>
+          <FormField label="Buscar" htmlFor="workflows-filter-search">
+            <input id="workflows-filter-search" className={inputClass} placeholder="Nombre del workflow" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          </FormField>
+          <FormField label="Estado" htmlFor="workflows-filter-status">
+            <select id="workflows-filter-status" className={inputClass} value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+              <option value="">Todos los estados</option>
+              {['draft', 'active', 'paused', 'archived'].map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Disparador" htmlFor="workflows-filter-trigger">
+            <select id="workflows-filter-trigger" className={inputClass} value={filters.eventType} onChange={(event) => setFilters({ ...filters, eventType: event.target.value })}>
+              <option value="">Todos los triggers</option>
+              {catalog.triggers.map((item) => <option key={item.eventType} value={item.eventType}>{item.label}{item.status === 'planned' ? ' (planned)' : ''}</option>)}
+            </select>
+          </FormField>
         </div>
       </Card>
-      {loading ? <CrmLoading /> : (
+      {loading ? <CrmLoading /> : loadError ? <CrmLoadError message={loadError} onRetry={load} /> : (
         <div className="grid gap-4">
           {items.map((workflow) => (
             <Card key={workflow._id} className="p-5">
@@ -274,7 +278,7 @@ export function WorkflowBuilderPage() {
       <CrmNotice notice={notice} error={error} />
       <form onSubmit={save} className="space-y-6">
         <Card>
-          <CardHeader title="Definicion" />
+          <CardHeader title="1. Definicion" description="Nombre, evento de inicio y proposito de la automatizacion." />
           <div className="grid gap-4 p-5 md:grid-cols-2">
             <label className="text-xs font-semibold">Nombre<input required className={inputClass} value={workflow.name} onChange={(event) => setWorkflow({ ...workflow, name: event.target.value })} /></label>
             <label className="text-xs font-semibold">Trigger<select className={inputClass} value={workflow.trigger.eventType} onChange={(event) => changeTrigger(event.target.value)}>{catalog.triggers.filter((item) => item.status === 'active').map((item) => <option key={item.eventType} value={item.eventType}>{item.label} ({item.eventType})</option>)}</select></label>
@@ -284,17 +288,23 @@ export function WorkflowBuilderPage() {
 
         <Card>
           <CardHeader
-            title="Condiciones"
+            title="2. Condiciones"
             description="Todas deben cumplirse. Rutas permitidas: event.*, entity.* y payload.*."
             action={<Button variant="secondary" onClick={() => setWorkflow({ ...workflow, conditions: [...workflow.conditions, { field: 'entity.status', operator: 'equals', value: '' }] })}><Plus className="h-4 w-4" />Condicion</Button>}
           />
           <div className="space-y-3 p-5">
             {workflow.conditions.map((condition, index) => (
               <div key={condition._id || index} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_220px_1fr_auto]">
-                <input className={inputClass} value={condition.field} onChange={(event) => updateCondition(index, { field: event.target.value })} placeholder="entity.status" />
-                <select className={inputClass} value={condition.operator} onChange={(event) => updateCondition(index, { operator: event.target.value })}>{catalog.operators.map((operator) => <option key={operator}>{operator}</option>)}</select>
-                <input className={inputClass} value={Array.isArray(condition.value) ? JSON.stringify(condition.value) : condition.value ?? ''} onChange={(event) => updateCondition(index, { value: event.target.value })} placeholder="Valor" />
-                <Button variant="danger" onClick={() => setWorkflow({ ...workflow, conditions: workflow.conditions.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 className="h-4 w-4" /></Button>
+                <FormField label="Ruta del dato" hint="Usa event.*, entity.* o payload.*.">
+                  <input className={inputClass} value={condition.field} onChange={(event) => updateCondition(index, { field: event.target.value })} placeholder="entity.status" />
+                </FormField>
+                <FormField label="Operador">
+                  <select className={inputClass} value={condition.operator} onChange={(event) => updateCondition(index, { operator: event.target.value })}>{catalog.operators.map((operator) => <option key={operator}>{operator}</option>)}</select>
+                </FormField>
+                <FormField label="Valor esperado">
+                  <input className={inputClass} value={Array.isArray(condition.value) ? JSON.stringify(condition.value) : condition.value ?? ''} onChange={(event) => updateCondition(index, { value: event.target.value })} placeholder="Valor" />
+                </FormField>
+                <Button className="self-end" variant="danger" onClick={() => setWorkflow({ ...workflow, conditions: workflow.conditions.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 className="h-4 w-4" /></Button>
               </div>
             ))}
             {!workflow.conditions.length ? <p className="text-sm text-slate-500">Sin condiciones: cualquier evento del trigger continuara.</p> : null}
@@ -303,7 +313,7 @@ export function WorkflowBuilderPage() {
 
         <Card>
           <CardHeader
-            title="Acciones"
+            title="3. Acciones"
             description="Solo se muestran acciones internas activas."
             action={<Button variant="secondary" onClick={() => setWorkflow({ ...workflow, actions: [...workflow.actions, { type: 'activity_log.create', enabled: true, config: { summary: 'Workflow ejecutado' } }] })}><Plus className="h-4 w-4" />Accion</Button>}
           />
@@ -311,17 +321,19 @@ export function WorkflowBuilderPage() {
             {workflow.actions.map((action, index) => (
               <div key={action._id || index} className="rounded-lg border border-slate-200 p-4">
                 <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-                  <select className={inputClass} value={action.type} onChange={(event) => {
-                    const definition = catalog.actions.find((item) => item.type === event.target.value);
-                    updateAction(index, {
-                      type: event.target.value,
-                      config: Object.fromEntries((definition?.requiredConfig || []).map((field) => [field, '']))
-                    });
-                  }}>
-                    {catalog.actions.filter((item) => item.status === 'active').map((item) => <option key={item.type}>{item.type}</option>)}
-                  </select>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={action.enabled !== false} onChange={(event) => updateAction(index, { enabled: event.target.checked })} />Activa</label>
-                  <Button variant="danger" onClick={() => setWorkflow({ ...workflow, actions: workflow.actions.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 className="h-4 w-4" /></Button>
+                  <FormField label="Tipo de accion">
+                    <select className={inputClass} value={action.type} onChange={(event) => {
+                      const definition = catalog.actions.find((item) => item.type === event.target.value);
+                      updateAction(index, {
+                        type: event.target.value,
+                        config: Object.fromEntries((definition?.requiredConfig || []).map((field) => [field, '']))
+                      });
+                    }}>
+                      {catalog.actions.filter((item) => item.status === 'active').map((item) => <option key={item.type}>{item.type}</option>)}
+                    </select>
+                  </FormField>
+                  <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={action.enabled !== false} onChange={(event) => updateAction(index, { enabled: event.target.checked })} />Activa</label>
+                  <Button className="self-end" variant="danger" onClick={() => setWorkflow({ ...workflow, actions: workflow.actions.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 className="h-4 w-4" /></Button>
                 </div>
                 <label className="mt-3 block text-xs font-semibold">Configuracion JSON<textarea key={`${action.type}-${action._id || index}`} className={`${inputClass} min-h-28 font-mono text-xs`} defaultValue={JSON.stringify(action.config || {}, null, 2)} onBlur={(event) => {
                   try {
@@ -338,7 +350,7 @@ export function WorkflowBuilderPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Controles de ejecucion" />
+          <CardHeader title="4. Controles de ejecucion" description="Limites y protecciones para evitar repeticiones no deseadas." />
           <div className="grid gap-4 p-5 md:grid-cols-3">
             {[
               ['cooldownMinutes', 'Cooldown (minutos)'],
@@ -373,11 +385,17 @@ export function WorkflowBuilderPage() {
       </form>
 
       <Card>
-        <CardHeader title="Prueba segura" description="Evalua condiciones y muestra acciones sin modificar datos." />
+        <CardHeader title="5. Prueba segura" description="Evalua condiciones y muestra acciones sin modificar datos." />
         <div className="grid gap-3 p-5 md:grid-cols-2">
-          <input className={inputClass} value={testInput.entityType} onChange={(event) => setTestInput({ ...testInput, entityType: event.target.value })} placeholder="contact" />
-          <input className={inputClass} value={testInput.entityId} onChange={(event) => setTestInput({ ...testInput, entityId: event.target.value })} placeholder="ObjectId opcional" />
-          <textarea className={`${inputClass} min-h-28 font-mono text-xs md:col-span-2`} value={testInput.payload} onChange={(event) => setTestInput({ ...testInput, payload: event.target.value })} />
+          <FormField label="Tipo de entidad" hint="Ejemplo: contact u opportunity.">
+            <input className={inputClass} value={testInput.entityType} onChange={(event) => setTestInput({ ...testInput, entityType: event.target.value })} placeholder="contact" />
+          </FormField>
+          <FormField label="ID de entidad" hint="ObjectId opcional para cargar una entidad real.">
+            <input className={inputClass} value={testInput.entityId} onChange={(event) => setTestInput({ ...testInput, entityId: event.target.value })} placeholder="ObjectId opcional" />
+          </FormField>
+          <FormField label="Payload JSON" hint="Datos simulados del evento." className="md:col-span-2">
+            <textarea className={`${inputClass} min-h-28 font-mono text-xs`} value={testInput.payload} onChange={(event) => setTestInput({ ...testInput, payload: event.target.value })} />
+          </FormField>
           <Button disabled={busy} onClick={dryRun}><Beaker className="h-4 w-4" />Simular</Button>
           {testResult ? <pre className="overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-cyan-100 md:col-span-2">{JSON.stringify(testResult, null, 2)}</pre> : null}
         </div>
@@ -392,16 +410,18 @@ export function WorkflowRunsPage() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const selected = runs.find((run) => run._id === selectedId) || null;
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const data = await getWorkflowRuns({ status });
       setRuns(data);
       setSelectedId((current) => data.some((item) => item._id === current) ? current : data[0]?._id || '');
     } catch (requestError) {
-      setError(requestError.message);
+      setLoadError(requestError.message);
     } finally {
       setLoading(false);
     }
@@ -412,13 +432,15 @@ export function WorkflowRunsPage() {
     <PageShell eyebrow="Automatizaciones" title="Ejecuciones" description="Historial durable de condiciones, acciones, esperas y errores sanitizados.">
       <div className="flex flex-wrap gap-2">
         <Button as={Link} to="/workflows" variant="secondary">Volver a workflows</Button>
-        <select className={inputClass} value={status} onChange={(event) => setStatus(event.target.value)}>
-          <option value="">Todos los estados</option>
-          {['queued', 'running', 'waiting', 'completed', 'failed', 'skipped', 'cancelled'].map((value) => <option key={value}>{value}</option>)}
-        </select>
+        <FormField label="Estado de ejecucion" htmlFor="workflow-runs-filter-status">
+          <select id="workflow-runs-filter-status" className={inputClass} value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="">Todos los estados</option>
+            {['queued', 'running', 'waiting', 'completed', 'failed', 'skipped', 'cancelled'].map((value) => <option key={value}>{value}</option>)}
+          </select>
+        </FormField>
       </div>
       <CrmNotice error={error} />
-      {loading ? <CrmLoading /> : (
+      {loading ? <CrmLoading /> : loadError ? <CrmLoadError message={loadError} onRetry={load} /> : (
         <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Card>
             <CardHeader title="Runs recientes" />

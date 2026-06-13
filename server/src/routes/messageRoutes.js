@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireModule } from '../middleware/moduleMiddleware.js';
 import { requireAnyPermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
-import { Contact } from '../models/Contact.js';
 import { Conversation } from '../models/Conversation.js';
 import { Message } from '../models/Message.js';
 import { Job } from '../models/Job.js';
@@ -11,7 +10,6 @@ import { JobService } from '../modules/jobs/JobService.js';
 import { ConversationService } from '../modules/conversations/ConversationService.js';
 import { conversationScope } from '../modules/conversations/conversationScope.js';
 import { getStorageProvider } from '../modules/storage/index.js';
-import { assertOutboundAllowed } from '../modules/conversations/conversationValidation.js';
 import { isValidObjectId } from '../utils/validation.js';
 
 const router = Router();
@@ -48,28 +46,17 @@ router.post(
       archivedAt: null
     });
     if (!conversation) return res.status(404).json({ message: 'Conversacion no encontrada' });
-    const contact = await Contact.findOne({
-      _id: original.contactId,
-      companyId: req.user.companyId,
-      archivedAt: null
-    }).select('_id metadata');
-    if (!contact) return res.status(404).json({ message: 'Contacto no encontrado' });
-    assertOutboundAllowed({
-      conversation,
-      contact,
-      text: original.text,
-      type: original.type,
-      template: original.metadata?.providerTemplate || null,
-      media: original.media || {}
-    });
     const existingJob = await Job.findOne({
       type: 'message.whatsapp.send',
       status: { $in: ['pending', 'processing', 'failed'] },
       'metadata.messageId': original._id
     });
-    original.status = 'pending';
+    original.status = 'queued';
     original.failedAt = null;
     original.error = '';
+    original.errorMessage = '';
+    original.reasonCode = 'MANUAL_RETRY';
+    original.blockedByRule = '';
     original.metadata = { ...(original.metadata || {}), manualRetryAt: new Date() };
     await original.save();
     if (existingJob && existingJob.status !== 'processing') {

@@ -6,6 +6,7 @@ import {
   sanitizePlainText
 } from '../modules/marketing/marketingSecurity.js';
 import { normalizeOptionalObjectId } from '../utils/validation.js';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
 
 export const FORM_TYPES = [
   'lead_capture',
@@ -42,6 +43,11 @@ const fieldSchema = new mongoose.Schema(
     },
     label: { type: String, required: true, trim: true, maxlength: 160 },
     type: { type: String, enum: FORM_FIELD_TYPES, required: true },
+    consentChannel: {
+      type: String,
+      enum: ['', 'whatsapp', 'sms', 'email', 'call', 'facebook_messenger', 'instagram_dm', 'other'],
+      default: ''
+    },
     required: { type: Boolean, default: false },
     placeholder: { type: String, default: '', maxlength: 300 },
     helpText: { type: String, default: '', maxlength: 1000 },
@@ -163,6 +169,7 @@ const formSchema = new mongoose.Schema(
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     publishedAt: { type: Date, default: null },
     archivedAt: { type: Date, default: null },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -187,5 +194,6 @@ formSchema.pre('validate', function normalizeForm(next) {
 });
 
 formSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+formSchema.index({ companyId: 1, 'attribution.campaignId': 1 });
 
 export const Form = mongoose.model('Form', formSchema);

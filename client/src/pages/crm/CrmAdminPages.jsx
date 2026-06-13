@@ -24,6 +24,7 @@ import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { CrmLoading, CrmNotice, inputClass } from '../../components/CrmCommon.jsx';
+import { FormField } from '../../components/FormField.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -51,15 +52,16 @@ export function TagsPage() {
   const catalog = useCatalog(getTags);
   async function create(event) {
     event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
-    if (await catalog.mutate(() => createTag({ name: data.get('name'), color: data.get('color'), description: data.get('description') }), 'Tag creado.')) form.reset();
+    if (await catalog.mutate(() => createTag({ name: data.get('name'), color: data.get('color'), description: data.get('description'), scope: data.get('scope') }), 'Tag creado.')) form.reset();
   }
-  return <PageShell eyebrow="CRM" title="Tags" description="Etiquetas aisladas por empresa."><CrmNotice notice={catalog.notice} error={catalog.error} />{catalog.loading ? <CrmLoading /> : <Card><CardHeader title="Etiquetas disponibles" /><Table data={catalog.items.map((item) => ({ ...item, id: item._id }))} columns={[
+  return <PageShell eyebrow="CRM" title="Tags" description="Etiquetas aisladas por empresa y por base de informacion."><CrmNotice notice={catalog.notice} error={catalog.error} />{catalog.loading ? <CrmLoading /> : <Card><CardHeader title="Etiquetas disponibles" /><Table data={catalog.items.map((item) => ({ ...item, id: item._id }))} columns={[
     { key: 'name', header: 'Nombre', render: (row) => <span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ color: row.color, backgroundColor: `${row.color}20` }}>{row.name}</span> },
+    { key: 'scope', header: 'Base', render: (row) => row.scope || 'contact' },
     { key: 'description', header: 'Descripcion' },
     { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
     { key: 'edit', header: '', render: (row) => <Button variant="secondary" className="min-h-8 px-2" onClick={() => { const name = window.prompt('Nuevo nombre', row.name); if (name) catalog.mutate(() => updateTag(row._id, { name }), 'Tag actualizado.'); }}>Editar</Button> },
     { key: 'delete', header: '', render: (row) => row.status === 'active' ? <Button variant="danger" className="min-h-8 px-2" onClick={() => catalog.mutate(() => deleteTag(row._id), 'Tag desactivado.')}><Trash2 className="h-4 w-4" /></Button> : null }
-  ]} /></Card>}<Card><CardHeader title="Crear tag" /><form onSubmit={create} className="grid gap-3 p-5 md:grid-cols-4"><input required name="name" className={inputClass} placeholder="Nombre" /><input type="color" name="color" defaultValue="#0e7490" className={`${inputClass} h-11`} /><input name="description" className={inputClass} placeholder="Descripcion" /><Button type="submit"><Plus className="h-4 w-4" />Crear</Button></form></Card></PageShell>;
+  ]} /></Card>}<Card><CardHeader title="Crear tag" description="La base evita mezclar etiquetas de contactos, oportunidades y otros modulos." /><form onSubmit={create} className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-5"><FormField label="Nombre" htmlFor="tag-name" required><input id="tag-name" required name="name" className={inputClass} /></FormField><FormField label="Base" htmlFor="tag-scope"><select id="tag-scope" name="scope" className={inputClass} defaultValue="contact"><option value="contact">Contactos</option><option value="opportunity">Oportunidades</option><option value="appointment">Citas</option><option value="workflow">Workflows</option></select></FormField><FormField label="Color" htmlFor="tag-color"><input id="tag-color" type="color" name="color" defaultValue="#0e7490" className={`${inputClass} h-11`} /></FormField><FormField label="Descripcion" htmlFor="tag-description"><input id="tag-description" name="description" className={inputClass} /></FormField><div className="flex items-end"><Button className="w-full" type="submit"><Plus className="h-4 w-4" />Crear</Button></div></form></Card></PageShell>;
 }
 
 export function CustomFieldsPage() {

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { BookingLink } from '../../models/BookingLink.js';
+import { Campaign } from '../../models/Campaign.js';
 import { ConversionEvent, CONVERSION_TYPES } from '../../models/ConversionEvent.js';
 import { Form } from '../../models/Form.js';
 import { Funnel } from '../../models/Funnel.js';
@@ -20,6 +21,11 @@ import {
   sanitizePlainText,
   slugifyPublic
 } from '../marketing/marketingSecurity.js';
+import {
+  attributionFromTracking,
+  mergeMarketingAttribution,
+  normalizeMarketingAttribution
+} from '../marketing/marketingAttribution.js';
 
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400, retryable: false });
@@ -106,6 +112,21 @@ async function tenantReference(Model, id, companyId, extra = {}) {
   return item;
 }
 
+async function validateCampaign(companyId, attribution = {}) {
+  const normalized = normalizeMarketingAttribution(attribution);
+  if (
+    normalized.campaignId &&
+    !await Campaign.exists({
+      _id: normalized.campaignId,
+      companyId,
+      status: { $ne: 'archived' }
+    })
+  ) {
+    throw badRequest('campaignId no pertenece a la empresa');
+  }
+  return normalized;
+}
+
 function safeSection(section) {
   const content = sanitizeMarketingValue(section.content || {});
   if (section.type === 'custom_html_limited') {
@@ -139,6 +160,7 @@ export class FunnelService {
         await tenantReference(ReviewWidget, section.content.reviewWidgetId, companyId);
       }
     }
+    await validateCampaign(companyId, input.attribution || {});
   }
 
   static async createLandingPage({ actor, body }) {
@@ -162,6 +184,7 @@ export class FunnelService {
       settings: normalized.settings,
       createdBy: actor._id,
       updatedBy: actor._id,
+      attribution: await validateCampaign(actor.companyId, body.attribution || {}),
       metadata: body.metadata || {}
     });
     await Promise.all([
@@ -202,6 +225,9 @@ export class FunnelService {
     }
     if ('content' in body) page.content = merged.content;
     if ('settings' in body) page.settings = merged.settings;
+    if ('attribution' in body) {
+      page.attribution = await validateCampaign(page.companyId, body.attribution);
+    }
     page.updatedBy = actor._id;
     await page.save();
     await recordActivity({
@@ -294,6 +320,7 @@ export class FunnelService {
       settings,
       createdBy: actor._id,
       updatedBy: actor._id,
+      attribution: await validateCampaign(actor.companyId, body.attribution || {}),
       metadata: body.metadata || {}
     });
     await Promise.all([
@@ -319,6 +346,9 @@ export class FunnelService {
     }
     for (const field of ['name', 'description', 'metadata']) {
       if (field in body) funnel[field] = body[field];
+    }
+    if ('attribution' in body) {
+      funnel.attribution = await validateCampaign(funnel.companyId, body.attribution);
     }
     if ('settings' in body) {
       const settings = normalizeFunnelSettings({
@@ -367,6 +397,10 @@ export class FunnelService {
       settings: normalized.settings,
       createdBy: actor._id,
       updatedBy: actor._id,
+      attribution: await validateCampaign(
+        funnel.companyId,
+        body.attribution || funnel.attribution || {}
+      ),
       metadata: body.metadata || {}
     });
     if (!funnel.settings.entryStepId) {
@@ -414,6 +448,9 @@ export class FunnelService {
       step.slug = await uniqueStepSlug(step.funnelId, body.slug, step._id);
     }
     if ('settings' in body) step.settings = normalized.settings;
+    if ('attribution' in body) {
+      step.attribution = await validateCampaign(step.companyId, body.attribution);
+    }
     step.updatedBy = actor._id;
     await step.save();
     await recordActivity({
@@ -562,6 +599,16 @@ export class FunnelService {
       distributorId: target.distributorId,
       metric: 'page_views'
     });
+    const attribution = mergeMarketingAttribution(
+      target.attribution || {},
+      attributionFromTracking(tracking, tracking.attribution || {}, {
+        campaignId: target.attribution?.campaignId || null,
+        landingPageId: target.landingPageId || null,
+        formId: target.formId || null,
+        funnelId: target.funnelId || null,
+        funnelStepId: target.funnelStepId || null
+      })
+    );
     const payload = {
       companyId: target.companyId,
       distributorId: target.distributorId,
@@ -570,6 +617,7 @@ export class FunnelService {
       funnelStepId: target.funnelStepId || null,
       formId: target.formId || null,
       ...tracking,
+      attribution,
       path: sanitizePlainText(String(path || '').split('?')[0], 1000)
     };
     const view = await PageView.create(payload);
@@ -632,6 +680,16 @@ export class FunnelService {
       type,
       sessionId: tracking.sessionId,
       visitorId: tracking.visitorId,
+      attribution: mergeMarketingAttribution(
+        target.attribution || {},
+        attributionFromTracking(tracking, tracking.attribution || {}, {
+          campaignId: target.attribution?.campaignId || null,
+          landingPageId: target.landingPageId || null,
+          formId: target.formId || null,
+          funnelId: target.funnelId || null,
+          funnelStepId: target.funnelStepId || null
+        })
+      ),
       metadata: sanitizeMarketingValue(metadata)
     });
     await trackUsage({

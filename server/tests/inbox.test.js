@@ -6,6 +6,7 @@ import {
   assertOutboundAllowed,
   contactDndStatus
 } from '../src/modules/conversations/conversationValidation.js';
+import { evaluateCommunicationRules } from '../src/modules/communications/communicationPolicyRules.js';
 import {
   conversationScope,
   preserveAssignedScope
@@ -46,7 +47,7 @@ test('conversation scopes always include company and assigned boundaries', async
   );
 });
 
-test('outbound validation rejects empty, closed, DND and incomplete media messages', () => {
+test('outbound validation rejects empty, closed and incomplete media messages', () => {
   const open = { status: 'open', channel: 'sms' };
   assert.throws(
     () => assertOutboundAllowed({ conversation: open, contact: {}, type: 'text' }),
@@ -61,15 +62,12 @@ test('outbound validation rejects empty, closed, DND and incomplete media messag
     }),
     /Reabre/
   );
-  assert.throws(
-    () => assertOutboundAllowed({
-      conversation: open,
-      contact: { metadata: { doNotDisturb: true } },
-      type: 'text',
-      text: 'Hola'
-    }),
-    /No molestar/
-  );
+  assert.equal(evaluateCommunicationRules({
+    channel: 'sms',
+    category: 'commercial',
+    consentStatus: 'opted_in',
+    globalDnd: true
+  }).reasonCode, 'GLOBAL_DND');
   assert.throws(
     () => assertOutboundAllowed({
       conversation: open,

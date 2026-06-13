@@ -17,6 +17,7 @@ function jobScope(user) {
 
 const COMPANY_REPLAY_TYPES = new Set([
   'message.whatsapp.send',
+  'message.outbound.send',
   'media.whatsapp.download'
 ]);
 

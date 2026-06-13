@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import { marketingAttributionSchema } from '../modules/marketing/marketingAttribution.js';
+import { normalizeOptionalObjectId } from '../utils/validation.js';
 
 export const CONTACT_STATUSES = [
   'nuevo',
@@ -88,6 +90,7 @@ const contactSchema = new mongoose.Schema(
       default: 'medium'
     },
     tags: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Tag' }],
+    lists: [{ type: mongoose.Schema.Types.ObjectId, ref: 'CrmList' }],
     customFields: {
       type: mongoose.Schema.Types.Mixed,
       default: {}
@@ -109,6 +112,35 @@ const contactSchema = new mongoose.Schema(
     address: { type: String, trim: true, default: '' },
     city: { type: String, trim: true, default: '' },
     country: { type: String, trim: true, default: '' },
+    communicationPreferences: {
+      globalDnd: { type: Boolean, default: false },
+      globalDndReason: { type: String, trim: true, maxlength: 1000, default: '' },
+      globalDndUpdatedAt: { type: Date, default: null },
+      globalDndUpdatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+        set: normalizeOptionalObjectId
+      },
+      preferredChannel: {
+        type: String,
+        enum: ['', 'whatsapp', 'sms', 'email', 'call', 'facebook_messenger', 'instagram_dm', 'other'],
+        default: ''
+      },
+      allowedChannels: {
+        type: [String],
+        enum: ['whatsapp', 'sms', 'email', 'call', 'facebook_messenger', 'instagram_dm', 'other'],
+        default: []
+      },
+      language: { type: String, trim: true, maxlength: 20, default: '' },
+      preferredStartTime: { type: String, trim: true, maxlength: 5, default: '' },
+      preferredEndTime: { type: String, trim: true, maxlength: 5, default: '' },
+      doNotCall: { type: Boolean, default: false },
+      doNotWhatsApp: { type: Boolean, default: false },
+      doNotSms: { type: Boolean, default: false },
+      doNotEmail: { type: Boolean, default: false }
+    },
+    attribution: { type: marketingAttributionSchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -139,8 +171,15 @@ contactSchema.pre('validate', function normalizeNames(next) {
 
 contactSchema.index({ companyId: 1, assignedTo: 1, status: 1 });
 contactSchema.index({ companyId: 1, tags: 1 });
+contactSchema.index({ companyId: 1, lists: 1 });
 contactSchema.index({ companyId: 1, nextFollowUpAt: 1 });
 contactSchema.index({ companyId: 1, email: 1 });
 contactSchema.index({ companyId: 1, phone: 1 });
+contactSchema.index({ companyId: 1, 'communicationPreferences.globalDnd': 1 });
+contactSchema.index({ companyId: 1, 'communicationPreferences.preferredChannel': 1 });
+contactSchema.index({ companyId: 1, 'attribution.campaignId': 1 });
+contactSchema.index({ companyId: 1, 'attribution.externalCampaignId': 1 });
+contactSchema.index({ companyId: 1, 'attribution.consultedProduct': 1 });
+contactSchema.index({ companyId: 1, 'attribution.purchasedProduct': 1 });
 
 export const Contact = mongoose.model('Contact', contactSchema);

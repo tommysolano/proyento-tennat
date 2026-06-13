@@ -4,6 +4,7 @@ export const JOB_TYPES = [
   'webhook.whatsapp.inbound',
   'webhook.whatsapp.status',
   'message.whatsapp.send',
+  'message.outbound.send',
   'media.whatsapp.download',
   'notification.dispatch',
   'appointment.reminder',

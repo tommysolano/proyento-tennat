@@ -18,6 +18,7 @@ export const NOTIFICATION_TYPES = [
   'form_lead_created',
   'form_opportunity_created',
   'form_spam_detected',
+  'integration_failed',
   'review_received',
   'review_negative_received',
   'survey_low_nps',

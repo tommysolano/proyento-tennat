@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
+import { getRegisteredModule } from '../core/modules/moduleRegistry.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 import { Plan } from '../models/Plan.js';
 import { recordActivity } from '../utils/activity.js';
@@ -143,6 +144,10 @@ function planPayload(body, partial = false) {
       });
     }
     data.includedModules = [...new Set(body.includedModules.map(cleanString).filter(Boolean))];
+    const invalidModule = data.includedModules.find((moduleKey) => !getRegisteredModule(moduleKey));
+    if (invalidModule) {
+      throw Object.assign(new Error(`Modulo no registrado: ${invalidModule}`), { status: 400 });
+    }
   }
 
   if ('metadata' in body) data.metadata = body.metadata || {};

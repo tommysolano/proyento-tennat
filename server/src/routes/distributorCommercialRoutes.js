@@ -1,5 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
+import { MODULE_REGISTRY, getRegisteredModule } from '../core/modules/moduleRegistry.js';
+import {
+  assertDistributorModulesAuthorized,
+  getCompanyAuthorizedModules,
+  getDistributorAuthorizedModules
+} from '../core/modules/moduleAccess.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireModule } from '../middleware/moduleMiddleware.js';
 import { requirePermission } from '../middleware/permissionMiddleware.js';
@@ -79,14 +85,16 @@ async function ownedPlan(distributorId, planId) {
       status: 404
     });
   }
+  await assertDistributorModulesAuthorized(distributorId, plan.includedModules);
   return plan;
 }
 
-function parseLineItems(lineItems) {
+async function parseLineItems(lineItems, distributorId) {
   if (!Array.isArray(lineItems) || !lineItems.length) {
     throw Object.assign(new Error('lineItems debe contener al menos un item'), { status: 400 });
   }
 
+  const authorizedModules = new Set(await getDistributorAuthorizedModules(distributorId));
   return lineItems.map((item, index) => {
     const description = cleanString(item.description);
     if (!description) {
@@ -96,12 +104,19 @@ function parseLineItems(lineItems) {
     }
     const quantity = numberValue(item.quantity ?? 1, `lineItems.${index}.quantity`);
     const unitPrice = numberValue(item.unitPrice, `lineItems.${index}.unitPrice`);
+    const moduleKey = cleanString(item.moduleKey).toLowerCase();
+    if (moduleKey && (!getRegisteredModule(moduleKey) || !authorizedModules.has(moduleKey))) {
+      throw Object.assign(
+        new Error(`El modulo ${moduleKey} no esta autorizado para este distribuidor`),
+        { status: 403 }
+      );
+    }
     return {
       description,
       quantity,
       unitPrice,
       total: Math.round(quantity * unitPrice * 100) / 100,
-      moduleKey: cleanString(item.moduleKey),
+      moduleKey,
       metadata: item.metadata || {}
     };
   });
@@ -146,6 +161,23 @@ async function addInvoiceBalances(invoices) {
 
 router.use(authMiddleware);
 router.use(roleMiddleware('DISTRIBUTOR'));
+
+router.get('/modules', requirePermission('modules:read'), async (req, res, next) => {
+  try {
+    const authorizedModules = new Set(
+      await getDistributorAuthorizedModules(req.user.distributorId)
+    );
+    res.json({
+      modules: MODULE_REGISTRY.map((module) => ({
+        ...module,
+        authorized: authorizedModules.has(module.key)
+      })),
+      authorizedModuleKeys: [...authorizedModules]
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get(
   '/billing/overview',
@@ -239,7 +271,7 @@ router.get('/companies', requirePermission('companies:manage'), async (req, res,
       .sort({ createdAt: -1 })
       .lean();
     const companyIds = companies.map((company) => company._id);
-    const [subscriptions, pendingInvoices, payments] = await Promise.all([
+    const [subscriptions, pendingInvoices, payments, fallbackAdmins] = await Promise.all([
       Subscription.find({
         distributorId,
         companyId: { $in: companyIds },
@@ -258,8 +290,22 @@ router.get('/companies', requirePermission('companies:manage'), async (req, res,
         .lean(),
       Payment.find({ payerType: 'company', payerId: { $in: companyIds }, status: 'succeeded' })
         .sort({ paidAt: -1, createdAt: -1 })
+        .lean(),
+      User.find({
+        companyId: { $in: companyIds },
+        distributorId,
+        role: 'ADMIN',
+        status: 'active'
+      })
+        .select('name email status companyId')
+        .sort({ createdAt: 1 })
         .lean()
     ]);
+    const adminByCompany = new Map();
+    fallbackAdmins.forEach((admin) => {
+      const key = String(admin.companyId);
+      if (!adminByCompany.has(key)) adminByCompany.set(key, admin);
+    });
 
     const subscriptionByCompany = new Map();
     subscriptions.forEach((subscription) => {
@@ -288,6 +334,10 @@ router.get('/companies', requirePermission('companies:manage'), async (req, res,
     res.json(
       companies.map((company) => ({
         ...company,
+        adminId: company.adminId || adminByCompany.get(String(company._id)) || null,
+        canImpersonate: Boolean(
+          company.adminId || adminByCompany.get(String(company._id))
+        ),
         subscription: subscriptionByCompany.get(company._id.toString()) || null,
         pendingInvoices: pendingByCompany.get(company._id.toString()) || {
           count: 0,
@@ -339,6 +389,7 @@ router.get(
         .populate('invoiceId', 'number total status')
         .sort({ createdAt: -1 })
         .lean();
+      const activeModules = await getCompanyAuthorizedModules(company._id);
       res.json({
         company: await Company.findById(company._id).lean(),
         users,
@@ -346,7 +397,7 @@ router.get(
         invoices,
         payments,
         contactsTotal,
-        activeModules: subscription?.planId?.includedModules || []
+        activeModules
       });
     } catch (error) {
       next(error);
@@ -508,7 +559,7 @@ router.post(
       }
 
       const distributor = await Distributor.findById(distributorId).select('billingSettings');
-      const lineItems = parseLineItems(req.body.lineItems);
+      const lineItems = await parseLineItems(req.body.lineItems, distributorId);
       const subtotal =
         Math.round(lineItems.reduce((sum, item) => sum + item.total, 0) * 100) / 100;
       const taxRate =

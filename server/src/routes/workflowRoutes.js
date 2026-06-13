@@ -16,6 +16,7 @@ import { Tag } from '../models/Tag.js';
 import { Task } from '../models/Task.js';
 import { User } from '../models/User.js';
 import { Workflow } from '../models/Workflow.js';
+import { tagScopeFilter } from '../utils/crmOrganization.js';
 import { WorkflowRun } from '../models/WorkflowRun.js';
 import { workflowCatalog } from '../modules/workflows/workflowCatalog.js';
 import { WorkflowService } from '../modules/workflows/WorkflowService.js';
@@ -55,7 +56,7 @@ async function validateReferences(companyId, actions = []) {
     const config = action.config || {};
     const checks = [
       ['userId', User, { role: { $in: ['ADMIN', 'SUPERVISOR', 'CALLCENTER'] }, status: 'active' }],
-      ['tagId', Tag, { status: 'active' }],
+      ['tagId', Tag, { status: 'active', ...tagScopeFilter('contact') }],
       ['stageId', PipelineStage, { status: 'active' }],
       ['pipelineId', Pipeline, { status: 'active' }],
       ['contactId', Contact, { archivedAt: null }],

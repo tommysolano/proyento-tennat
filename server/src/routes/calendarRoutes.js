@@ -18,6 +18,7 @@ import {
 import { assertTimeZone } from '../modules/calendar/calendarTime.js';
 import { recordActivity } from '../utils/activity.js';
 import { cleanString } from '../utils/validation.js';
+import { isValidObjectId } from '../utils/validation.js';
 import { validateCrmAssignee } from '../utils/crmScope.js';
 import { teamMemberIds } from '../utils/crmScope.js';
 
@@ -77,6 +78,16 @@ router.use(
   )
 );
 router.use(requireModule('calendar'));
+router.param('id', (req, res, next, id) => {
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ message: 'calendarId invalido' });
+  }
+  next();
+});
+
+router.get('/configuration-profiles', requirePermission('calendars:manage'), (req, res) => {
+  res.json(CalendarService.profiles());
+});
 
 router.get('/', async (req, res, next) => {
   try {
@@ -105,6 +116,34 @@ router.post('/', ...adminOnly, async (req, res, next) => {
     next(error);
   }
 });
+
+router.post(
+  '/:id/apply-profile',
+  ...adminOnly,
+  requirePermission('calendar_profiles:apply'),
+  async (req, res, next) => {
+    try {
+      const calendar = await Calendar.findOne({
+        _id: req.params.id,
+        companyId: req.user.companyId,
+        status: { $ne: 'archived' }
+      });
+      if (!calendar) {
+        return res.status(404).json({ message: 'Calendario no encontrado' });
+      }
+      res.json(
+        await CalendarService.applyProfile({
+          actor: req.user,
+          calendar,
+          profileKey: cleanString(req.body.profileKey),
+          confirmOverwrite: req.body.confirmOverwrite
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.get('/:id/availability', availabilityRead, async (req, res, next) => {
   try {
