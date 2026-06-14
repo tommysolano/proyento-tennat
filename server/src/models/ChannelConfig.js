@@ -8,6 +8,7 @@ import {
 
 export const CHANNEL_CONFIG_CHANNELS = [
   'whatsapp_cloud',
+  'whatsapp_qr',
   'facebook_messenger',
   'instagram_dm',
   'email',

@@ -1,6 +1,7 @@
 import { EmailAdapter, FacebookMessengerAdapter, InstagramDMAdapter, SmsAdapter } from './PlaceholderAdapters.js';
 import { InternalAdapter } from './InternalAdapter.js';
 import { WhatsAppCloudAdapter } from './WhatsAppCloudAdapter.js';
+import { WhatsAppQrAdapter } from './WhatsAppQrAdapter.js';
 
 export function canonicalChannel(channel) {
   return {
@@ -16,6 +17,7 @@ export function getChannelAdapter(channel, options = {}) {
   const adapters = {
     internal: InternalAdapter,
     whatsapp_cloud: WhatsAppCloudAdapter,
+    whatsapp_qr: WhatsAppQrAdapter,
     facebook_messenger: FacebookMessengerAdapter,
     instagram_dm: InstagramDMAdapter,
     email: EmailAdapter,

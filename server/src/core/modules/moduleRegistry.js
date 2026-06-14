@@ -71,8 +71,8 @@ export const MODULE_REGISTRY = [
   },
   {
     key: 'whatsapp',
-    name: 'WhatsApp Cloud',
-    description: 'Adaptador y webhooks preparados para WhatsApp Cloud API.',
+    name: 'WhatsApp',
+    description: 'WhatsApp Cloud API y sesiones QR aisladas por empresa.',
     version: '1.0.0',
     enabledByDefault: true,
     requiredPermissions: [],

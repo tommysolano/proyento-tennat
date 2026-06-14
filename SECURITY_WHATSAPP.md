@@ -1,5 +1,9 @@
 # Seguridad WhatsApp
 
+Las sesiones mediante QR, sus leases y su persistencia cifrada se documentan
+en [WHATSAPP_QR.md](WHATSAPP_QR.md). Los webhooks descritos aqui corresponden
+exclusivamente a WhatsApp Cloud API.
+
 ## Cifrado
 
 Cada secreto de `ChannelConfig` se cifra con AES-256-GCM. El envelope guarda

@@ -36,6 +36,8 @@ test('phase 6 operational endpoints require authentication', async () => {
     '/api/ops/jobs',
     '/api/ops/alerts',
     '/api/channel-configs/000000000000000000000000/diagnostics',
+    '/api/whatsapp-sessions',
+    '/api/whatsapp-sessions/000000000000000000000000/qr',
     '/api/messages/000000000000000000000000/media/content',
     '/api/conversations',
     '/api/conversations/000000000000000000000000/messages',

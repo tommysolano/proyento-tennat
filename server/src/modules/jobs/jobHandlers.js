@@ -36,11 +36,19 @@ async function processMedia(job) {
       retryable: false
     });
   }
-  const config = await ChannelConfig.findById(conversation.channelConfigId)
+  const config = await ChannelConfig.findOne({
+    _id: conversation.channelConfigId,
+    companyId: message.companyId
+  })
     .select('+credentials +verifyToken +webhookSecret');
+  if (!config) {
+    throw Object.assign(new Error('La integracion del mensaje no esta disponible'), {
+      retryable: false
+    });
+  }
   const providerMediaId =
     message.media?.providerMediaId || message.media?.externalMediaId;
-  const adapter = getChannelAdapter('whatsapp_cloud', { channelConfig: config });
+  const adapter = getChannelAdapter(config.channel, { channelConfig: config });
   logger.info('media.download_started', {
     jobId: job._id,
     messageId: message._id,

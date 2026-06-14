@@ -16,6 +16,7 @@ import { OperationalAlertService } from '../ops/OperationalAlertService.js';
 import { assertOutboundAllowed } from './conversationValidation.js';
 import { CommunicationPolicyService } from '../communications/CommunicationPolicyService.js';
 import { MESSAGE_CATEGORIES } from '../communications/communicationPolicyRules.js';
+import { hasUserPermission } from '../../core/permissions/permissions.js';
 
 function safePreview(text, fallback = '') {
   return String(text || fallback).slice(0, 500);
@@ -36,9 +37,13 @@ function defaultMessageCategory(conversation, now = new Date()) {
 }
 
 function outboundJobType(channel) {
-  return channel === 'whatsapp_cloud'
+  return ['whatsapp_cloud', 'whatsapp_qr'].includes(channel)
     ? 'message.whatsapp.send'
     : 'message.outbound.send';
+}
+
+function isWhatsAppChannel(channel) {
+  return ['whatsapp_cloud', 'whatsapp_qr'].includes(canonicalChannel(channel));
 }
 
 async function activity({
@@ -159,6 +164,7 @@ export class ConversationService {
       distributorId: distributorId || null,
       contactId,
       channel: canonical,
+      provider: canonical,
       channelConfigId,
       externalConversationId,
       assignedTo: resolvedAssignee || null,
@@ -206,11 +212,12 @@ export class ConversationService {
       const duplicate = await Message.findOne({
         companyId: conversation.companyId,
         provider: normalized.provider,
+        channelConfigId: conversation.channelConfigId || null,
         externalMessageId: normalized.externalMessageId
       });
       if (duplicate) return { message: duplicate, duplicate: true };
     }
-    if (canonicalChannel(conversation.channel) === 'whatsapp_cloud') {
+    if (isWhatsAppChannel(conversation.channel)) {
       await checkUsageLimit({
         companyId: conversation.companyId,
         distributorId: conversation.distributorId,
@@ -231,6 +238,7 @@ export class ConversationService {
       status: 'received',
       externalMessageId: normalized.externalMessageId || '',
       provider: normalized.provider || canonicalChannel(conversation.channel),
+      channelConfigId: conversation.channelConfigId || null,
       providerPayload: normalized.providerPayload || {},
       metadata: normalized.metadata || {},
       createdAt: normalized.timestamp || new Date()
@@ -291,7 +299,7 @@ export class ConversationService {
       messageId: message._id,
       recordedBy: actorId
     }).catch(() => null);
-    if (canonicalChannel(conversation.channel) === 'whatsapp_cloud') {
+    if (isWhatsAppChannel(conversation.channel)) {
       await trackUsage({
         companyId: conversation.companyId,
         distributorId: conversation.distributorId,
@@ -318,6 +326,15 @@ export class ConversationService {
     adminOverride = false,
     overrideReason = ''
   }) {
+    if (
+      isWhatsAppChannel(conversation.channel) &&
+      !hasUserPermission(user, 'whatsapp_messages:send')
+    ) {
+      throw Object.assign(
+        new Error('No tienes permiso para enviar mensajes por WhatsApp'),
+        { status: 403 }
+      );
+    }
     const contact = await Contact.findOne({
       _id: conversation.contactId,
       companyId: conversation.companyId,
@@ -365,6 +382,7 @@ export class ConversationService {
         media,
         status: 'blocked',
         provider: canonical,
+        channelConfigId: conversation.channelConfigId || null,
         sentBy: user._id,
         reasonCode: policy.reasonCode,
         blockedByRule: policy.reasonCode,
@@ -396,7 +414,7 @@ export class ConversationService {
       });
       throw error;
     }
-    if (canonical === 'whatsapp_cloud') {
+    if (isWhatsAppChannel(canonical)) {
       await checkUsageLimit({
         companyId: conversation.companyId,
         distributorId: conversation.distributorId,
@@ -419,6 +437,7 @@ export class ConversationService {
       scheduledAt: policy.scheduleAt || null,
       reasonCode: policy.reasonCode,
       provider: canonical,
+      channelConfigId: conversation.channelConfigId || null,
       sentBy: user._id,
       metadata: {
         ...(template
@@ -451,7 +470,7 @@ export class ConversationService {
     await conversation.save();
     realtimeConversation('message.created', conversation, { message: message.toJSON() });
 
-    if (canonical === 'whatsapp_cloud' || policy.scheduled) {
+    if (isWhatsAppChannel(canonical) || policy.scheduled) {
       await JobService.enqueue({
         type: outboundJobType(canonical),
         payload: {
@@ -627,7 +646,7 @@ export class ConversationService {
       message.failedAt = new Date();
     }
     await message.save();
-    if (result.success && canonical === 'whatsapp_cloud') {
+    if (result.success && isWhatsAppChannel(canonical)) {
       await trackUsage({
         companyId: conversation.companyId,
         distributorId: conversation.distributorId,
@@ -876,6 +895,38 @@ export class ConversationService {
       },
       { status: 'read', readAt: new Date() }
     );
+    if (
+      canonicalChannel(conversation.channel) === 'whatsapp_qr' &&
+      conversation.channelConfigId &&
+      conversation.externalConversationId
+    ) {
+      const config = await ChannelConfig.findOne({
+        _id: conversation.channelConfigId,
+        companyId: conversation.companyId
+      });
+      if (config) {
+        const inboundMessages = await Message.find({
+          companyId: conversation.companyId,
+          conversationId: conversation._id,
+          direction: 'inbound',
+          provider: 'whatsapp_qr',
+          externalMessageId: { $ne: '' }
+        })
+          .sort({ createdAt: -1 })
+          .limit(50)
+          .select('externalMessageId')
+          .lean();
+        const inboundIds = [
+          ...new Set(inboundMessages.map((item) => item.externalMessageId))
+        ];
+        await getChannelAdapter('whatsapp_qr', { channelConfig: config })
+          .markAsRead({
+            remoteJid: conversation.externalConversationId,
+            externalMessageIds: inboundIds
+          })
+          .catch(() => false);
+      }
+    }
     await activity({
       user,
       companyId: conversation.companyId,

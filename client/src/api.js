@@ -432,6 +432,45 @@ export const rotateChannelSecrets = (id, payload) =>
     body: JSON.stringify(payload)
   });
 
+export const getWhatsAppSessions = (filters = {}) =>
+  apiRequest(`/whatsapp-sessions${queryString(filters)}`);
+export const createWhatsAppSession = (payload) =>
+  apiRequest('/whatsapp-sessions', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+export const connectWhatsAppSession = (id, reconnect = false) =>
+  apiRequest(`/whatsapp-sessions/${id}/${reconnect ? 'reconnect' : 'connect'}`, {
+    method: 'POST',
+    body: '{}'
+  });
+export const regenerateWhatsAppSessionQr = (id) =>
+  apiRequest(`/whatsapp-sessions/${id}/regenerate-qr`, {
+    method: 'POST',
+    body: '{}'
+  });
+export const getWhatsAppSessionQr = (id) =>
+  apiRequest(`/whatsapp-sessions/${id}/qr`);
+export const getWhatsAppSessionDiagnostics = (id) =>
+  apiRequest(`/whatsapp-sessions/${id}/diagnostics`);
+export const disconnectWhatsAppSession = (id, confirmation) =>
+  apiRequest(`/whatsapp-sessions/${id}/disconnect`, {
+    method: 'POST',
+    body: JSON.stringify({ confirmation })
+  });
+export const logoutWhatsAppSession = (id, confirmation) =>
+  apiRequest(`/whatsapp-sessions/${id}/logout`, {
+    method: 'POST',
+    body: JSON.stringify({ confirmation })
+  });
+export const setWhatsAppSessionEnabled = (id, enabled, confirmation = '') =>
+  apiRequest(`/whatsapp-sessions/${id}/enabled`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled, confirmation })
+  });
+export const getConversationProviders = () =>
+  apiRequest('/conversations/providers');
+
 export const getNotifications = (filters = {}) =>
   apiRequest(`/notifications${queryString(filters)}`);
 export const markNotificationRead = (id) =>

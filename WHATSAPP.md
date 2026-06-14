@@ -1,4 +1,8 @@
-# WhatsApp Cloud API Fase 6
+# WhatsApp Cloud API
+
+WhatsApp Cloud continua disponible y sus webhooks no son procesados por las
+sesiones QR. La modalidad QR se documenta por separado en
+[WHATSAPP_QR.md](WHATSAPP_QR.md).
 
 ## Estado de la integracion
 

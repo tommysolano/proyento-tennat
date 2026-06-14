@@ -1,5 +1,9 @@
 # Checklist de produccion WhatsApp
 
+Esta lista cubre WhatsApp Cloud API. Para sesiones QR use tambien la seccion
+de activacion y riesgos de [WHATSAPP_QR.md](WHATSAPP_QR.md); QR permanece
+desactivado por defecto.
+
 ## Meta y credenciales
 
 - [ ] Crear la Meta App en la cuenta empresarial correcta.

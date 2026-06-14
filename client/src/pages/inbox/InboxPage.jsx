@@ -28,6 +28,7 @@ import {
   getCalendars,
   getContacts,
   getConversationMessages,
+  getConversationProviders,
   getConversations,
   getContactCommunicationStatus,
   getMediaContentObjectUrl,
@@ -67,7 +68,8 @@ import {
 
 const channelLabel = {
   internal: 'Interno',
-  whatsapp_cloud: 'WhatsApp',
+  whatsapp_cloud: 'WhatsApp Cloud',
+  whatsapp_qr: 'WhatsApp QR',
   facebook_messenger: 'Messenger',
   instagram_dm: 'Instagram',
   email: 'Email',
@@ -288,6 +290,7 @@ export function InboxPage() {
   const [templates, setTemplates] = useState([]);
   const [users, setUsers] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [providerConfigs, setProviderConfigs] = useState([]);
   const [calendars, setCalendars] = useState([]);
   const [detail, setDetail] = useState({
     appointments: [],
@@ -376,7 +379,8 @@ export function InboxPage() {
   const loadSupportLists = useCallback(async () => {
     const entries = [
       ['users', canAssign ? getUsers() : Promise.resolve([])],
-      ['contacts', canCreate ? getContacts({ limit: 500 }) : Promise.resolve([])]
+      ['contacts', canCreate ? getContacts({ limit: 500 }) : Promise.resolve([])],
+      ['providers', canCreate ? getConversationProviders() : Promise.resolve([])]
     ];
     const results = await Promise.allSettled(entries.map(([, promise]) => promise));
     const errors = {};
@@ -391,6 +395,7 @@ export function InboxPage() {
           );
         }
         if (key === 'contacts') setContacts(result.value);
+        if (key === 'providers') setProviderConfigs(result.value);
       } else {
         errors[key] = result.reason.message;
       }
@@ -713,6 +718,40 @@ export function InboxPage() {
     }
   }
 
+  async function createWhatsApp(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const provider = providerConfigs.find(
+      (item) => item._id === data.get('channelConfigId')
+    );
+    if (!provider) {
+      setActionError('Selecciona una conexion WhatsApp disponible.');
+      return;
+    }
+    setBusy(true);
+    setActionError('');
+    try {
+      const created = await createConversation({
+        contactId: data.get('contactId'),
+        assignedTo: data.get('assignedTo') || null,
+        channel: provider.channel,
+        channelConfigId: provider._id
+      });
+      form.reset();
+      setConversations((current) => [
+        created,
+        ...current.filter((item) => item._id !== created._id)
+      ]);
+      setSelectedId(created._id);
+      setNotice(`Conversacion abierta con ${provider.displayName}.`);
+    } catch (requestError) {
+      setActionError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadCalendars() {
     setCalendarsLoading(true);
     setCalendarsError('');
@@ -772,7 +811,7 @@ export function InboxPage() {
           </label>
           <select className={inputClass} value={filters.channel} onChange={(event) => setFilters((value) => ({ ...value, channel: event.target.value }))}>
             <option value="">Todos los canales</option>
-            {['internal', 'whatsapp_cloud', 'facebook_messenger', 'instagram_dm', 'email', 'sms'].map((value) => <option key={value} value={value}>{channelLabel[value]}</option>)}
+            {['internal', 'whatsapp_cloud', 'whatsapp_qr', 'facebook_messenger', 'instagram_dm', 'email', 'sms'].map((value) => <option key={value} value={value}>{channelLabel[value]}</option>)}
           </select>
           <select className={inputClass} value={filters.status} onChange={(event) => setFilters((value) => ({ ...value, status: event.target.value }))}>
             <option value="">Todos los estados</option>
@@ -811,7 +850,35 @@ export function InboxPage() {
             </select>
             <Button type="submit" disabled={busy}><MessageSquare className="h-4 w-4" />Crear interna</Button>
           </form>
-          {supportErrors.contacts || supportErrors.users ? (
+          {providerConfigs.length ? (
+            <form
+              className="grid gap-3 border-t border-slate-100 p-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]"
+              onSubmit={createWhatsApp}
+            >
+              <select required name="contactId" className={inputClass}>
+                <option value="">Abrir WhatsApp para...</option>
+                {contacts.map((contact) => <option key={contact._id} value={contact._id}>{contact.name}</option>)}
+              </select>
+              <select required name="channelConfigId" className={inputClass}>
+                <option value="">Selecciona la conexion de salida</option>
+                {providerConfigs.map((provider) => (
+                  <option
+                    key={provider._id}
+                    value={provider._id}
+                    disabled={provider.status !== 'connected'}
+                  >
+                    {provider.displayName} - {channelLabel[provider.channel] || provider.channel} - {provider.status}
+                  </option>
+                ))}
+              </select>
+              <select name="assignedTo" className={inputClass}>
+                <option value="">Usar responsable del contacto</option>
+                {users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+              </select>
+              <Button type="submit" disabled={busy}><MessageSquare className="h-4 w-4" />Abrir WhatsApp</Button>
+            </form>
+          ) : null}
+          {supportErrors.contacts || supportErrors.users || supportErrors.providers ? (
             <p className="px-4 pb-4 text-xs text-rose-700">
               No se pudieron cargar todos los contactos o responsables.{' '}
               <button type="button" className="font-bold underline" onClick={loadSupportLists}>Reintentar</button>
@@ -834,7 +901,12 @@ export function InboxPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-semibold text-slate-900">{conversation.contactId?.name || 'Contacto no disponible'}</p>
-                      <p className="text-xs text-slate-500">{channelLabel[conversation.channel] || conversation.channel} - {conversation.assignedTo?.name || 'Sin asignar'}</p>
+                      <p className="text-xs text-slate-500">
+                        {channelLabel[conversation.channel] || conversation.channel}
+                        {conversation.channelConfigId?.displayName ? ` - ${conversation.channelConfigId.displayName}` : ''}
+                        {' - '}
+                        {conversation.assignedTo?.name || 'Sin asignar'}
+                      </p>
                     </div>
                     {conversation.unreadCount ? <span className="rounded-full bg-cyan-700 px-2 py-0.5 text-xs font-bold text-white">{conversation.unreadCount}</span> : null}
                   </div>
@@ -855,7 +927,12 @@ export function InboxPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
                   <div>
                     <Link to={`/crm/contacts/${selected.contactId?._id}`} className="font-semibold text-cyan-800 hover:underline">{selected.contactId?.name}</Link>
-                    <p className="text-xs text-slate-500">{selected.contactId?.phone || selected.contactId?.email || 'Sin telefono o email'} - {channelLabel[selected.channel] || selected.channel}</p>
+                    <p className="text-xs text-slate-500">
+                      {selected.contactId?.phone || selected.contactId?.email || 'Sin telefono o email'}
+                      {' - '}
+                      {channelLabel[selected.channel] || selected.channel}
+                      {selected.channelConfigId?.displayName ? ` - ${selected.channelConfigId.displayName}` : ''}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="secondary" onClick={openAppointment}><CalendarDays className="h-4 w-4" />Agendar</Button>

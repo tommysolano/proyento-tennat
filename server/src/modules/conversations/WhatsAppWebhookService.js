@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { ChannelConfig } from '../../models/ChannelConfig.js';
-import { Contact } from '../../models/Contact.js';
 import { Message } from '../../models/Message.js';
 import { WebhookEvent } from '../../models/WebhookEvent.js';
 import { sanitize } from '../../utils/sanitize.js';
@@ -11,15 +10,10 @@ import { ConversationService } from './ConversationService.js';
 import { getChannelAdapter } from './adapters/index.js';
 import { logger } from '../../utils/logger.js';
 import { OperationalAlertService } from '../ops/OperationalAlertService.js';
-import { checkUsageLimit, trackUsage } from '../../utils/usage.js';
+import { WhatsAppInboundService } from './WhatsAppInboundService.js';
 
 function hashPayload(payload) {
   return createHash('sha256').update(JSON.stringify(payload || {})).digest('hex');
-}
-
-function phoneExpression(phone) {
-  const digits = String(phone || '').replace(/\D/g, '').slice(-12);
-  return digits ? new RegExp(`${digits.split('').join('\\D*')}$`) : null;
 }
 
 async function reserveEvent({ config, eventId, type, payload }) {
@@ -51,95 +45,8 @@ async function recordWebhookActivity(config, actorId, type, summary, metadata = 
   });
 }
 
-async function findOrCreateInboundContact(config, normalized, actorId) {
-  const phoneRegex = phoneExpression(normalized.phone);
-  const filter = {
-    companyId: config.companyId,
-    archivedAt: null,
-    $or: [{ 'metadata.whatsappWaId': normalized.phone }]
-  };
-  if (phoneRegex) filter.$or.push({ phone: phoneRegex });
-  let contact = await Contact.findOne(filter);
-  if (contact) return { contact, created: false };
-
-  await checkUsageLimit({
-    companyId: config.companyId,
-    distributorId: config.distributorId,
-    metric: 'contacts',
-    quantity: 1
-  });
-  contact = await Contact.create({
-    companyId: config.companyId,
-    distributorId: config.distributorId || null,
-    name: normalized.contactName || normalized.phone || 'Contacto WhatsApp',
-    fullName: normalized.contactName || normalized.phone || 'Contacto WhatsApp',
-    phone: normalized.phone,
-    source: 'whatsapp_cloud',
-    status: 'nuevo',
-    lifecycleStage: 'lead',
-    priority: 'medium',
-    createdBy: actorId,
-    updatedBy: actorId,
-    metadata: { whatsappWaId: normalized.phone }
-  });
-  await trackUsage({
-    companyId: config.companyId,
-    distributorId: config.distributorId,
-    metric: 'contacts',
-    quantity: 1,
-    metadata: { contactId: contact._id, source: 'whatsapp_cloud' }
-  });
-  await recordWebhookActivity(
-    config,
-    actorId,
-    'contact_created_from_inbound',
-    `Contacto creado desde WhatsApp: ${contact.name}`,
-    { contactId: contact._id }
-  );
-  return { contact, created: true };
-}
-
 async function processInbound(config, normalized, actorId) {
-  const event = await reserveEvent({
-    config,
-    eventId: normalized.eventId,
-    type: 'message',
-    payload: normalized.providerPayload
-  });
-  if (!event) return { duplicate: true };
-  try {
-    const { contact } = await findOrCreateInboundContact(config, normalized, actorId);
-    const { conversation } = await ConversationService.findOrCreateConversation({
-      companyId: config.companyId,
-      distributorId: config.distributorId,
-      contactId: contact._id,
-      channel: 'whatsapp_cloud',
-      channelConfigId: config._id,
-      externalConversationId: normalized.externalConversationId,
-      createdBy: actorId
-    });
-    const result = await ConversationService.createInboundMessage({
-      conversation,
-      normalized,
-      actorId
-    });
-    event.status = result.duplicate ? 'duplicate' : 'processed';
-    event.processedAt = new Date();
-    await event.save();
-    await recordWebhookActivity(config, actorId, 'webhook_processed', 'Webhook WhatsApp procesado', {
-      webhookEventId: event._id,
-      conversationId: conversation._id,
-      contactId: contact._id,
-      messageId: result.message._id
-    });
-    return result;
-  } catch (error) {
-    event.status = 'failed';
-    event.error = sanitize(error.message);
-    event.processedAt = new Date();
-    await event.save();
-    throw error;
-  }
+  return WhatsAppInboundService.processNormalized({ config, normalized, actorId });
 }
 
 async function processStatus(config, normalized, actorId) {
@@ -154,9 +61,14 @@ async function processStatus(config, normalized, actorId) {
     const message = await Message.findOne({
       companyId: config.companyId,
       provider: 'whatsapp_cloud',
-      externalMessageId: normalized.externalMessageId
+      externalMessageId: normalized.externalMessageId,
+      $or: [
+        { channelConfigId: config._id },
+        { channelConfigId: null }
+      ]
     });
     if (message) {
+      if (!message.channelConfigId) message.channelConfigId = config._id;
       const accepted = ['sent', 'delivered', 'read', 'failed'];
       const progression = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 99 };
       const statusAccepted = accepted.includes(normalized.status);
@@ -272,7 +184,10 @@ export class WhatsAppWebhookService {
   }
 
   static async processPayload(channelConfigId, payload) {
-    const config = await ChannelConfig.findById(channelConfigId)
+    const config = await ChannelConfig.findOne({
+      _id: channelConfigId,
+      channel: 'whatsapp_cloud'
+    })
       .select('+credentials +verifyToken +webhookSecret');
     if (!config || config.status === 'disabled') {
       throw Object.assign(new Error('Canal WhatsApp no disponible'), { retryable: false });

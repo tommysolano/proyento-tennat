@@ -42,7 +42,15 @@ export const ROLE_PERMISSIONS = {
     'campaigns:read_distributor',
     'campaigns:manage_distributor',
     'integrations:read_distributor',
-    'integrations:manage_distributor'
+    'integrations:manage_distributor',
+    'whatsapp_connections:read',
+    'whatsapp_sessions:create',
+    'whatsapp_sessions:view_qr',
+    'whatsapp_sessions:reconnect',
+    'whatsapp_sessions:disconnect',
+    'whatsapp_sessions:delete_auth',
+    'whatsapp_sessions:diagnostics',
+    'whatsapp_sessions:manage_companies'
   ],
   ADMIN: [
     'users:manage',
@@ -80,6 +88,15 @@ export const ROLE_PERMISSIONS = {
     'media:upload',
     'channel_diagnostics:read',
     'channel_secrets:rotate',
+    'whatsapp_connections:read',
+    'whatsapp_sessions:create',
+    'whatsapp_sessions:view_qr',
+    'whatsapp_sessions:reconnect',
+    'whatsapp_sessions:disconnect',
+    'whatsapp_sessions:delete_auth',
+    'whatsapp_sessions:diagnostics',
+    'whatsapp_messages:send',
+    'whatsapp_provider:select',
     'consent:read',
     'consent:manage',
     'consent:override',
@@ -149,6 +166,10 @@ export const ROLE_PERMISSIONS = {
     'routing_rules:read',
     'media:read_team',
     'media:upload_team',
+    'whatsapp_connections:read',
+    'whatsapp_sessions:diagnostics',
+    'whatsapp_messages:send',
+    'whatsapp_provider:select',
     'consent:read_team',
     'consent:manage_team',
     'dnd:read_team',
@@ -196,6 +217,7 @@ export const ROLE_PERMISSIONS = {
     'notifications:read',
     'media:read_assigned',
     'media:upload_assigned',
+    'whatsapp_messages:send',
     'consent:read_assigned',
     'consent:record_assigned',
     'dnd:read_assigned',
@@ -258,7 +280,47 @@ export function hasUserPermission(user, permission) {
         'conversations:send_assigned'
       ],
       'communication_reports:read': ['marketing_reports:read'],
-      'communication_reports:read_team': ['marketing_reports:read_team']
+      'communication_reports:read_team': ['marketing_reports:read_team'],
+      'whatsapp_connections:read': [
+        'channel_configs:manage',
+        'integrations:read_team',
+        'integrations:read_distributor'
+      ],
+      'whatsapp_sessions:create': [
+        'channel_configs:manage',
+        'integrations:manage_distributor'
+      ],
+      'whatsapp_sessions:view_qr': [
+        'channel_configs:manage',
+        'integrations:manage_distributor'
+      ],
+      'whatsapp_sessions:reconnect': [
+        'channel_configs:manage',
+        'integrations:manage_distributor'
+      ],
+      'whatsapp_sessions:disconnect': [
+        'channel_configs:manage',
+        'integrations:manage_distributor'
+      ],
+      'whatsapp_sessions:delete_auth': [
+        'channel_configs:manage',
+        'integrations:manage_distributor'
+      ],
+      'whatsapp_sessions:diagnostics': [
+        'channel_diagnostics:read',
+        'integrations:read_team',
+        'integrations:read_distributor'
+      ],
+      'whatsapp_sessions:manage_companies': ['integrations:manage_distributor'],
+      'whatsapp_messages:send': [
+        'conversations:send',
+        'conversations:send_team',
+        'conversations:send_assigned'
+      ],
+      'whatsapp_provider:select': [
+        'conversations:manage',
+        'conversations:assign_team'
+      ]
     };
     return Boolean(
       hasPermission(user.role, permission) &&

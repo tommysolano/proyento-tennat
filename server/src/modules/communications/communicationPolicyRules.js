@@ -8,6 +8,7 @@ export const MESSAGE_CATEGORIES = [
 const CHANNEL_ALIASES = {
   whatsapp: 'whatsapp',
   whatsapp_cloud: 'whatsapp',
+  whatsapp_qr: 'whatsapp',
   email: 'email',
   sms: 'sms',
   phone: 'call',

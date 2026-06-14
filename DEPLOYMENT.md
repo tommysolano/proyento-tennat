@@ -50,6 +50,7 @@ JOB_MAX_ATTEMPTS=5
 REALTIME_ENABLED=true
 WHATSAPP_GRAPH_API_VERSION=v20.0
 WHATSAPP_GRAPH_API_BASE_URL=https://graph.facebook.com
+WHATSAPP_QR_ENABLED=false
 MEDIA_STORAGE_PROVIDER=local
 MEDIA_LOCAL_DIR=uploads
 MEDIA_MAX_SIZE_MB=25
@@ -144,6 +145,14 @@ Controle concurrencia y reintentos con `JOB_WORKER_CONCURRENCY` y
 Configure la URL publica de Render, active firma en produccion y use secretos
 de Meta solo en variables de entorno. Reputacion no envia WhatsApp, email o
 SMS; esos canales estan marcados como planned.
+
+## WhatsApp QR
+
+El transporte QR esta desactivado por defecto. Consulte
+[WHATSAPP_QR.md](WHATSAPP_QR.md) antes de habilitarlo. La autenticacion se
+cifra en Atlas, pero la media requiere un provider externo privado y un
+despliegue horizontal necesita afinidad entre cada sesion y sus jobs o un
+worker de sesiones dedicado.
 
 ## Troubleshooting
 

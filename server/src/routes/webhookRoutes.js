@@ -10,7 +10,10 @@ import { OperationalAlertService } from '../modules/ops/OperationalAlertService.
 const router = Router();
 
 async function loadAvailableConfig(channelConfigId) {
-  const config = await ChannelConfig.findById(channelConfigId)
+  const config = await ChannelConfig.findOne({
+    _id: channelConfigId,
+    channel: 'whatsapp_cloud'
+  })
     .select('+credentials +verifyToken +webhookSecret');
   if (!config || config.status === 'disabled') return null;
   const moduleAccess = await checkModuleAccess('whatsapp', {

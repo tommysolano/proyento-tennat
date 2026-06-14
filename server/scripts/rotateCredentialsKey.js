@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { loadEnv } from '../src/config/env.js';
 import { ChannelConfig } from '../src/models/ChannelConfig.js';
+import { WhatsAppSession } from '../src/models/WhatsAppSession.js';
 import {
   decryptSecret,
   decryptSecretMap,
@@ -23,6 +24,7 @@ if (oldKey === newKey) throw new Error('Las claves vieja y nueva deben ser difer
 if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI es requerida');
 
 let prepared = 0;
+let preparedSessions = 0;
 try {
   await mongoose.connect(process.env.MONGODB_URI);
   const configs = await ChannelConfig.find()
@@ -52,12 +54,37 @@ try {
       );
     }
   }
+
+  const sessions = await WhatsAppSession.find()
+    .select('+authState +encryptedConfig')
+    .lean();
+  for (const session of sessions) {
+    process.env.CREDENTIALS_ENCRYPTION_KEY = oldKey;
+    const plaintext = {
+      authState: decryptSecret(session.authState),
+      encryptedConfig: decryptSecret(session.encryptedConfig)
+    };
+
+    process.env.CREDENTIALS_ENCRYPTION_KEY = newKey;
+    const replacement = {
+      authState: encryptSecret(plaintext.authState),
+      encryptedConfig: encryptSecret(plaintext.encryptedConfig),
+      'metadata.encryptionKeyRotatedAt': new Date()
+    };
+    preparedSessions += 1;
+    if (execute) {
+      await WhatsAppSession.collection.updateOne(
+        { _id: session._id },
+        { $set: replacement }
+      );
+    }
+  }
 } finally {
   await mongoose.disconnect().catch(() => {});
 }
 
 console.log(
   execute
-    ? `Rotacion completada para ${prepared} ChannelConfig.`
-    : `Dry-run correcto: ${prepared} ChannelConfig pueden rotarse. Use --execute despues de crear un backup.`
+    ? `Rotacion completada para ${prepared} ChannelConfig y ${preparedSessions} WhatsAppSession.`
+    : `Dry-run correcto: ${prepared} ChannelConfig y ${preparedSessions} WhatsAppSession pueden rotarse. Use --execute despues de crear un backup.`
 );

@@ -4,6 +4,7 @@ import { CRM_PRIORITIES } from './Contact.js';
 export const CONVERSATION_CHANNELS = [
   'internal',
   'whatsapp_cloud',
+  'whatsapp_qr',
   'facebook_messenger',
   'instagram_dm',
   'email',
@@ -22,6 +23,7 @@ const conversationSchema = new mongoose.Schema(
     distributorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Distributor', default: null },
     contactId: { type: mongoose.Schema.Types.ObjectId, ref: 'Contact', required: true },
     channel: { type: String, enum: CONVERSATION_CHANNELS, default: 'internal' },
+    provider: { type: String, trim: true, default: 'internal' },
     channelConfigId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ChannelConfig',
@@ -49,6 +51,7 @@ const conversationSchema = new mongoose.Schema(
 
 conversationSchema.index({ companyId: 1, assignedTo: 1, status: 1, lastMessageAt: -1 });
 conversationSchema.index({ companyId: 1, contactId: 1, channel: 1 });
+conversationSchema.index({ companyId: 1, provider: 1, channelConfigId: 1, lastMessageAt: -1 });
 conversationSchema.index(
   { channelConfigId: 1, externalConversationId: 1 },
   {
@@ -59,5 +62,19 @@ conversationSchema.index(
     }
   }
 );
+
+conversationSchema.pre('validate', function setConversationProvider(next) {
+  if (
+    !this.provider ||
+    (
+      this.provider === 'internal' &&
+      this.channel !== 'internal' &&
+      !this.isModified('provider')
+    )
+  ) {
+    this.provider = this.channel || 'internal';
+  }
+  next();
+});
 
 export const Conversation = mongoose.model('Conversation', conversationSchema);

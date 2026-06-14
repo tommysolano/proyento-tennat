@@ -26,6 +26,7 @@ import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { CrmLoading, CrmNotice, inputClass, localDate } from '../../components/CrmCommon.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
+import { WhatsAppQrSessionsPanel } from './WhatsAppQrSessionsPanel.jsx';
 
 function DiagnosticChecklist({ diagnostics }) {
   if (!diagnostics) {
@@ -183,9 +184,10 @@ export function ChannelSettingsPage() {
     <PageShell
       eyebrow="Inbox"
       title="Configuracion de canales"
-      description="WhatsApp Cloud con diagnostico, secretos cifrados y modo sandbox visible."
+      description="WhatsApp Cloud y sesiones QR aisladas por empresa sobre un mismo Inbox."
     >
       <CrmNotice notice={notice} error={error} />
+      <WhatsAppQrSessionsPanel />
       {loading ? <CrmLoading /> : (
         <>
           <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">

@@ -228,6 +228,25 @@ router.get('/metrics', async (req, res, next) => {
   }
 });
 
+router.get(
+  '/providers',
+  requireAnyPermission('whatsapp_provider:select', 'channel_configs:manage'),
+  async (req, res, next) => {
+    try {
+      const configs = await ChannelConfig.find({
+        companyId: req.user.companyId,
+        channel: { $in: ['whatsapp_cloud', 'whatsapp_qr'] },
+        status: { $ne: 'disabled' }
+      })
+        .select('displayName channel status phoneNumberId lastConnectedAt')
+        .sort({ channel: 1, displayName: 1 });
+      res.json(configs);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.get('/', async (req, res, next) => {
   try {
     const filter = await conversationScope(req.user);
@@ -276,6 +295,15 @@ router.post('/', roleMiddleware('ADMIN', 'SUPERVISOR'), async (req, res, next) =
     if (!contact) throw badRequest('Contacto fuera de alcance');
     const channel = canonicalChannel(req.body.channel || 'internal');
     if (!CONVERSATION_CHANNELS.includes(channel)) throw badRequest('channel invalido');
+    if (
+      ['whatsapp_cloud', 'whatsapp_qr'].includes(channel) &&
+      !hasUserPermission(req.user, 'whatsapp_provider:select')
+    ) {
+      throw Object.assign(
+        new Error('No tienes permiso para seleccionar una conexion WhatsApp'),
+        { status: 403 }
+      );
+    }
     const assignedTo = req.body.assignedTo
       ? await validateCrmAssignee(req.user, req.body.assignedTo)
       : contact.assignedTo;
@@ -287,13 +315,31 @@ router.post('/', roleMiddleware('ADMIN', 'SUPERVISOR'), async (req, res, next) =
       const config = await ChannelConfig.findOne({
         _id: req.body.channelConfigId,
         companyId: req.user.companyId,
-        status: { $ne: 'disabled' }
+        status: ['whatsapp_cloud', 'whatsapp_qr'].includes(channel)
+          ? 'connected'
+          : { $ne: 'disabled' }
       });
-      if (!config) throw badRequest('channelConfigId fuera de la empresa');
+      if (!config) {
+        throw badRequest('channelConfigId fuera de la empresa o no conectado');
+      }
       if (canonicalChannel(config.channel) !== channel) {
         throw badRequest('channelConfigId no corresponde al canal solicitado');
       }
       channelConfigId = config._id;
+    } else if (['whatsapp_cloud', 'whatsapp_qr'].includes(channel)) {
+      const configs = await ChannelConfig.find({
+        companyId: req.user.companyId,
+        channel,
+        status: 'connected'
+      }).select('_id');
+      if (configs.length !== 1) {
+        throw badRequest(
+          configs.length
+            ? 'Selecciona la conexion WhatsApp de salida'
+            : 'No hay una conexion WhatsApp disponible'
+        );
+      }
+      channelConfigId = configs[0]._id;
     }
     const { conversation } = await ConversationService.findOrCreateConversation({
       companyId: req.user.companyId,

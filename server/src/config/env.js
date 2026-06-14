@@ -42,7 +42,15 @@ export function validateEnv({ requireSuperAdmin = false } = {}) {
 
   for (const [name, fallback] of [
     ['JOB_WORKER_CONCURRENCY', 2],
-    ['JOB_MAX_ATTEMPTS', 5]
+    ['JOB_MAX_ATTEMPTS', 5],
+    ['WHATSAPP_QR_MAX_SESSIONS_PER_COMPANY', 5],
+    ['WHATSAPP_QR_MAX_ACTIVE_SESSIONS', 20],
+    ['WHATSAPP_QR_RESTORE_LIMIT', 10],
+    ['WHATSAPP_QR_QR_TTL_SECONDS', 60],
+    ['WHATSAPP_QR_SESSION_LEASE_SECONDS', 90],
+    ['WHATSAPP_QR_MAX_RECONNECT_ATTEMPTS', 5],
+    ['WHATSAPP_QR_RECONNECT_BASE_MS', 2000],
+    ['WHATSAPP_QR_RECONNECT_MAX_MS', 60000]
   ]) {
     const value = Number(process.env[name] || fallback);
     if (!Number.isInteger(value) || value < 1) {

@@ -60,6 +60,7 @@ import integrationRoutes from './routes/integrationRoutes.js';
 import integrationWebhookRoutes from './routes/integrationWebhookRoutes.js';
 import marketingReportRoutes from './routes/marketingReportRoutes.js';
 import communicationRoutes from './routes/communicationRoutes.js';
+import whatsappSessionRoutes from './routes/whatsappSessionRoutes.js';
 import { logger } from './utils/logger.js';
 import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
 
@@ -156,6 +157,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/marketing/reports', marketingReportRoutes);
 app.use('/api/communications', communicationRoutes);
+app.use('/api/whatsapp-sessions', whatsappSessionRoutes);
 app.use('/api/reputation', reputationRoutes);
 app.use('/api/review-requests', reviewRequestRoutes);
 app.use('/api/reviews', reviewRoutes);

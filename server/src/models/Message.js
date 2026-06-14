@@ -90,6 +90,12 @@ const messageSchema = new mongoose.Schema(
       default: null,
       set: normalizeOptionalObjectId
     },
+    channelConfigId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ChannelConfig',
+      default: null,
+      set: normalizeOptionalObjectId
+    },
     errorMessage: { type: String, maxlength: 2000, default: '' },
     error: { type: String, default: '' },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
@@ -121,8 +127,9 @@ const messageSchema = new mongoose.Schema(
 messageSchema.index({ companyId: 1, conversationId: 1, createdAt: 1 });
 messageSchema.index({ companyId: 1, status: 1, channel: 1, createdAt: -1 });
 messageSchema.index({ companyId: 1, reasonCode: 1, createdAt: -1 });
+messageSchema.index({ companyId: 1, provider: 1, channelConfigId: 1, createdAt: -1 });
 messageSchema.index(
-  { companyId: 1, provider: 1, externalMessageId: 1 },
+  { companyId: 1, provider: 1, channelConfigId: 1, externalMessageId: 1 },
   {
     unique: true,
     partialFilterExpression: { externalMessageId: { $type: 'string', $gt: '' } }

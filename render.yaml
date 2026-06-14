@@ -56,6 +56,28 @@ services:
         value: image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,video/mp4,application/pdf
       - key: WHATSAPP_SANDBOX_MODE
         value: "false"
+      - key: WHATSAPP_QR_ENABLED
+        value: "false"
+      - key: WHATSAPP_QR_AUTO_RESTORE
+        value: "true"
+      - key: WHATSAPP_QR_MAX_SESSIONS_PER_COMPANY
+        value: "5"
+      - key: WHATSAPP_QR_MAX_ACTIVE_SESSIONS
+        value: "20"
+      - key: WHATSAPP_QR_RESTORE_LIMIT
+        value: "10"
+      - key: WHATSAPP_QR_QR_TTL_SECONDS
+        value: "60"
+      - key: WHATSAPP_QR_SESSION_LEASE_SECONDS
+        value: "90"
+      - key: WHATSAPP_QR_MAX_RECONNECT_ATTEMPTS
+        value: "5"
+      - key: WHATSAPP_QR_RECONNECT_BASE_MS
+        value: "2000"
+      - key: WHATSAPP_QR_RECONNECT_MAX_MS
+        value: "60000"
+      - key: WHATSAPP_QR_ALLOW_GROUPS
+        value: "false"
       - key: ALERTS_ENABLED
         value: "true"
       - key: PUBLIC_TRACKING_SALT

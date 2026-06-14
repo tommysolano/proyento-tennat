@@ -3,6 +3,21 @@ export class BaseAdapter {
     this.channelConfig = channelConfig;
   }
 
+  async connect() {
+    return { success: false, supported: false };
+  }
+
+  async disconnect() {
+    return { success: false, supported: false };
+  }
+
+  async getStatus() {
+    return {
+      provider: this.channelConfig?.channel || 'unknown',
+      status: this.channelConfig?.status || 'not_configured'
+    };
+  }
+
   async sendMessage() {
     return {
       success: false,
@@ -29,5 +44,19 @@ export class BaseAdapter {
 
   normalizeStatusUpdate() {
     return [];
+  }
+
+  async downloadMedia() {
+    throw Object.assign(new Error('Este proveedor no implementa descarga de archivos'), {
+      retryable: false
+    });
+  }
+
+  async markAsRead() {
+    return false;
+  }
+
+  async getDiagnostics() {
+    return this.getStatus();
   }
 }

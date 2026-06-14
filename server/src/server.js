@@ -3,6 +3,7 @@ import { connectDB } from './config/db.js';
 import { ensureSuperAdmin } from './data/superAdminBootstrap.js';
 import { startJobWorker } from './modules/jobs/JobWorker.js';
 import { logger } from './utils/logger.js';
+import { WhatsAppQrSessionManager } from './modules/conversations/WhatsAppQrSessionManager.js';
 
 loadEnv();
 
@@ -32,6 +33,7 @@ try {
   const { app } = await import('./app.js');
 
   const worker = startJobWorker();
+  await WhatsAppQrSessionManager.restoreSessions();
   const server = app.listen(port, () => {
     logger.info('server.started', { port });
   });
@@ -39,6 +41,7 @@ try {
     logger.info('server.shutdown', { signal });
     server.close();
     await worker?.stop?.();
+    await WhatsAppQrSessionManager.stop();
     process.exit(0);
   }
   process.once('SIGTERM', () => shutdown('SIGTERM'));
