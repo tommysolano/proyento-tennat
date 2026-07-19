@@ -205,7 +205,7 @@ export function OpportunityDetailPage() {
       {item?.contactId?._id ? <div><Button as={Link} to={`/inbox?contactId=${item.contactId._id}`} variant="secondary"><MessageSquare className="h-4 w-4" />Conversaciones del contacto</Button></div> : null}
       <div><Button as={Link} to={`/calendar?contactId=${item?.contactId?._id || ''}&opportunityId=${id}&source=crm`}><CalendarDays className="h-4 w-4" />Agendar cita</Button></div>
       <CrmNotice notice={notice} error={error} />
-      {item ? <div className="grid gap-6 xl:grid-cols-[1fr_0.8fr]">
+      {item ? <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
         <Card>
           <CardHeader title="Datos del deal" action={<Badge tone={item.status}>{item.status}</Badge>} />
           <form onSubmit={save} className="grid gap-4 p-5 md:grid-cols-2">
@@ -244,7 +244,7 @@ export function OpportunityDetailPage() {
           /> : null}
           <Card><CardHeader title="Citas vinculadas" /><div className="space-y-3 p-5">{appointments.slice(0, 5).map((appointment) => <div key={appointment._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="font-semibold">{appointment.title}</span><Badge tone={appointment.status}>{appointment.status}</Badge></div><p className="mt-1 text-xs text-slate-500">{localDate(appointment.startAt)} - {appointment.assignedTo?.name}</p></div>)}{!appointments.length ? <p className="text-sm text-slate-500">Sin citas asociadas.</p> : null}</div></Card>
           {canAddNote ? <Card><CardHeader title="Nueva nota" /><form onSubmit={addNote} className="space-y-3 p-5"><textarea required name="text" className={`${inputClass} min-h-28`} /><Button type="submit" disabled={busy}><StickyNote className="h-4 w-4" />Agregar nota</Button></form></Card> : null}
-          <Card><CardHeader title="Timeline de oportunidad" /><div className="max-h-[600px] space-y-3 overflow-y-auto p-5">{timeline.map((entry, index) => <div key={`${entry.kind}-${entry.item._id}-${index}`} className="border-l-2 border-cyan-200 pl-4"><p className="text-sm font-medium">{eventText(entry)}</p><p className="text-xs text-slate-500">{localDate(entry.date)} - {entry.item.createdBy?.name || entry.item.userId?.name || 'Sistema'}</p></div>)}</div></Card>
+          <Card><CardHeader title="Timeline de oportunidad" /><div className="scrollbar-thin max-h-[60vh] space-y-3 overflow-y-auto p-5">{timeline.map((entry, index) => <div key={`${entry.kind}-${entry.item._id}-${index}`} className="border-l-2 border-cyan-200 pl-4"><p className="text-sm font-medium">{eventText(entry)}</p><p className="text-xs text-slate-500">{localDate(entry.date)} - {entry.item.createdBy?.name || entry.item.userId?.name || 'Sistema'}</p></div>)}</div></Card>
         </div>
       </div> : null}
     </PageShell>

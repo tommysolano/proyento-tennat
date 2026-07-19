@@ -28,13 +28,16 @@ export function Layout() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} />
+        {/*
+          El ancho lo decide cada pagina via PageShell (`width`). El main solo
+          aporta el padding lateral fluido, para no desperdiciar monitores
+          grandes con un contenedor fijo.
+        */}
         <main
           id="main-content"
-          className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 lg:p-8"
+          className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 lg:px-8 lg:py-8 2xl:px-12"
         >
-          <div className="mx-auto w-full max-w-7xl">
-            <Outlet />
-          </div>
+          <Outlet />
         </main>
       </div>
     </div>

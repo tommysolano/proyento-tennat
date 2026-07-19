@@ -5,11 +5,13 @@ import {
   LogOut,
   Menu,
   RotateCcw,
+  Users,
   UserRound
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getNotifications, getOpsAlerts } from '../api.js';
+import { ImpersonationSwitcher } from '../components/ImpersonationSwitcher.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { roleHome } from '../routes/roleHome.js';
 import { canAccessPath } from '../utils/access.js';
@@ -27,11 +29,19 @@ export function Header({ onMenuClick }) {
   const navigate = useNavigate();
   const location = useLocation();
   const menuRef = useRef(null);
-  const { user, tenant, access, impersonator, returnToOriginalSession, logout } =
-    useAuth();
+  const {
+    user,
+    tenant,
+    access,
+    impersonator,
+    canImpersonate,
+    returnToOriginalSession,
+    logout
+  } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [criticalAlertCount, setCriticalAlertCount] = useState(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const canReceiveNotifications = canAccessPath('/notifications', access);
   const canReadOpsAlerts = ['SUPERADMIN', 'ADMIN'].includes(user?.role);
   const currentSection = useMemo(() => {
@@ -125,24 +135,37 @@ export function Header({ onMenuClick }) {
 
       <div className="flex shrink-0 items-center gap-2">
         {impersonator ? (
-          <div className="hidden rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 xl:block">
+          <div className="hidden max-w-96 rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 xl:block">
             <p className="text-xs font-semibold text-cyan-900">Acceso delegado</p>
-            <p className="max-w-48 truncate text-[11px] text-cyan-700">
-              Desde {impersonator.email}
+            <p className="truncate text-[11px] text-cyan-700">
+              {impersonator.name || impersonator.email} (
+              {roleLabels[impersonator.role] || impersonator.role})
+              {' -> '}
+              {user?.name || user?.email} ({roleLabels[user?.role] || user?.role})
+              {tenant?.company?.name ? ` / ${tenant.company.name}` : ''}
             </p>
           </div>
+        ) : null}
+        {impersonator && canImpersonate ? (
+          <button
+            type="button"
+            onClick={() => setSwitcherOpen(true)}
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-100"
+            aria-label="Cambiar de usuario"
+          >
+            <Users className="h-4 w-4" />
+            <span className="hidden md:inline">Cambiar de usuario</span>
+          </button>
         ) : null}
         {impersonator ? (
           <button
             type="button"
             onClick={handleReturn}
             className="inline-flex min-h-10 items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-100"
-            aria-label={`Volver a ${roleLabels[impersonator.role] || impersonator.role}`}
+            aria-label="Volver a mi sesion"
           >
             <RotateCcw className="h-4 w-4" />
-            <span className="hidden md:inline">
-              Volver a {roleLabels[impersonator.role] || impersonator.role}
-            </span>
+            <span className="hidden md:inline">Volver a mi sesion</span>
           </button>
         ) : null}
         {canReceiveNotifications ? (
@@ -202,14 +225,33 @@ export function Header({ onMenuClick }) {
                 </p>
               </div>
               {impersonator ? (
+                <p className="mt-1 px-3 py-1 text-[11px] text-cyan-700">
+                  Delegado desde {impersonator.name || impersonator.email}
+                </p>
+              ) : null}
+              {canImpersonate ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setSwitcherOpen(true);
+                  }}
+                  className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-cyan-800 hover:bg-cyan-50"
+                >
+                  <Users className="h-4 w-4" />
+                  {impersonator ? 'Cambiar de usuario' : 'Entrar como usuario'}
+                </button>
+              ) : null}
+              {impersonator ? (
                 <button
                   type="button"
                   role="menuitem"
                   onClick={handleReturn}
-                  className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-cyan-800 hover:bg-cyan-50"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-cyan-800 hover:bg-cyan-50"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  Terminar acceso delegado
+                  Volver a mi sesion
                 </button>
               ) : null}
               <div className="mt-1 flex items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-500">
@@ -229,6 +271,10 @@ export function Header({ onMenuClick }) {
           ) : null}
         </div>
       </div>
+      <ImpersonationSwitcher
+        open={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+      />
     </header>
   );
 }

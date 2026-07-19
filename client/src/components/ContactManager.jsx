@@ -141,21 +141,27 @@ export function ContactManager({
           data={filteredContacts.map((contact) => ({ ...contact, id: contact._id }))}
           emptyText="No hay contactos para los filtros seleccionados"
           columns={[
-            { key: 'name', header: 'Contacto' },
-            { key: 'phone', header: 'Telefono' },
+            { key: 'name', header: 'Contacto', truncate: true, width: '14rem' },
+            { key: 'phone', header: 'Telefono', nowrap: true },
             {
               key: 'assignedTo',
               header: 'Agente',
+              truncate: true,
+              width: '12rem',
+              hideBelow: 'md',
               render: (row) => row.assignedTo?.name || 'Sin asignar'
             },
             {
               key: 'nextFollowUpAt',
               header: 'Seguimiento',
+              nowrap: true,
+              hideBelow: 'lg',
               render: (row) => formatDate(row.nextFollowUpAt, 'Sin fecha')
             },
             {
               key: 'status',
               header: 'Estado',
+              nowrap: true,
               render: (row) => (
                 <Badge tone={row.status}>{contactStatusLabel(row.status)}</Badge>
               )
@@ -163,6 +169,7 @@ export function ContactManager({
             {
               key: 'action',
               header: 'Accion',
+              nowrap: true,
               render: (row) => (
                 <Button
                   className="min-h-9 px-3"

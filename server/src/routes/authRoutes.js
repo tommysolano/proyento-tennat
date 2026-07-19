@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
+import {
+  evaluateImpersonation,
+  impersonationTargetScope
+} from '../core/permissions/impersonationScope.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { Company } from '../models/Company.js';
 import { Distributor } from '../models/Distributor.js';
@@ -92,86 +96,182 @@ router.get('/me', authMiddleware, async (req, res) => {
   });
 });
 
+/**
+ * Resuelve el usuario objetivo desde el cuerpo de la peticion.
+ *
+ * `targetUserId` es la forma directa. `companyId` y `distributorId` se
+ * mantienen por compatibilidad con los flujos existentes y resuelven,
+ * respectivamente, al ADMIN de la empresa y al DISTRIBUTOR de la cartera.
+ */
+async function resolveImpersonationTarget(rootActor, body) {
+  if (body.targetUserId !== undefined) {
+    if (!isValidObjectId(body.targetUserId)) {
+      throw Object.assign(new Error('targetUserId valido es requerido'), { status: 400 });
+    }
+    return { targetUser: await User.findById(body.targetUserId), company: null };
+  }
+
+  if (body.companyId !== undefined) {
+    if (!isValidObjectId(body.companyId)) {
+      throw Object.assign(new Error('companyId valido es requerido'), { status: 400 });
+    }
+
+    const company = await Company.findOne({
+      _id: body.companyId,
+      ...(rootActor.role === 'SUPERADMIN'
+        ? {}
+        : { distributorId: rootActor.distributorId }),
+      status: { $in: ['active', 'trial'] }
+    });
+    if (!company) {
+      throw Object.assign(new Error('Empresa no encontrada para este distribuidor'), {
+        status: 404
+      });
+    }
+
+    const adminScope = {
+      companyId: company._id,
+      distributorId: company.distributorId,
+      role: 'ADMIN',
+      status: 'active'
+    };
+    let targetUser = company.adminId
+      ? await User.findOne({ _id: company.adminId, ...adminScope })
+      : null;
+    if (!targetUser) {
+      targetUser = await User.findOne(adminScope).sort({ createdAt: 1 });
+    }
+    if (targetUser && String(company.adminId || '') !== String(targetUser._id)) {
+      await Company.updateOne(
+        { _id: company._id, distributorId: company.distributorId },
+        { $set: { adminId: targetUser._id } }
+      );
+    }
+    return { targetUser, company };
+  }
+
+  if (body.distributorId !== undefined) {
+    if (!isValidObjectId(body.distributorId)) {
+      throw Object.assign(new Error('distributorId valido es requerido'), { status: 400 });
+    }
+
+    const distributor = await Distributor.findOne({
+      _id: body.distributorId,
+      status: { $in: ['active', 'trial'] }
+    });
+    if (!distributor) {
+      throw Object.assign(new Error('Distribuidor activo no encontrado'), { status: 404 });
+    }
+
+    const targetUser = await User.findOne({
+      distributorId: distributor._id,
+      role: 'DISTRIBUTOR',
+      status: 'active'
+    }).sort({ createdAt: 1 });
+    return { targetUser, company: null };
+  }
+
+  throw Object.assign(
+    new Error('Debes enviar targetUserId, companyId o distributorId'),
+    { status: 400 }
+  );
+}
+
+router.get('/impersonation/targets', authMiddleware, async (req, res, next) => {
+  try {
+    // El alcance se evalua SIEMPRE contra el actor raiz de la cadena.
+    const rootActor = req.impersonator || req.user;
+    const scope = impersonationTargetScope(rootActor);
+    if (!scope) {
+      return res.status(403).json({ message: 'Tu rol no puede iniciar una impersonacion' });
+    }
+
+    const filters = { ...scope };
+    if (req.query.companyId) {
+      if (!isValidObjectId(req.query.companyId)) {
+        return res.status(400).json({ message: 'companyId invalido' });
+      }
+      filters.companyId = req.query.companyId;
+    }
+    if (req.query.distributorId) {
+      if (!isValidObjectId(req.query.distributorId)) {
+        return res.status(400).json({ message: 'distributorId invalido' });
+      }
+      filters.distributorId = req.query.distributorId;
+    }
+    if (req.query.role) {
+      const role = String(req.query.role).toUpperCase();
+      if (!scope.role.$in.includes(role)) {
+        return res.status(400).json({ message: 'role fuera del alcance permitido' });
+      }
+      filters.role = role;
+    }
+    if (req.query.search) {
+      const search = String(req.query.search).trim().slice(0, 80);
+      if (search) {
+        const pattern = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        filters.$or = [{ name: pattern }, { email: pattern }];
+      }
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const users = await User.find(filters)
+      .select('name email role status companyId distributorId')
+      .populate('companyId', 'name status')
+      .populate('distributorId', 'name status')
+      .sort({ role: 1, name: 1 })
+      .limit(limit);
+
+    res.json({
+      actor: {
+        id: rootActor._id.toString(),
+        name: rootActor.name,
+        email: rootActor.email,
+        role: rootActor.role
+      },
+      users
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/impersonate', authMiddleware, async (req, res, next) => {
   try {
-    if (req.impersonation) {
-      return res.status(409).json({ message: 'No se permite impersonacion anidada' });
+    // Desde una sesion ya impersonada no se anida: se cambia de objetivo
+    // conservando el actor raiz, que es quien concede el alcance.
+    const rootActor = req.impersonator || req.user;
+    const chained = Boolean(req.impersonation?.id);
+
+    const { targetUser, company: resolvedCompany } = await resolveImpersonationTarget(
+      rootActor,
+      req.body || {}
+    );
+
+    const company =
+      resolvedCompany ||
+      (targetUser?.companyId
+        ? await Company.findById(targetUser.companyId).select('status distributorId')
+        : null);
+    const distributor = targetUser?.distributorId
+      ? await Distributor.findById(targetUser.distributorId).select('status')
+      : null;
+
+    const decision = evaluateImpersonation({
+      actor: rootActor,
+      target: targetUser,
+      company,
+      distributor
+    });
+    if (!decision.ok) {
+      return res.status(decision.status).json({ message: decision.message });
     }
 
-    let targetUser;
-    let companyId = null;
-    let distributorId = null;
-
-    if (req.user.role === 'SUPERADMIN') {
-      distributorId = req.body.distributorId;
-      if (!isValidObjectId(distributorId)) {
-        return res.status(400).json({ message: 'distributorId valido es requerido' });
-      }
-
-      const distributor = await Distributor.findOne({
-        _id: distributorId,
-        status: { $in: ['active', 'trial'] }
-      });
-      if (!distributor) {
-        return res.status(404).json({ message: 'Distribuidor activo no encontrado' });
-      }
-
-      targetUser = await User.findOne({
-        distributorId,
-        role: 'DISTRIBUTOR',
-        status: 'active'
-      }).sort({ createdAt: 1 });
-    } else if (req.user.role === 'DISTRIBUTOR') {
-      companyId = req.body.companyId;
-      if (!isValidObjectId(companyId)) {
-        return res.status(400).json({ message: 'companyId valido es requerido' });
-      }
-
-      const company = await Company.findOne({
-        _id: companyId,
-        distributorId: req.user.distributorId,
-        status: { $in: ['active', 'trial'] }
-      });
-      if (!company) {
-        return res.status(404).json({ message: 'Empresa no encontrada para este distribuidor' });
-      }
-
-      distributorId = req.user.distributorId;
-      targetUser = company.adminId
-        ? await User.findOne({
-            _id: company.adminId,
-            companyId: company._id,
-            distributorId,
-            role: 'ADMIN',
-            status: 'active'
-          })
-        : null;
-      if (!targetUser) {
-        targetUser = await User.findOne({
-          companyId: company._id,
-          distributorId,
-          role: 'ADMIN',
-          status: 'active'
-        }).sort({ createdAt: 1 });
-      }
-      if (targetUser && String(company.adminId || '') !== String(targetUser._id)) {
-        await Company.updateOne(
-          { _id: company._id, distributorId },
-          { $set: { adminId: targetUser._id } }
-        );
-      }
-    } else {
-      return res.status(403).json({
-        message: 'Solo SUPERADMIN o DISTRIBUTOR pueden iniciar impersonacion'
-      });
-    }
-
-    if (!targetUser) {
-      return res.status(404).json({ message: 'Usuario objetivo activo no encontrado' });
-    }
+    const companyId = targetUser.companyId || null;
+    const distributorId = targetUser.distributorId || null;
 
     await recordActivity({
-      user: req.user,
+      user: rootActor,
       type: 'impersonation_started',
       companyId,
       distributorId,
@@ -179,17 +279,27 @@ router.post('/impersonate', authMiddleware, async (req, res, next) => {
       metadata: {
         targetUserId: targetUser._id,
         targetRole: targetUser.role,
+        targetEmail: targetUser.email,
         companyId,
-        distributorId
+        distributorId,
+        chained,
+        previousUserId: chained ? req.user._id : null,
+        previousRole: chained ? req.user.role : null,
+        rootActorId: rootActor._id,
+        rootActorRole: rootActor.role,
+        rootActorEmail: rootActor.email
       }
     });
 
-    const impersonatedBy = {
-      id: req.user._id.toString(),
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role,
-      distributorId: req.user.distributorId || null
+    // En una cadena se reutiliza el mismo `impersonatedBy` raiz para que
+    // terminar la impersonacion siempre devuelva al actor original.
+    const impersonatedBy = req.impersonation || {
+      id: rootActor._id.toString(),
+      name: rootActor.name,
+      email: rootActor.email,
+      role: rootActor.role,
+      distributorId: rootActor.distributorId || null,
+      companyId: rootActor.companyId || null
     };
     const token = signToken(targetUser, { impersonatedBy }, '30m');
     res.json({
@@ -199,9 +309,13 @@ router.post('/impersonate', authMiddleware, async (req, res, next) => {
       access: await buildSessionAccess(targetUser),
       redirectPath: getDashboardPath(targetUser.role),
       impersonatedBy,
+      chained,
       expiresIn: '30m'
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message });
+    }
     next(error);
   }
 });
@@ -212,7 +326,7 @@ router.post('/impersonation/end', authMiddleware, async (req, res, next) => {
       return res.status(400).json({ message: 'No hay una impersonacion activa' });
     }
 
-    const actor = await User.findById(req.impersonation.id);
+    const actor = req.impersonator || (await User.findById(req.impersonation.id));
     if (actor) {
       await recordActivity({
         user: actor,
@@ -220,11 +334,28 @@ router.post('/impersonation/end', authMiddleware, async (req, res, next) => {
         companyId: req.user.companyId,
         distributorId: req.user.distributorId,
         summary: `Impersonacion finalizada sobre ${req.user.email}`,
-        metadata: { targetUserId: req.user._id, targetRole: req.user.role }
+        metadata: {
+          targetUserId: req.user._id,
+          targetRole: req.user.role,
+          targetEmail: req.user.email,
+          rootActorId: actor._id,
+          rootActorRole: actor.role,
+          rootActorEmail: actor.email
+        }
       });
     }
 
-    res.json({ message: 'Impersonacion finalizada' });
+    res.json({
+      message: 'Impersonacion finalizada',
+      actor: actor
+        ? {
+            id: actor._id.toString(),
+            name: actor.name,
+            email: actor.email,
+            role: actor.role
+          }
+        : null
+    });
   } catch (error) {
     next(error);
   }

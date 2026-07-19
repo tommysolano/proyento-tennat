@@ -24,10 +24,34 @@ scope de empresa en backend y registra auditoria.
 
 ## Acceso delegado
 
-SUPERADMIN puede entrar como DISTRIBUTOR y DISTRIBUTOR puede entrar como el
-ADMIN activo de una empresa propia. El token delegado expira en 30 minutos,
-no permite impersonacion anidada y el middleware revalida actor,
-distribuidor y empresa en cada request.
+El alcance vive en `server/src/core/permissions/impersonationScope.js` y se
+aplica igual en `POST /api/auth/impersonate` y en el `authMiddleware`.
+
+| Actor raiz | Puede entrar como | Limite de tenant |
+| --- | --- | --- |
+| SUPERADMIN | DISTRIBUTOR, ADMIN, SUPERVISOR, CALLCENTER | Ninguno |
+| DISTRIBUTOR | ADMIN, SUPERVISOR, CALLCENTER | Empresas de su cartera |
+| ADMIN | SUPERVISOR, CALLCENTER | Su propia empresa |
+| SUPERVISOR | - | - |
+| CALLCENTER | - | - |
+
+Reglas invariantes:
+
+- Solo se desciende: nunca un rol igual o superior al del actor raiz.
+- Nunca a uno mismo ni a usuarios `inactive` o `pending` (404).
+- La empresa objetivo debe estar `active` o `trial` para iniciar el acceso.
+- El token delegado expira en 30 minutos.
+
+Desde una sesion delegada se puede cambiar de objetivo o seguir bajando
+(`SUPERADMIN -> ADMIN -> CALLCENTER`). No se anidan tokens: el nuevo conserva
+el mismo `impersonatedBy` raiz y `POST /api/auth/impersonation/end` siempre
+devuelve al actor original. Cada salto se autoriza contra el rol y el tenant
+del actor raiz, nunca contra el usuario impersonado en curso, de modo que
+impersonar no puede usarse para escalar privilegios.
+
+`GET /api/auth/impersonation/targets` devuelve los candidatos visibles para el
+actor raiz; el frontend solo muestra la accion "Entrar como" cuando ese
+alcance existe, y el backend vuelve a validarlo.
 
 ## SUPERADMIN
 

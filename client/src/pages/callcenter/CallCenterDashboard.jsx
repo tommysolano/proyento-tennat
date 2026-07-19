@@ -172,11 +172,11 @@ export function CallCenterDashboard() {
             dateLabel: formatDate(item.lastMessageAt)
           }))}
           columns={[
-            { key: 'contactName', header: 'Contacto' },
-            { key: 'channel', header: 'Canal' },
-            { key: 'lastMessageLabel', header: 'Ultimo mensaje' },
-            { key: 'dateLabel', header: 'Fecha' },
-            { key: 'open', header: '', render: (row) => <Link className="font-semibold text-cyan-700 hover:underline" to={`/inbox?conversationId=${row._id}`}>Abrir</Link> }
+            { key: 'contactName', header: 'Contacto', truncate: true, width: '14rem' },
+            { key: 'channel', header: 'Canal', nowrap: true, hideBelow: 'sm' },
+            { key: 'lastMessageLabel', header: 'Ultimo mensaje', truncate: true },
+            { key: 'dateLabel', header: 'Fecha', nowrap: true, hideBelow: 'md' },
+            { key: 'open', header: '', nowrap: true, render: (row) => <Link className="font-semibold text-cyan-700 hover:underline" to={`/inbox?conversationId=${row._id}`}>Abrir</Link> }
           ]}
         />
       </Card> : null}
@@ -209,8 +209,8 @@ export function CallCenterDashboard() {
           }))}
           emptyText="Todavia no tienes actividad registrada"
           columns={[
-            { key: 'dateLabel', header: 'Fecha' },
-            { key: 'type', header: 'Tipo' },
+            { key: 'dateLabel', header: 'Fecha', nowrap: true },
+            { key: 'type', header: 'Tipo', nowrap: true, hideBelow: 'sm' },
             { key: 'summary', header: 'Resumen' }
           ]}
         />

@@ -188,8 +188,13 @@ test('private layout keeps sidebar, header and content scroll independent', () =
 test('delegated session, retry states and important forms remain visible', () => {
   const header = readFileSync(new URL('../src/layouts/Header.jsx', import.meta.url), 'utf8');
   const asyncState = readFileSync(new URL('../src/components/AsyncState.jsx', import.meta.url), 'utf8');
+  // El panel del distribuidor se dividio en subrutas: el formulario de plan
+  // vive ahora en su propia seccion.
   const distributor = readFileSync(
-    new URL('../src/pages/distributor/DistributorDashboard.jsx', import.meta.url),
+    new URL(
+      '../src/pages/distributor/sections/DistributorPlansSection.jsx',
+      import.meta.url
+    ),
     'utf8'
   );
   const admin = readFileSync(
@@ -230,7 +235,8 @@ test('delegated session, retry states and important forms remain visible', () =>
   );
 
   assert.match(header, /Acceso delegado/);
-  assert.match(header, /Terminar acceso delegado/);
+  // La accion de cerrar la delegacion sigue visible; solo cambio el copy.
+  assert.match(header, /Volver a mi sesion/);
   assert.match(header, /returnToOriginalSession/);
   assert.match(asyncState, /Reintentar/);
   assert.match(distributor, /htmlFor="plan-name"/);

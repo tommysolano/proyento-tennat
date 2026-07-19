@@ -55,6 +55,10 @@ test('permission and impersonation routes keep tenant and privilege boundaries',
     new URL('../src/middleware/authMiddleware.js', import.meta.url),
     'utf8'
   );
+  const impersonationScope = readFileSync(
+    new URL('../src/core/permissions/impersonationScope.js', import.meta.url),
+    'utf8'
+  );
   const subscriptions = readFileSync(
     new URL('../src/routes/subscriptionRoutes.js', import.meta.url),
     'utf8'
@@ -63,9 +67,14 @@ test('permission and impersonation routes keep tenant and privilege boundaries',
   assert.match(users, /companyId: req\.user\.companyId/);
   assert.match(users, /role: \{ \$in: INTERNAL_ROLES \}/);
   assert.match(users, /No puedes editar tus propios permisos/);
-  assert.match(auth, /distributorId: req\.user\.distributorId/);
+  // El alcance de impersonacion se mide contra el actor raiz, nunca contra el
+  // usuario impersonado en curso.
+  assert.match(auth, /const rootActor = req\.impersonator \|\| req\.user/);
+  assert.match(auth, /actor: rootActor/);
   assert.match(auth, /signToken\(targetUser, \{ impersonatedBy \}, '30m'\)/);
   assert.match(auth, /Company\.updateOne/);
-  assert.match(authMiddleware, /La empresa no pertenece al distribuidor delegado/);
+  assert.match(authMiddleware, /evaluateImpersonation/);
+  assert.match(impersonationScope, /La empresa no pertenece al distribuidor delegado/);
+  assert.match(impersonationScope, /rank\(target\.role\) <= rank\(actor\.role\)/);
   assert.match(subscriptions, /assertDistributorModulesAuthorized/);
 });

@@ -146,7 +146,7 @@ export function CouponsPage() {
       </div>}
       <Card>
         <CardHeader title="Emisiones y redenciones" description={`${redemptions.length} registros`} />
-        <div className="max-h-[500px] space-y-2 overflow-y-auto p-5">
+        <div className="scrollbar-thin max-h-[55vh] space-y-2 overflow-y-auto p-5">
           {redemptions.map((item) => <div key={item._id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3"><div><p className="font-medium">{item.code} - {item.contactId?.name}</p><p className="text-xs text-slate-500">{localDate(item.createdAt)}</p></div><Badge tone={tone(item.status)}>{item.status}</Badge></div>)}
         </div>
       </Card>

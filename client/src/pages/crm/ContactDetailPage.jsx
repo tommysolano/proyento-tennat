@@ -303,7 +303,7 @@ export function ContactDetailPage() {
     <PageShell eyebrow="CRM" title={contact?.name || 'Contacto'} description="Ficha operativa, campos personalizados y timeline comercial.">
       <div><Button as={Link} to="/crm/contacts" variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button></div>
       <CrmNotice notice={notice} error={error} />
-      {contact ? <div className="grid gap-6 xl:grid-cols-[1fr_0.8fr]">
+      {contact ? <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
         <Card>
           <CardHeader title="Datos del contacto" action={<Badge tone={contact.status}>{contact.status.replaceAll('_', ' ')}</Badge>} />
           <form onSubmit={save} className="grid gap-4 p-5 md:grid-cols-2">
@@ -385,7 +385,7 @@ export function ContactDetailPage() {
           </Card> : null}
           <Card>
             <CardHeader title="Timeline" description={`${timeline.length} eventos relacionados`} />
-            <div className="max-h-[650px] space-y-3 overflow-y-auto p-5">
+            <div className="scrollbar-thin max-h-[60vh] space-y-3 overflow-y-auto p-5">
               {timeline.map((entry, index) => <div key={`${entry.kind}-${entry.item._id}-${index}`} className="border-l-2 border-cyan-200 pl-4"><p className="text-sm font-medium text-slate-800">{timelineText(entry)}</p><p className="mt-1 text-xs text-slate-500">{localDate(entry.date)} - {entry.item.createdBy?.name || entry.item.userId?.name || 'Sistema'}</p></div>)}
               {!timeline.length ? <p className="text-sm text-slate-500">Sin actividad relacionada.</p> : null}
             </div>

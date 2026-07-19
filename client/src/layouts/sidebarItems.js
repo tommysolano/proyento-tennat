@@ -75,16 +75,16 @@ export const sidebarGroupsByRole = {
       label: 'Empresas y clientes',
       items: [
         { label: 'Empresas', icon: Building2, to: '/distributor/companies' },
-        { label: 'Crear administrador', icon: UsersRound, to: '/distributor/dashboard#admins' }
+        { label: 'Administradores', icon: UsersRound, to: '/distributor/admins' }
       ]
     },
     {
       id: 'comercial',
       label: 'Comercial',
       items: [
-        { label: 'Planes comerciales', icon: CreditCard, to: '/distributor/dashboard#planes' },
-        { label: 'Suscripciones', icon: ReceiptText, to: '/distributor/dashboard#suscripciones' },
-        { label: 'Modulos autorizados', icon: Boxes, to: '/distributor/dashboard#modulos-autorizados' }
+        { label: 'Planes comerciales', icon: CreditCard, to: '/distributor/plans' },
+        { label: 'Suscripciones', icon: ReceiptText, to: '/distributor/subscriptions' },
+        { label: 'Modulos autorizados', icon: Boxes, to: '/distributor/modules' }
       ]
     },
     {
@@ -94,7 +94,7 @@ export const sidebarGroupsByRole = {
         { label: 'Resumen financiero', icon: Gauge, to: '/distributor/finance' },
         { label: 'Facturas', icon: FileText, to: '/distributor/invoices' },
         { label: 'Pagos', icon: ReceiptText, to: '/distributor/payments' },
-        { label: 'Mi plataforma', icon: CreditCard, to: '/distributor/dashboard#plataforma' }
+        { label: 'Mi plataforma', icon: CreditCard, to: '/distributor/platform' }
       ]
     },
     {

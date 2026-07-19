@@ -1,9 +1,18 @@
 import jwt from 'jsonwebtoken';
+import { evaluateImpersonation } from '../core/permissions/impersonationScope.js';
 import { Company } from '../models/Company.js';
 import { Distributor } from '../models/Distributor.js';
 import { User } from '../models/User.js';
 
-async function validateImpersonation(payload, targetUser, { allowInactiveCompany = false } = {}) {
+/**
+ * Revalida la delegacion en cada request contra el actor RAIZ del token.
+ * Comparte las reglas de alcance con POST /api/auth/impersonate.
+ */
+async function validateImpersonation(
+  payload,
+  targetUser,
+  { allowInactiveCompany = false, company = null } = {}
+) {
   if (!payload.impersonatedBy?.id) return null;
 
   const actor = await User.findOne({
@@ -14,33 +23,24 @@ async function validateImpersonation(payload, targetUser, { allowInactiveCompany
     throw Object.assign(new Error('La sesion delegada ya no es valida'), { status: 401 });
   }
 
-  if (actor.role === 'SUPERADMIN') {
-    if (targetUser.role !== 'DISTRIBUTOR') {
-      throw Object.assign(new Error('Alcance de impersonacion invalido'), { status: 403 });
-    }
-    return actor;
-  }
+  const scopedCompany =
+    company ||
+    (targetUser.companyId
+      ? await Company.findById(targetUser.companyId).select('status distributorId')
+      : null);
 
-  if (actor.role !== 'DISTRIBUTOR' || targetUser.role !== 'ADMIN') {
-    throw Object.assign(new Error('Alcance de impersonacion invalido'), { status: 403 });
-  }
-  if (
-    !actor.distributorId ||
-    String(actor.distributorId) !== String(targetUser.distributorId)
-  ) {
-    throw Object.assign(new Error('La empresa no pertenece al distribuidor delegado'), {
-      status: 403
+  const decision = evaluateImpersonation({
+    actor,
+    target: targetUser,
+    company: scopedCompany,
+    allowInactiveCompany
+  });
+  if (!decision.ok) {
+    throw Object.assign(new Error(decision.message), {
+      status: decision.status === 404 ? 403 : decision.status
     });
   }
 
-  const company = await Company.exists({
-    _id: targetUser.companyId,
-    distributorId: actor.distributorId,
-    ...(allowInactiveCompany ? {} : { status: { $in: ['active', 'trial'] } })
-  });
-  if (!company) {
-    throw Object.assign(new Error('La empresa delegada ya no esta disponible'), { status: 403 });
-  }
   return actor;
 }
 
@@ -70,8 +70,9 @@ export async function authMiddleware(req, res, next) {
       }
     }
 
+    let company = null;
     if (['ADMIN', 'SUPERVISOR', 'CALLCENTER'].includes(user.role)) {
-      const company = await Company.findById(user.companyId).select('status');
+      company = await Company.findById(user.companyId).select('status distributorId');
       if (
         !endingImpersonation &&
         (!company || ['suspended', 'cancelled', 'inactive'].includes(company.status))
@@ -83,7 +84,8 @@ export async function authMiddleware(req, res, next) {
     }
 
     const impersonator = await validateImpersonation(payload, user, {
-      allowInactiveCompany: endingImpersonation
+      allowInactiveCompany: endingImpersonation,
+      company
     });
     req.auth = payload;
     req.impersonation = payload.impersonatedBy || null;

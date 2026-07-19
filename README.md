@@ -90,12 +90,22 @@ Frontend:
 - `/superadmin/audit`
 - `/distributor/dashboard`
 - `/distributor/companies`
+- `/distributor/admins`
+- `/distributor/plans`
+- `/distributor/subscriptions`
+- `/distributor/modules`
+- `/distributor/platform`
 - `/distributor/finance`
 - `/distributor/invoices`
 - `/distributor/payments`
 - `/distributor/branding`
 - `/distributor/settings`
 - `/distributor/onboarding`
+
+Las secciones que antes vivian como anclas dentro de `/distributor/dashboard`
+(`#planes`, `#suscripciones`, `#modulos-autorizados`, `#plataforma`, `#admins`,
+`#empresas`) ahora son rutas propias. Los enlaces antiguos con hash siguen
+funcionando: `HashRedirect` los reenvia a la ruta equivalente.
 - `/admin/dashboard`
 - `/supervisor/dashboard`
 - `/callcenter/dashboard`

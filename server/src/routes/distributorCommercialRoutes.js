@@ -359,7 +359,9 @@ router.get(
       const company = await ownedCompany(req.user.distributorId, req.params.id);
       await refreshCompanyOnboarding(company._id);
       const [users, subscription, invoices, contactsTotal] = await Promise.all([
-        User.find({ companyId: company._id }).select('name email role status supervisorId').lean(),
+        User.find({ companyId: company._id })
+          .select('name email role status supervisorId companyId distributorId')
+          .lean(),
         Subscription.findOne({
           companyId: company._id,
           distributorId: req.user.distributorId

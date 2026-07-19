@@ -108,15 +108,19 @@ export function AuthProvider({ children }) {
       body: JSON.stringify(payload)
     });
 
-    localStorage.setItem(
-      'tenantdesk_original_session',
-      JSON.stringify({ token, user, tenant, access })
-    );
+    // En una cadena (ej. SUPERADMIN -> ADMIN -> CALLCENTER) la sesion guardada
+    // debe seguir siendo la del actor raiz, nunca la del objetivo intermedio.
+    if (!localStorage.getItem('tenantdesk_original_session')) {
+      localStorage.setItem(
+        'tenantdesk_original_session',
+        JSON.stringify({ token, user, tenant, access })
+      );
+    }
     localStorage.setItem('tenantdesk_token', data.token);
     localStorage.setItem('tenantdesk_user', JSON.stringify(data.user));
     localStorage.setItem('tenantdesk_tenant', JSON.stringify(data.tenant || {}));
     localStorage.setItem('tenantdesk_access', JSON.stringify(data.access || {}));
-    setImpersonator(user);
+    setImpersonator(data.impersonatedBy || impersonator || user);
     setToken(data.token);
     setUser(data.user);
     setTenant(data.tenant || { distributor: null, company: null });
@@ -127,6 +131,7 @@ export function AuthProvider({ children }) {
   const impersonateAdmin = (companyId) => startImpersonation({ companyId });
   const impersonateDistributor = (distributorId) =>
     startImpersonation({ distributorId });
+  const impersonateUser = (targetUserId) => startImpersonation({ targetUserId });
 
   async function returnToOriginalSession() {
     const stored = localStorage.getItem('tenantdesk_original_session');
@@ -167,6 +172,13 @@ export function AuthProvider({ children }) {
     setImpersonator(null);
   }
 
+  // El alcance de impersonacion siempre se mide contra el actor raiz, no
+  // contra el usuario que se esta impersonando en este momento.
+  const rootActor = impersonator || user;
+  const canImpersonate = ['SUPERADMIN', 'DISTRIBUTOR', 'ADMIN'].includes(
+    rootActor?.role
+  );
+
   const value = useMemo(
     () => ({
       token,
@@ -174,11 +186,14 @@ export function AuthProvider({ children }) {
       tenant,
       access,
       impersonator,
+      rootActor,
+      canImpersonate,
       loading,
       isAuthenticated: Boolean(token && user),
       login,
       impersonateAdmin,
       impersonateDistributor,
+      impersonateUser,
       returnToOriginalSession,
       refreshSession: async () => {
         const data = await apiRequest('/auth/me');
@@ -192,7 +207,7 @@ export function AuthProvider({ children }) {
       },
       logout
     }),
-    [token, user, tenant, access, impersonator, loading]
+    [token, user, tenant, access, impersonator, rootActor, canImpersonate, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

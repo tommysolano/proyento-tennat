@@ -92,14 +92,82 @@ empresa tambien puede marcarse desde el panel `ADMIN`.
 
 ## Impersonacion
 
-Se permite un solo nivel:
+La jerarquia es estricta y solo se desciende:
+`SUPERADMIN > DISTRIBUTOR > ADMIN > SUPERVISOR > CALLCENTER`.
 
-- `SUPERADMIN` a `DISTRIBUTOR`.
-- `DISTRIBUTOR` a `ADMIN` de una empresa propia.
+- `SUPERADMIN`: cualquier usuario activo de cualquier rol inferior y tenant.
+- `DISTRIBUTOR`: `ADMIN`, `SUPERVISOR` y `CALLCENTER` de empresas de su cartera.
+- `ADMIN`: `SUPERVISOR` y `CALLCENTER` de su propia empresa.
+- `SUPERVISOR` y `CALLCENTER`: nunca pueden impersonar.
 
-El JWT impersonado incluye el actor original. El frontend conserva la sesion
-original, muestra un indicador persistente y llama al endpoint de cierre antes
-de restaurarla. Inicio y fin quedan en `ActivityLog`.
+Nunca se puede asumir un rol igual o superior al del actor raiz, ni a uno
+mismo, ni a un usuario inactivo.
+
+`server/src/core/permissions/impersonationScope.js` centraliza las reglas.
+`POST /api/auth/impersonate` y el `authMiddleware` usan la misma funcion
+`evaluateImpersonation`, de modo que el alcance se revalida en cada request.
+
+### Un solo nivel real, objetivo intercambiable
+
+Desde una sesion impersonada no se anida: se cambia de objetivo. El token
+nuevo conserva el mismo `impersonatedBy` raiz, asi que siempre existe una
+unica relacion `actor raiz -> objetivo actual` y terminar la impersonacion
+devuelve al actor original aunque se hayan encadenado varios saltos
+(ej. `SUPERADMIN -> ADMIN -> CALLCENTER`).
+
+El permiso de cada salto se evalua contra el rol y el tenant del **actor
+raiz**, nunca contra el usuario impersonado en curso. Un `DISTRIBUTOR` que
+entra como `ADMIN` no gana acceso a empresas de otro distribuidor.
+
+### Contratos
+
+- `POST /api/auth/impersonate` acepta `targetUserId` (forma directa) y
+  mantiene `distributorId` y `companyId` por compatibilidad, que resuelven al
+  `DISTRIBUTOR` de la cartera y al `ADMIN` de la empresa respectivamente.
+- `GET /api/auth/impersonation/targets` lista los candidatos del actor raiz
+  con filtros por `search`, `role`, `companyId` y `distributorId`.
+- `POST /api/auth/impersonation/end` cierra la sesion y devuelve el actor raiz.
+
+El JWT impersonado expira en 30 minutos e incluye el actor original. El
+frontend conserva la sesion raiz en `tenantdesk_original_session` y no la
+sobrescribe al cambiar de objetivo. Cada cambio de objetivo y el cierre quedan
+en `ActivityLog` con el actor raiz en `metadata`.
+
+## Fundacion de UI
+
+`client/src/components` contiene las primitivas compartidas. Las relevantes
+para el layout:
+
+- `PageShell`: cabecera, pestanas y ancho. `width` acepta `default`
+  (`max-w-screen-2xl`), `full` (sin tope, para inbox, kanban y tablas anchas)
+  y `narrow` (`max-w-4xl`, para configuracion). `Layout` ya no impone un
+  contenedor fijo: solo aporta el padding lateral fluido.
+- `PageTabs` (`Tabs.jsx`): sub-navegacion enlazada a rutas reales con
+  `NavLink`, scrollable en horizontal en movil.
+- `Drawer`: panel lateral (`md` 480px, `lg` 640px) con header y footer fijos.
+  Es el patron por defecto para formularios largos, en lugar de modales
+  estrechos. Cierra con overlay y Escape.
+- `Table`: sin `whitespace-nowrap` global. Cada columna acepta `nowrap`,
+  `truncate`, `width`, `align` y `hideBelow` (`sm`/`md`/`lg`) para ocultar
+  columnas secundarias en pantallas pequenas. `density="compact"` reduce el
+  alto de fila. El wrapper `overflow-x-auto` se mantiene como red de
+  seguridad. La API previa (`columns`, `data`, `emptyText`) no cambia.
+- `FormGrid` / `FormGridFull`: seccion de formulario con grid de 1 o 2
+  columnas como maximo, para que los campos no se compriman.
+- `EmptyState` y `Skeleton`: estados vacios y de carga. `LoadingState` acepta
+  `variant="table"` o `variant="page"` para dibujar skeletons con la forma del
+  contenido.
+
+### Paneles por subrutas
+
+Los paneles de SUPERADMIN y DISTRIBUTOR estan divididos en subrutas con
+`PageTabs` en vez de una pagina larga con anclas. Cada seccion vive en
+`pages/<rol>/sections/` y los datos se cargan con un hook por familia de
+rutas (`useDistributorWorkspace`, `useSuperAdminWorkspace`), que recibe la
+lista de datasets que la ruta necesita para no sobre-consultar la API.
+
+`routes/HashRedirect.jsx` mantiene compatibilidad con los enlaces antiguos
+basados en hash.
 
 ## Dominio CRM
 

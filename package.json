@@ -15,7 +15,9 @@
     "seed:superadmin": "npm run seed:superadmin --workspace server",
     "install:all": "npm install",
     "start:server": "npm start --workspace server",
-    "test": "npm test --workspace server",
+    "test": "npm test --workspace server && npm test --workspace client",
+    "test:server": "npm test --workspace server",
+    "test:client": "npm test --workspace client",
     "build": "npm run build --workspace client"
   },
   "devDependencies": {

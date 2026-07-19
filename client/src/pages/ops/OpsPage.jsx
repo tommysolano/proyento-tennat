@@ -133,12 +133,12 @@ export function OpsPage() {
               emptyText="No hay jobs para estos filtros"
               columns={[
                 { key: 'type', header: 'Tipo', render: (row) => <div><strong>{row.type}</strong><p className="text-xs text-slate-500">{row.companyId?.name || row.companyId || 'plataforma'}</p>{row.metadata?.channelConfigId ? <p className="text-xs text-slate-400">Canal {row.metadata.channelConfigId}</p> : null}</div> },
-                { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
-                { key: 'attempts', header: 'Intentos', render: (row) => `${row.attempts}/${row.maxAttempts}` },
-                { key: 'runAt', header: 'Run at', render: (row) => localDate(row.runAt) },
-                { key: 'processedAt', header: 'Procesado', render: (row) => localDate(row.processedAt) },
+                { key: 'status', header: 'Estado', nowrap: true, render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
+                { key: 'attempts', header: 'Intentos', nowrap: true, align: 'right', render: (row) => `${row.attempts}/${row.maxAttempts}` },
+                { key: 'runAt', header: 'Run at', nowrap: true, hideBelow: 'md', render: (row) => localDate(row.runAt) },
+                { key: 'processedAt', header: 'Procesado', nowrap: true, hideBelow: 'lg', render: (row) => localDate(row.processedAt) },
                 { key: 'error', header: 'Error sanitizado', render: (row) => <span className="block max-w-xs whitespace-normal text-xs text-rose-700">{row.error?.message || row.error?.code || '-'}</span> },
-                { key: 'actions', header: '', render: (row) => row.replayAllowed ? <Button className="min-h-8 px-2" variant="secondary" disabled={busyId === row._id} onClick={() => mutate(row._id, () => replayOpsJob(row._id), 'Job reenviado a la cola.')}><Repeat2 className="h-4 w-4" />Replay</Button> : null }
+                { key: 'actions', header: '', nowrap: true, render: (row) => row.replayAllowed ? <Button className="min-h-8 px-2" variant="secondary" disabled={busyId === row._id} onClick={() => mutate(row._id, () => replayOpsJob(row._id), 'Job reenviado a la cola.')}><Repeat2 className="h-4 w-4" />Replay</Button> : null }
               ]}
             />
           </Card>
@@ -168,12 +168,12 @@ export function OpsPage() {
               data={alerts.map((alert) => ({ ...alert, id: alert._id }))}
               emptyText="No hay alertas para estos filtros"
               columns={[
-                { key: 'severity', header: 'Severidad', render: (row) => <Badge tone={row.severity}>{row.severity}</Badge> },
+                { key: 'severity', header: 'Severidad', nowrap: true, render: (row) => <Badge tone={row.severity}>{row.severity}</Badge> },
                 { key: 'title', header: 'Alerta', render: (row) => <div className="max-w-md whitespace-normal"><strong>{row.title}</strong><p className="mt-1 text-xs text-slate-600">{row.message}</p><p className="mt-1 text-xs text-slate-400">{row.companyId?.name || row.companyId || row.scopeType}</p></div> },
-                { key: 'type', header: 'Tipo' },
-                { key: 'createdAt', header: 'Creada', render: (row) => localDate(row.createdAt) },
-                { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
-                { key: 'actions', header: '', render: (row) => row.status === 'open' ? <Button className="min-h-8 px-2" variant="secondary" disabled={busyId === row._id} onClick={() => mutate(row._id, () => acknowledgeOpsAlert(row._id), 'Alerta reconocida.')}><CheckCircle2 className="h-4 w-4" />Reconocer</Button> : null }
+                { key: 'type', header: 'Tipo', nowrap: true, hideBelow: 'md' },
+                { key: 'createdAt', header: 'Creada', nowrap: true, hideBelow: 'lg', render: (row) => localDate(row.createdAt) },
+                { key: 'status', header: 'Estado', nowrap: true, render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
+                { key: 'actions', header: '', nowrap: true, render: (row) => row.status === 'open' ? <Button className="min-h-8 px-2" variant="secondary" disabled={busyId === row._id} onClick={() => mutate(row._id, () => acknowledgeOpsAlert(row._id), 'Alerta reconocida.')}><CheckCircle2 className="h-4 w-4" />Reconocer</Button> : null }
               ]}
             />
           </Card>

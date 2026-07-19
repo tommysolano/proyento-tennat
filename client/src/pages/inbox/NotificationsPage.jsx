@@ -44,6 +44,7 @@ export function NotificationsPage() {
 
   return (
     <PageShell
+      width="narrow"
       eyebrow="Inbox"
       title="Notificaciones"
       description="Asignaciones, mensajes, notas internas y fallos de envio."

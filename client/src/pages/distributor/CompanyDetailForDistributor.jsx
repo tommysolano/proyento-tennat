@@ -6,6 +6,10 @@ import { Badge } from '../../components/Badge.jsx';
 import { ErrorState, LoadingState } from '../../components/AsyncState.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
+import {
+  ImpersonateUserButton,
+  ImpersonationSwitcherButton
+} from '../../components/ImpersonationSwitcher.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
@@ -114,15 +118,24 @@ export function CompanyDetailForDistributor() {
           </div>
         </Card>
         <Card>
-          <CardHeader title="Usuarios principales" description="Roles y estado dentro de la empresa." />
+          <CardHeader
+            title="Usuarios principales"
+            description="Roles y estado dentro de la empresa."
+            action={<ImpersonationSwitcherButton companyId={id} />}
+          />
           <Table
             data={users.map((user) => ({ ...user, id: user._id }))}
             emptyText="No hay usuarios"
             columns={[
-              { key: 'name', header: 'Nombre' },
-              { key: 'email', header: 'Email' },
-              { key: 'role', header: 'Rol' },
-              { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+              { key: 'name', header: 'Nombre', truncate: true, width: '12rem' },
+              { key: 'email', header: 'Email', truncate: true, width: '14rem', hideBelow: 'md' },
+              { key: 'role', header: 'Rol', nowrap: true },
+              { key: 'status', header: 'Estado', nowrap: true, render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
+              {
+                key: 'impersonate',
+                header: 'Acceso delegado',
+                render: (row) => <ImpersonateUserButton target={row} onError={setError} />
+              }
             ]}
           />
         </Card>
@@ -137,10 +150,10 @@ export function CompanyDetailForDistributor() {
           }))}
           emptyText="No hay facturas"
           columns={[
-            { key: 'number', header: 'Numero' },
-            { key: 'totalLabel', header: 'Total' },
-            { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
-            { key: 'dueDate', header: 'Vencimiento', render: (row) => new Date(row.dueDate).toLocaleDateString('es-EC') }
+            { key: 'number', header: 'Numero', nowrap: true },
+            { key: 'totalLabel', header: 'Total', nowrap: true, align: 'right' },
+            { key: 'status', header: 'Estado', nowrap: true, render: (row) => <Badge tone={row.status}>{row.status}</Badge> },
+            { key: 'dueDate', header: 'Vencimiento', nowrap: true, render: (row) => new Date(row.dueDate).toLocaleDateString('es-EC') }
           ]}
         />
       </Card>
@@ -155,10 +168,10 @@ export function CompanyDetailForDistributor() {
           }))}
           emptyText="No hay pagos"
           columns={[
-            { key: 'invoiceLabel', header: 'Factura' },
-            { key: 'amountLabel', header: 'Monto' },
-            { key: 'method', header: 'Metodo' },
-            { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
+            { key: 'invoiceLabel', header: 'Factura', nowrap: true },
+            { key: 'amountLabel', header: 'Monto', nowrap: true, align: 'right' },
+            { key: 'method', header: 'Metodo', nowrap: true, hideBelow: 'sm' },
+            { key: 'status', header: 'Estado', nowrap: true, render: (row) => <Badge tone={row.status}>{row.status}</Badge> }
           ]}
         />
       </Card>

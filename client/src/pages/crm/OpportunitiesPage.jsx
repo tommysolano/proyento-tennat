@@ -23,6 +23,7 @@ import {
   ColumnSelector,
   CreateCrmListForm
 } from '../../components/CrmCollectionTools.jsx';
+import { Drawer } from '../../components/Drawer.jsx';
 import { FormField } from '../../components/FormField.jsx';
 import { CrmLoadError, CrmLoading, CrmNotice, CustomFieldInput, customFieldsFromForm, inputClass, localDate, money } from '../../components/CrmCommon.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
@@ -72,6 +73,7 @@ export function OpportunitiesPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const permissions = new Set(access.permissions || []);
   const modules = new Set(access.modules || []);
   const canReadContacts = modules.has('contacts') && [
@@ -269,7 +271,17 @@ export function OpportunitiesPage() {
 
   const selectedPipeline = pipelines.find((pipeline) => pipeline._id === filters.formPipeline) || pipelines[0];
   return (
-    <PageShell eyebrow="CRM" title={user.role === 'CALLCENTER' ? 'Mis oportunidades' : 'Oportunidades'} description="Deals, responsables, valores y fechas esperadas de cierre.">
+    <PageShell
+      width="full"
+      eyebrow="CRM"
+      title={user.role === 'CALLCENTER' ? 'Mis oportunidades' : 'Oportunidades'}
+      description="Deals, responsables, valores y fechas esperadas de cierre."
+      actions={canCreate && pipelines.length && contacts.length ? (
+        <Button onClick={() => setCreateOpen(true)} disabled={busy}>
+          <Plus className="h-4 w-4" />Crear oportunidad
+        </Button>
+      ) : null}
+    >
       <CrmNotice notice={notice} error={error} />
       <Card>
         <CardHeader title="Filtrar oportunidades" action={<div className="flex gap-2"><ColumnSelector columns={availableColumns} selected={visibleColumns} defaults={defaultColumns} busy={busy} onSave={saveColumns} /><Button as={Link} to="/crm/pipeline" variant="secondary">Abrir Kanban</Button></div>} />
@@ -331,9 +343,22 @@ export function OpportunitiesPage() {
         <CardHeader title="Listas de oportunidades" description="Agrupaciones estaticas para organizar deals sin alterar el pipeline." />
         <div className="p-5"><CreateCrmListForm entityType="opportunity" busy={busy} onCreate={createList} /></div>
       </Card> : null}
-      {canCreate && pipelines.length && contacts.length ? <Card>
-        <CardHeader title="Crear oportunidad" />
-        <form onSubmit={create} className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+      {canCreate && pipelines.length && contacts.length ? <Drawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Crear oportunidad"
+        description="El pipeline y la etapa definen el flujo comercial del deal."
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button type="submit" form="crm-opportunity-create" disabled={busy}>
+              <Plus className="h-4 w-4" />Crear oportunidad
+            </Button>
+          </>
+        }
+      >
+        <form id="crm-opportunity-create" onSubmit={create} className="grid gap-4 md:grid-cols-2">
           <FormField label="Titulo" htmlFor="opportunity-title" required>
             <input id="opportunity-title" required name="title" className={inputClass} placeholder="Ej. Renovacion anual" />
           </FormField>
@@ -364,11 +389,10 @@ export function OpportunitiesPage() {
           <FormField label="Fecha esperada de cierre" htmlFor="opportunity-close-date">
             <input id="opportunity-close-date" type="date" name="expectedCloseDate" className={inputClass} />
           </FormField>
-          <fieldset className="rounded-md border border-slate-200 p-3 xl:col-span-2"><legend className="px-1 text-xs font-semibold text-slate-500">Tags de oportunidad</legend><div className="flex flex-wrap gap-3">{tags.filter((tag) => tag.status === 'active').map((tag) => <label key={tag._id} className="flex items-center gap-1 text-sm"><input type="checkbox" name="tags" value={tag._id} />{tag.name}</label>)}</div></fieldset>
+          <fieldset className="rounded-md border border-slate-200 p-3 md:col-span-2"><legend className="px-1 text-xs font-semibold text-slate-500">Tags de oportunidad</legend><div className="flex flex-wrap gap-3">{tags.filter((tag) => tag.status === 'active').map((tag) => <label key={tag._id} className="flex items-center gap-1 text-sm"><input type="checkbox" name="tags" value={tag._id} />{tag.name}</label>)}</div></fieldset>
           {fields.map((field) => <CustomFieldInput key={field._id} field={field} />)}
-          <Button type="submit" disabled={busy}><Plus className="h-4 w-4" />Crear oportunidad</Button>
         </form>
-      </Card> : null}
+      </Drawer> : null}
     </PageShell>
   );
 }

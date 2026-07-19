@@ -2,12 +2,17 @@ import {
   Archive,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   FileText,
   Image as ImageIcon,
   MessageSquare,
+  PanelRight,
+  Paperclip,
+  Plus,
   RefreshCw,
   Search,
   Send,
+  SlidersHorizontal,
   StickyNote,
   UserRoundCheck,
   Wifi,
@@ -45,6 +50,7 @@ import {
   sendMessage,
   uploadConversationMedia
 } from '../../api.js';
+import { LoadingState } from '../../components/AsyncState.jsx';
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card } from '../../components/Card.jsx';
@@ -55,7 +61,10 @@ import {
   inputClass,
   localDate
 } from '../../components/CrmCommon.jsx';
+import { Drawer } from '../../components/Drawer.jsx';
+import { EmptyState } from '../../components/EmptyState.jsx';
 import { FormField } from '../../components/FormField.jsx';
+import { FormGrid } from '../../components/FormGrid.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
@@ -338,6 +347,11 @@ export function InboxPage() {
   const [communication, setCommunication] = useState(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
   const [communicationError, setCommunicationError] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [sendOptionsOpen, setSendOptionsOpen] = useState(false);
   const messagesRequest = useRef(0);
   const detailRequest = useRef(0);
 
@@ -785,113 +799,175 @@ export function InboxPage() {
     }
   }
 
+  const activeFilterChips = [
+    filters.channel && {
+      key: 'channel',
+      label: `Canal: ${channelLabel[filters.channel] || filters.channel}`
+    },
+    filters.status && { key: 'status', label: `Estado: ${filters.status}` },
+    filters.assignedTo && {
+      key: 'assignedTo',
+      label: `Responsable: ${users.find((item) => item._id === filters.assignedTo)?.name || filters.assignedTo}`
+    },
+    filters.priority && { key: 'priority', label: `Prioridad: ${filters.priority}` },
+    filters.unread && { key: 'unread', label: 'Solo no leidas' },
+    filters.contactId && { key: 'contactId', label: 'Filtrado por contacto' }
+  ].filter(Boolean);
+
+  const refreshAll = () =>
+    Promise.allSettled([loadConversations(), loadMessages(), loadDetail()]);
+  const assignableUsers = users.filter((item) =>
+    ['SUPERVISOR', 'CALLCENTER'].includes(item.role)
+  );
+
   return (
     <PageShell
+      width="full"
+      fill
       eyebrow="Inbox omnicanal"
       title={user.role === 'CALLCENTER' ? 'Mis conversaciones' : 'Conversaciones'}
       description="Mensajes, asignaciones y notas internas con alcance por rol."
+      actions={
+        <>
+          <span
+            className={`inline-flex items-center gap-2 self-center rounded-full px-3 py-1 text-xs font-semibold ${
+              realtimeStatus === 'connected'
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-amber-50 text-amber-700'
+            }`}
+          >
+            {realtimeStatus === 'connected' ? (
+              <Wifi className="h-3.5 w-3.5" />
+            ) : (
+              <WifiOff className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {realtimeStatus === 'connected'
+                ? 'Tiempo real conectado'
+                : 'Sin tiempo real; usa Actualizar'}
+            </span>
+          </span>
+          <Button variant="secondary" onClick={refreshAll}>
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">Actualizar</span>
+          </Button>
+          {canCreate ? (
+            <Button onClick={() => setComposeOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Nueva conversacion
+            </Button>
+          ) : null}
+        </>
+      }
     >
       <CrmNotice notice={notice} error={actionError} />
-      <div className="mb-3 flex justify-end">
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-          realtimeStatus === 'connected'
-            ? 'bg-emerald-50 text-emerald-700'
-            : 'bg-amber-50 text-amber-700'
-        }`}>
-          {realtimeStatus === 'connected' ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-          {realtimeStatus === 'connected' ? 'Tiempo real conectado' : 'Tiempo real no disponible; usa Actualizar'}
-        </span>
-      </div>
 
-      <Card>
-        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-7">
-          <label className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <input className={`${inputClass} pl-9`} value={filters.search} onChange={(event) => setFilters((value) => ({ ...value, search: event.target.value }))} placeholder="Contacto o mensaje" />
+      {/* Barra compacta: lo que se usa a diario visible, el resto en Drawer. */}
+      <div className="mb-3 shrink-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-56 flex-1">
+            <span className="sr-only">Buscar conversacion</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className={`${inputClass} pl-9`}
+              value={filters.search}
+              onChange={(event) =>
+                setFilters((value) => ({ ...value, search: event.target.value }))
+              }
+              placeholder="Contacto o mensaje"
+            />
           </label>
-          <select className={inputClass} value={filters.channel} onChange={(event) => setFilters((value) => ({ ...value, channel: event.target.value }))}>
-            <option value="">Todos los canales</option>
-            {['internal', 'whatsapp_cloud', 'whatsapp_qr', 'facebook_messenger', 'instagram_dm', 'email', 'sms'].map((value) => <option key={value} value={value}>{channelLabel[value]}</option>)}
-          </select>
-          <select className={inputClass} value={filters.status} onChange={(event) => setFilters((value) => ({ ...value, status: event.target.value }))}>
+          <select
+            className={`${inputClass} w-auto min-w-40`}
+            aria-label="Filtrar por estado"
+            value={filters.status}
+            onChange={(event) =>
+              setFilters((value) => ({ ...value, status: event.target.value }))
+            }
+          >
             <option value="">Todos los estados</option>
-            {['open', 'pending', 'resolved', 'closed'].map((value) => <option key={value}>{value}</option>)}
+            {['open', 'pending', 'resolved', 'closed'].map((value) => (
+              <option key={value}>{value}</option>
+            ))}
           </select>
-          {canAssign ? (
-            <select className={inputClass} value={filters.assignedTo} onChange={(event) => setFilters((value) => ({ ...value, assignedTo: event.target.value }))}>
-              <option value="">Todos los responsables</option>
-              {users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-            </select>
-          ) : null}
-          <select className={inputClass} value={filters.priority} onChange={(event) => setFilters((value) => ({ ...value, priority: event.target.value }))}>
-            <option value="">Todas las prioridades</option>
-            {['low', 'medium', 'high'].map((value) => <option key={value}>{value}</option>)}
+          <select
+            className={`${inputClass} hidden w-auto min-w-44 sm:block`}
+            aria-label="Filtrar por canal"
+            value={filters.channel}
+            onChange={(event) =>
+              setFilters((value) => ({ ...value, channel: event.target.value }))
+            }
+          >
+            <option value="">Todos los canales</option>
+            {['internal', 'whatsapp_cloud', 'whatsapp_qr', 'facebook_messenger', 'instagram_dm', 'email', 'sms'].map((value) => (
+              <option key={value} value={value}>
+                {channelLabel[value]}
+              </option>
+            ))}
           </select>
-          <select className={inputClass} value={filters.unread} onChange={(event) => setFilters((value) => ({ ...value, unread: event.target.value }))}>
-            <option value="">Leidas y no leidas</option>
-            <option value="true">Solo no leidas</option>
-          </select>
-          <Button variant="secondary" onClick={() => Promise.allSettled([loadConversations(), loadMessages(), loadDetail()])}>
-            <RefreshCw className="h-4 w-4" />Actualizar
+          <Button variant="secondary" onClick={() => setFiltersOpen(true)}>
+            <SlidersHorizontal className="h-4 w-4" />
+            Filtros
+            {activeFilterChips.length ? (
+              <span className="rounded-full bg-cyan-700 px-2 text-xs font-bold text-white">
+                {activeFilterChips.length}
+              </span>
+            ) : null}
           </Button>
         </div>
-      </Card>
-
-      {canCreate ? (
-        <Card>
-          <form className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={createInternal}>
-            <select required name="contactId" className={inputClass}>
-              <option value="">Crear conversacion interna para...</option>
-              {contacts.map((contact) => <option key={contact._id} value={contact._id}>{contact.name}</option>)}
-            </select>
-            <select name="assignedTo" className={inputClass}>
-              <option value="">Usar responsable del contacto</option>
-              {users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-            </select>
-            <Button type="submit" disabled={busy}><MessageSquare className="h-4 w-4" />Crear interna</Button>
-          </form>
-          {providerConfigs.length ? (
-            <form
-              className="grid gap-3 border-t border-slate-100 p-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]"
-              onSubmit={createWhatsApp}
+        {activeFilterChips.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs font-semibold text-slate-700"
+              >
+                {chip.label}
+                <button
+                  type="button"
+                  aria-label={`Quitar filtro ${chip.label}`}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-slate-300"
+                  onClick={() => setFilters((value) => ({ ...value, [chip.key]: '' }))}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              className="text-xs font-semibold text-cyan-800 underline"
+              onClick={() =>
+                setFilters((value) => ({
+                  ...value,
+                  contactId: '',
+                  status: '',
+                  channel: '',
+                  assignedTo: '',
+                  priority: '',
+                  unread: ''
+                }))
+              }
             >
-              <select required name="contactId" className={inputClass}>
-                <option value="">Abrir WhatsApp para...</option>
-                {contacts.map((contact) => <option key={contact._id} value={contact._id}>{contact.name}</option>)}
-              </select>
-              <select required name="channelConfigId" className={inputClass}>
-                <option value="">Selecciona la conexion de salida</option>
-                {providerConfigs.map((provider) => (
-                  <option
-                    key={provider._id}
-                    value={provider._id}
-                    disabled={provider.status !== 'connected'}
-                  >
-                    {provider.displayName} - {channelLabel[provider.channel] || provider.channel} - {provider.status}
-                  </option>
-                ))}
-              </select>
-              <select name="assignedTo" className={inputClass}>
-                <option value="">Usar responsable del contacto</option>
-                {users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
-              </select>
-              <Button type="submit" disabled={busy}><MessageSquare className="h-4 w-4" />Abrir WhatsApp</Button>
-            </form>
-          ) : null}
-          {supportErrors.contacts || supportErrors.users || supportErrors.providers ? (
-            <p className="px-4 pb-4 text-xs text-rose-700">
-              No se pudieron cargar todos los contactos o responsables.{' '}
-              <button type="button" className="font-bold underline" onClick={loadSupportLists}>Reintentar</button>
-            </p>
-          ) : null}
-        </Card>
-      ) : null}
+              Limpiar todo
+            </button>
+          </div>
+        ) : null}
+      </div>
 
-      {loading ? <CrmLoading label="Cargando conversaciones..." /> : (
-        <div className="grid min-h-[650px] gap-4 xl:grid-cols-[340px_1fr]">
-          <Card className="overflow-hidden">
-            {conversationsError ? <div className="p-4"><CrmLoadError message={conversationsError} onRetry={loadConversations} /></div> : null}
-            <div className="max-h-[900px] overflow-y-auto">
+      {loading ? (
+        <LoadingState variant="table" rows={6} columns={2} />
+      ) : (
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[340px_1fr]">
+          {/* Movil: maestro-detalle. Se ve la lista o el hilo, nunca ambos. */}
+          <Card
+            className={`min-h-0 flex-col overflow-hidden ${selected ? 'hidden lg:flex' : 'flex'}`}
+          >
+            {conversationsError ? (
+              <div className="p-4">
+                <CrmLoadError message={conversationsError} onRetry={loadConversations} />
+              </div>
+            ) : null}
+            <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
               {conversations.map((conversation) => (
                 <button
                   key={conversation._id}
@@ -899,99 +975,91 @@ export function InboxPage() {
                   onClick={() => setSelectedId(conversation._id)}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-slate-900">{conversation.contactId?.name || 'Contacto no disponible'}</p>
-                      <p className="text-xs text-slate-500">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">{conversation.contactId?.name || 'Contacto no disponible'}</p>
+                      <p className="truncate text-xs text-slate-500">
                         {channelLabel[conversation.channel] || conversation.channel}
                         {conversation.channelConfigId?.displayName ? ` - ${conversation.channelConfigId.displayName}` : ''}
                         {' - '}
                         {conversation.assignedTo?.name || 'Sin asignar'}
                       </p>
                     </div>
-                    {conversation.unreadCount ? <span className="rounded-full bg-cyan-700 px-2 py-0.5 text-xs font-bold text-white">{conversation.unreadCount}</span> : null}
+                    {conversation.unreadCount ? <span className="shrink-0 rounded-full bg-cyan-700 px-2 py-0.5 text-xs font-bold text-white">{conversation.unreadCount}</span> : null}
                   </div>
                   <p className="mt-2 truncate text-sm text-slate-600">{conversation.lastMessage || 'Sin mensajes'}</p>
-                  <div className="mt-2 flex items-center justify-between">
+                  <div className="mt-2 flex items-center justify-between gap-2">
                     <Badge tone={conversation.status}>{conversation.status}</Badge>
-                    <span className="text-xs text-slate-400">{localDate(conversation.lastMessageAt)}</span>
+                    <span className="shrink-0 text-xs text-slate-400">{localDate(conversation.lastMessageAt)}</span>
                   </div>
                 </button>
               ))}
-              {!conversations.length && !conversationsError ? <div className="p-8 text-center text-sm text-slate-500">No hay conversaciones para estos filtros.</div> : null}
+              {!conversations.length && !conversationsError ? (
+                <EmptyState
+                  icon={MessageSquare}
+                  className="border-0"
+                  title="No hay conversaciones"
+                  description="Ningun hilo coincide con estos filtros."
+                />
+              ) : null}
             </div>
           </Card>
 
-          <Card className="flex min-h-[650px] flex-col overflow-hidden">
+          <Card
+            className={`min-h-0 flex-col overflow-hidden ${selected ? 'flex' : 'hidden lg:flex'}`}
+          >
             {selected ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-                  <div>
-                    <Link to={`/crm/contacts/${selected.contactId?._id}`} className="font-semibold text-cyan-800 hover:underline">{selected.contactId?.name}</Link>
-                    <p className="text-xs text-slate-500">
-                      {selected.contactId?.phone || selected.contactId?.email || 'Sin telefono o email'}
-                      {' - '}
-                      {channelLabel[selected.channel] || selected.channel}
-                      {selected.channelConfigId?.displayName ? ` - ${selected.channelConfigId.displayName}` : ''}
-                    </p>
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId('')}
+                      aria-label="Volver a la lista"
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 lg:hidden"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0">
+                      <Link to={`/crm/contacts/${selected.contactId?._id}`} className="block truncate font-semibold text-cyan-800 hover:underline">{selected.contactId?.name}</Link>
+                      <p className="truncate text-xs text-slate-500">
+                        {selected.contactId?.phone || selected.contactId?.email || 'Sin telefono o email'}
+                        {' - '}
+                        {channelLabel[selected.channel] || selected.channel}
+                        {selected.channelConfigId?.displayName ? ` - ${selected.channelConfigId.displayName}` : ''}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={openAppointment}><CalendarDays className="h-4 w-4" />Agendar</Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="secondary" className="px-3" onClick={openAppointment}><CalendarDays className="h-4 w-4" /><span className="hidden xl:inline">Agendar</span></Button>
                     {canAssign ? (
-                      <select disabled={busy} className="rounded-md border border-slate-200 px-2 text-sm" value={selected.assignedTo?._id || ''} onChange={(event) => mutateConversation(() => assignConversation(selected._id, event.target.value), 'Conversacion asignada.')}>
+                      <select disabled={busy} aria-label="Responsable" className="min-h-10 rounded-md border border-slate-200 px-2 text-sm" value={selected.assignedTo?._id || ''} onChange={(event) => mutateConversation(() => assignConversation(selected._id, event.target.value), 'Conversacion asignada.')}>
                         <option value="">Sin asignar</option>
-                        {users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                        {assignableUsers.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
                       </select>
                     ) : null}
                     {canClose && ['closed', 'resolved'].includes(selected.status) ? (
-                      <Button variant="secondary" disabled={busy} onClick={() => mutateConversation(() => reopenConversation(selected._id), 'Conversacion reabierta.')}><RefreshCw className="h-4 w-4" />Reabrir</Button>
+                      <Button variant="secondary" className="px-3" disabled={busy} onClick={() => mutateConversation(() => reopenConversation(selected._id), 'Conversacion reabierta.')}><RefreshCw className="h-4 w-4" /><span className="hidden xl:inline">Reabrir</span></Button>
                     ) : null}
                     {canClose && !['closed', 'resolved'].includes(selected.status) ? (
-                      <Button variant="secondary" disabled={busy} onClick={() => mutateConversation(() => closeConversation(selected._id), 'Conversacion cerrada.')}><CheckCircle2 className="h-4 w-4" />Cerrar</Button>
+                      <Button variant="secondary" className="px-3" disabled={busy} onClick={() => mutateConversation(() => closeConversation(selected._id), 'Conversacion cerrada.')}><CheckCircle2 className="h-4 w-4" /><span className="hidden xl:inline">Cerrar</span></Button>
                     ) : null}
                     {user.role === 'ADMIN' ? (
-                      <Button variant="danger" disabled={busy} onClick={() => mutateConversation(() => archiveConversation(selected._id), 'Conversacion archivada.', { remove: true })}><Archive className="h-4 w-4" /></Button>
+                      <Button variant="danger" className="px-3" disabled={busy} onClick={() => mutateConversation(() => archiveConversation(selected._id), 'Conversacion archivada.', { remove: true })}><Archive className="h-4 w-4" /></Button>
                     ) : null}
+                    <Button
+                      variant="secondary"
+                      className="px-3"
+                      aria-expanded={detailsOpen}
+                      onClick={() => setDetailsOpen((value) => !value)}
+                    >
+                      <PanelRight className="h-4 w-4" />
+                      <span className="hidden xl:inline">Detalles</span>
+                    </Button>
                   </div>
                 </div>
 
-                <div className="grid gap-2 border-b border-slate-100 bg-slate-50 p-3 md:grid-cols-2 2xl:grid-cols-4">
-                  <DetailSection title="Contacto" empty="Sin datos adicionales.">
-                    <div className="mt-2 space-y-1 text-xs text-slate-600">
-                      <p>Estado: <strong>{selected.contactId?.status || '-'}</strong></p>
-                      <p>Ciclo: <strong>{selected.contactId?.lifecycleStage || '-'}</strong></p>
-                      <p>DND: <strong className={dnd.active ? 'text-rose-700' : ''}>{dnd.active ? 'Activo' : dnd.configured ? 'Inactivo' : 'No configurado'}</strong></p>
-                      <p>Consentimiento: <strong>{communication?.consents?.[communication?.policy?.evaluatedChannel]?.status || 'unknown'}</strong></p>
-                      {communication?.policy?.reasonCode ? <p>Politica: <strong>{communication.policy.reasonCode}</strong></p> : null}
-                      <p>Tags: {(selected.contactId?.tags || []).map((tag) => tag.name).join(', ') || 'Sin tags'}</p>
-                    </div>
-                  </DetailSection>
-                  <DetailSection title="Oportunidades" error={detailErrors.opportunities} empty="Sin oportunidades." onRetry={loadDetail}>
-                    {detail.opportunities.length ? <div className="mt-2 space-y-1">{detail.opportunities.slice(0, 3).map((item) => <p key={item._id} className="truncate text-xs text-slate-600">{item.title} - {item.status}</p>)}</div> : null}
-                  </DetailSection>
-                  <DetailSection title="Tareas" error={detailErrors.tasks} empty="Sin tareas." onRetry={loadDetail}>
-                    {detail.tasks.length ? <div className="mt-2 space-y-1">{detail.tasks.slice(0, 3).map((item) => <p key={item._id} className="truncate text-xs text-slate-600">{item.title} - {item.status}</p>)}</div> : null}
-                  </DetailSection>
-                  <DetailSection title="Workflows" error={detailErrors.workflows} empty={user.role === 'CALLCENTER' ? 'No disponible para este rol.' : 'Sin ejecuciones.'} onRetry={loadDetail}>
-                    {detail.workflows.length ? <div className="mt-2 space-y-1">{detail.workflows.slice(0, 3).map((item) => <p key={item._id} className="truncate text-xs text-slate-600">{item.workflowId?.name || item.eventType} - {item.status}</p>)}</div> : null}
-                  </DetailSection>
-                </div>
-                {detailLoading ? <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">Actualizando detalle relacionado...</p> : null}
-                <div className="border-b border-cyan-100 bg-cyan-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase text-cyan-800">Proximas citas</p>
-                  {detailErrors.appointments ? (
-                    <p className="mt-2 text-xs text-rose-700">{detailErrors.appointments} <button type="button" className="font-bold underline" onClick={loadDetail}>Reintentar</button></p>
-                  ) : detail.appointments.length ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {detail.appointments.map((appointment) => (
-                        <Link key={appointment._id} to={`/calendar?contactId=${selected.contactId?._id}`} className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm">
-                          {localDate(appointment.startAt)} - {appointment.title}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : <p className="mt-2 text-xs text-cyan-800">No hay citas proximas.</p>}
-                </div>
-
-                <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-5">
+                <div className="flex min-h-0 flex-1">
+                  <div className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 p-5">
                   {messagesLoading ? <CrmLoading label="Cargando mensajes..." /> : null}
                   {!messagesLoading && messagesError ? <CrmLoadError message={messagesError} onRetry={loadMessages} /> : null}
                   {!messagesLoading && !messagesError ? messages.map((message) => (
@@ -1011,10 +1079,57 @@ export function InboxPage() {
                       </div>
                     </div>
                   )) : null}
-                  {!messagesLoading && !messagesError && !messages.length ? <p className="text-center text-sm text-slate-500">Esta conversacion todavia no tiene mensajes.</p> : null}
+                  {!messagesLoading && !messagesError && !messages.length ? (
+                    <EmptyState
+                      icon={MessageSquare}
+                      title="Sin mensajes"
+                      description="Esta conversacion todavia no tiene mensajes."
+                    />
+                  ) : null}
+                  </div>
+
+                  {/* Panel de detalles colapsable: antes era una franja fija
+                      que empujaba el hilo hacia abajo. */}
+                  {detailsOpen ? (
+                    <aside className="scrollbar-thin hidden w-80 shrink-0 space-y-2 overflow-y-auto border-l border-slate-200 bg-slate-50 p-3 xl:block">
+                      {detailLoading ? (
+                        <p className="text-xs text-slate-500">Actualizando detalle relacionado...</p>
+                      ) : null}
+                      <DetailSection title="Contacto" empty="Sin datos adicionales.">
+                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                          <p>Estado: <strong>{selected.contactId?.status || '-'}</strong></p>
+                          <p>Ciclo: <strong>{selected.contactId?.lifecycleStage || '-'}</strong></p>
+                          <p>DND: <strong className={dnd.active ? 'text-rose-700' : ''}>{dnd.active ? 'Activo' : dnd.configured ? 'Inactivo' : 'No configurado'}</strong></p>
+                          <p>Consentimiento: <strong>{communication?.consents?.[communication?.policy?.evaluatedChannel]?.status || 'unknown'}</strong></p>
+                          {communication?.policy?.reasonCode ? <p>Politica: <strong>{communication.policy.reasonCode}</strong></p> : null}
+                          <p>Tags: {(selected.contactId?.tags || []).map((tag) => tag.name).join(', ') || 'Sin tags'}</p>
+                        </div>
+                      </DetailSection>
+                      <DetailSection title="Proximas citas" error={detailErrors.appointments} empty="No hay citas proximas." onRetry={loadDetail}>
+                        {detail.appointments.length ? (
+                          <div className="mt-2 space-y-1">
+                            {detail.appointments.map((appointment) => (
+                              <Link key={appointment._id} to={`/calendar?contactId=${selected.contactId?._id}`} className="block truncate rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                                {localDate(appointment.startAt)} - {appointment.title}
+                              </Link>
+                            ))}
+                          </div>
+                        ) : null}
+                      </DetailSection>
+                      <DetailSection title="Oportunidades" error={detailErrors.opportunities} empty="Sin oportunidades." onRetry={loadDetail}>
+                        {detail.opportunities.length ? <div className="mt-2 space-y-1">{detail.opportunities.slice(0, 3).map((item) => <p key={item._id} className="truncate text-xs text-slate-600">{item.title} - {item.status}</p>)}</div> : null}
+                      </DetailSection>
+                      <DetailSection title="Tareas" error={detailErrors.tasks} empty="Sin tareas." onRetry={loadDetail}>
+                        {detail.tasks.length ? <div className="mt-2 space-y-1">{detail.tasks.slice(0, 3).map((item) => <p key={item._id} className="truncate text-xs text-slate-600">{item.title} - {item.status}</p>)}</div> : null}
+                      </DetailSection>
+                      <DetailSection title="Workflows" error={detailErrors.workflows} empty={user.role === 'CALLCENTER' ? 'No disponible para este rol.' : 'Sin ejecuciones.'} onRetry={loadDetail}>
+                        {detail.workflows.length ? <div className="mt-2 space-y-1">{detail.workflows.slice(0, 3).map((item) => <p key={item._id} className="truncate text-xs text-slate-600">{item.workflowId?.name || item.eventType} - {item.status}</p>)}</div> : null}
+                      </DetailSection>
+                    </aside>
+                  ) : null}
                 </div>
 
-                <div className="grid gap-3 border-t border-slate-100 p-4 lg:grid-cols-2">
+                <div className="shrink-0 border-t border-slate-100 p-4">
                   <form className="space-y-2" onSubmit={submitMessage}>
                     {templatesLoading ? <p className="text-xs text-slate-500">Cargando respuestas rapidas...</p> : null}
                     {templatesError ? (
@@ -1059,21 +1174,27 @@ export function InboxPage() {
                         {templateGroups.providerTemplates.map((template) => <option key={template._id} value={template._id}>{template.name}</option>)}
                       </select>
                     ) : null}
-                    <select className={inputClass} value={messageType} onChange={(event) => setMessageType(event.target.value)}>
-                      <option value="text">Texto</option>
-                      <option value="image">Imagen por URL publica</option>
-                      <option value="document">Documento por URL publica</option>
-                      <option value="audio">Audio por URL publica</option>
-                      <option value="video">Video por URL publica</option>
-                    </select>
-                    <select className={inputClass} value={messageCategory} onChange={(event) => setMessageCategory(event.target.value)}>
-                      <option value="reply">Respuesta a conversacion</option>
-                      <option value="commercial">Comercial</option>
-                      <option value="transactional">Transaccional</option>
-                      <option value="operational">Operativo</option>
-                    </select>
-                    <input value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} type="url" className={inputClass} placeholder="URL publica del adjunto (opcional)" />
-                    <input key={fileInputKey} type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,video/mp4,application/pdf" className={inputClass} onChange={(event) => setMessageFile(event.target.files?.[0] || null)} />
+                    {/* Los ajustes de envio se pliegan para que el composer
+                        no ocupe media pantalla; siguen todos disponibles. */}
+                    {sendOptionsOpen ? (
+                      <div className="grid gap-2 rounded-md border border-slate-200 p-3 sm:grid-cols-2">
+                        <select aria-label="Tipo de mensaje" className={inputClass} value={messageType} onChange={(event) => setMessageType(event.target.value)}>
+                          <option value="text">Texto</option>
+                          <option value="image">Imagen por URL publica</option>
+                          <option value="document">Documento por URL publica</option>
+                          <option value="audio">Audio por URL publica</option>
+                          <option value="video">Video por URL publica</option>
+                        </select>
+                        <select aria-label="Categoria del mensaje" className={inputClass} value={messageCategory} onChange={(event) => setMessageCategory(event.target.value)}>
+                          <option value="reply">Respuesta a conversacion</option>
+                          <option value="commercial">Comercial</option>
+                          <option value="transactional">Transaccional</option>
+                          <option value="operational">Operativo</option>
+                        </select>
+                        <input aria-label="URL publica del adjunto" value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} type="url" className={inputClass} placeholder="URL publica del adjunto (opcional)" />
+                        <input aria-label="Adjunto" key={fileInputKey} type="file" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,video/mp4,application/pdf" className={inputClass} onChange={(event) => setMessageFile(event.target.files?.[0] || null)} />
+                      </div>
+                    ) : null}
                     <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} className={`${inputClass} min-h-20`} placeholder="Escribe una respuesta. Una respuesta rapida puede completar el contenido." />
                     {composerBlocked ? (
                       <p className="rounded-md bg-amber-50 p-2 text-xs font-medium text-amber-800">
@@ -1087,22 +1208,173 @@ export function InboxPage() {
                       </p>
                     ) : null}
                     {composerError ? <p className="text-xs font-medium text-rose-700">{composerError}</p> : null}
-                    <Button type="submit" disabled={sending || composerBlocked}><Send className="h-4 w-4" />{sending ? 'Enviando...' : 'Enviar'}</Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="submit" disabled={sending || composerBlocked}><Send className="h-4 w-4" />{sending ? 'Enviando...' : 'Enviar'}</Button>
+                      <Button
+                        variant="secondary"
+                        aria-expanded={sendOptionsOpen}
+                        onClick={() => setSendOptionsOpen((value) => !value)}
+                      >
+                        <Paperclip className="h-4 w-4" />
+                        {sendOptionsOpen ? 'Ocultar opciones' : 'Adjuntos y tipo'}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        aria-expanded={noteOpen}
+                        onClick={() => setNoteOpen((value) => !value)}
+                      >
+                        <StickyNote className="h-4 w-4" />
+                        Nota interna
+                      </Button>
+                    </div>
                   </form>
-                  <form className="space-y-2" onSubmit={submitNote}>
-                    <textarea required name="note" className={`${inputClass} min-h-20 border-amber-200 bg-amber-50`} placeholder="Nota interna, no se envia al contacto" />
-                    <Button type="submit" variant="secondary" disabled={busy}><StickyNote className="h-4 w-4" />Agregar nota interna</Button>
-                  </form>
+                  {noteOpen ? (
+                    <form className="mt-2 space-y-2" onSubmit={submitNote}>
+                      <textarea required name="note" className={`${inputClass} min-h-20 border-amber-200 bg-amber-50`} placeholder="Nota interna, no se envia al contacto" />
+                      <Button type="submit" variant="secondary" disabled={busy}><StickyNote className="h-4 w-4" />Agregar nota interna</Button>
+                    </form>
+                  ) : null}
                 </div>
               </>
             ) : (
-              <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
+              <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-500">
                 <UserRoundCheck className="mr-2 h-5 w-5" />Selecciona una conversacion.
               </div>
             )}
           </Card>
         </div>
       )}
+
+      <Drawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Filtros de conversaciones"
+        description="Se aplican sobre el alcance que tu rol ya permite."
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setFilters((value) => ({
+                  ...value,
+                  contactId: '',
+                  status: '',
+                  channel: '',
+                  assignedTo: '',
+                  priority: '',
+                  unread: ''
+                }))
+              }
+            >
+              Limpiar
+            </Button>
+            <Button onClick={() => setFiltersOpen(false)}>Aplicar</Button>
+          </>
+        }
+      >
+        <FormGrid columns={1}>
+          <FormField label="Canal" htmlFor="inbox-filter-channel">
+            <select id="inbox-filter-channel" className={inputClass} value={filters.channel} onChange={(event) => setFilters((value) => ({ ...value, channel: event.target.value }))}>
+              <option value="">Todos los canales</option>
+              {['internal', 'whatsapp_cloud', 'whatsapp_qr', 'facebook_messenger', 'instagram_dm', 'email', 'sms'].map((value) => <option key={value} value={value}>{channelLabel[value]}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Estado" htmlFor="inbox-filter-status">
+            <select id="inbox-filter-status" className={inputClass} value={filters.status} onChange={(event) => setFilters((value) => ({ ...value, status: event.target.value }))}>
+              <option value="">Todos los estados</option>
+              {['open', 'pending', 'resolved', 'closed'].map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </FormField>
+          {canAssign ? (
+            <FormField label="Responsable" htmlFor="inbox-filter-assigned">
+              <select id="inbox-filter-assigned" className={inputClass} value={filters.assignedTo} onChange={(event) => setFilters((value) => ({ ...value, assignedTo: event.target.value }))}>
+                <option value="">Todos los responsables</option>
+                {assignableUsers.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+              </select>
+            </FormField>
+          ) : null}
+          <FormField label="Prioridad" htmlFor="inbox-filter-priority">
+            <select id="inbox-filter-priority" className={inputClass} value={filters.priority} onChange={(event) => setFilters((value) => ({ ...value, priority: event.target.value }))}>
+              <option value="">Todas las prioridades</option>
+              {['low', 'medium', 'high'].map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Lectura" htmlFor="inbox-filter-unread">
+            <select id="inbox-filter-unread" className={inputClass} value={filters.unread} onChange={(event) => setFilters((value) => ({ ...value, unread: event.target.value }))}>
+              <option value="">Leidas y no leidas</option>
+              <option value="true">Solo no leidas</option>
+            </select>
+          </FormField>
+        </FormGrid>
+      </Drawer>
+
+      {canCreate ? (
+        <Drawer
+          open={composeOpen}
+          onClose={() => setComposeOpen(false)}
+          title="Nueva conversacion"
+          description="Abre un hilo interno o una conversacion de WhatsApp."
+          size="md"
+        >
+          <div className="space-y-8">
+            <form onSubmit={createInternal}>
+              <FormGrid title="Conversacion interna" columns={1}>
+                <FormField label="Contacto" htmlFor="inbox-internal-contact" required>
+                  <select id="inbox-internal-contact" required name="contactId" className={inputClass} defaultValue="">
+                    <option value="" disabled>Selecciona un contacto</option>
+                    {contacts.map((contact) => <option key={contact._id} value={contact._id}>{contact.name}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Responsable" htmlFor="inbox-internal-assigned">
+                  <select id="inbox-internal-assigned" name="assignedTo" className={inputClass}>
+                    <option value="">Usar responsable del contacto</option>
+                    {assignableUsers.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                  </select>
+                </FormField>
+                <Button type="submit" disabled={busy}><MessageSquare className="h-4 w-4" />Crear interna</Button>
+              </FormGrid>
+            </form>
+
+            {providerConfigs.length ? (
+              <form onSubmit={createWhatsApp}>
+                <FormGrid title="Conversacion de WhatsApp" columns={1}>
+                  <FormField label="Contacto" htmlFor="inbox-wa-contact" required>
+                    <select id="inbox-wa-contact" required name="contactId" className={inputClass} defaultValue="">
+                      <option value="" disabled>Selecciona un contacto</option>
+                      {contacts.map((contact) => <option key={contact._id} value={contact._id}>{contact.name}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Conexion de salida" htmlFor="inbox-wa-config" required>
+                    <select id="inbox-wa-config" required name="channelConfigId" className={inputClass} defaultValue="">
+                      <option value="" disabled>Selecciona la conexion de salida</option>
+                      {providerConfigs.map((provider) => (
+                        <option key={provider._id} value={provider._id} disabled={provider.status !== 'connected'}>
+                          {provider.displayName} - {channelLabel[provider.channel] || provider.channel} - {provider.status}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <FormField label="Responsable" htmlFor="inbox-wa-assigned">
+                    <select id="inbox-wa-assigned" name="assignedTo" className={inputClass}>
+                      <option value="">Usar responsable del contacto</option>
+                      {assignableUsers.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+                    </select>
+                  </FormField>
+                  <Button type="submit" disabled={busy}><MessageSquare className="h-4 w-4" />Abrir WhatsApp</Button>
+                </FormGrid>
+              </form>
+            ) : null}
+
+            {supportErrors.contacts || supportErrors.users || supportErrors.providers ? (
+              <p className="text-xs text-rose-700">
+                No se pudieron cargar todos los contactos o responsables.{' '}
+                <button type="button" className="font-bold underline" onClick={loadSupportLists}>Reintentar</button>
+              </p>
+            ) : null}
+          </div>
+        </Drawer>
+      ) : null}
 
       {showAppointment && selected ? (
         <AppointmentModal

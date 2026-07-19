@@ -78,11 +78,11 @@ export function TasksPage() {
         </div>
       </Card>
       {loading ? <CrmLoading /> : <Card><CardHeader title={`${tasks.length} tareas`} /><Table data={tasks.map((task) => ({ ...task, id: task._id }))} emptyText="No hay tareas" columns={[
-        { key: 'title', header: 'Tarea' },
-        { key: 'assignedTo', header: 'Responsable', render: (row) => row.assignedTo?.name },
-        { key: 'relatedType', header: 'Relacion' },
-        { key: 'dueAt', header: 'Vence', render: (row) => localDate(row.dueAt) },
-        { key: 'priority', header: 'Prioridad', render: (row) => <Badge tone={row.priority}>{row.priority}</Badge> },
+        { key: 'title', header: 'Tarea', truncate: true, width: '16rem' },
+        { key: 'assignedTo', header: 'Responsable', truncate: true, width: '12rem', hideBelow: 'md', render: (row) => row.assignedTo?.name },
+        { key: 'relatedType', header: 'Relacion', nowrap: true, hideBelow: 'lg' },
+        { key: 'dueAt', header: 'Vence', nowrap: true, render: (row) => localDate(row.dueAt) },
+        { key: 'priority', header: 'Prioridad', nowrap: true, hideBelow: 'sm', render: (row) => <Badge tone={row.priority}>{row.priority}</Badge> },
         { key: 'status', header: 'Estado', render: (row) => <select disabled={busy} value={row.status} className="rounded border border-slate-200 px-2 py-1 text-xs" onChange={(event) => mutate(() => updateTask(row._id, { status: event.target.value }), 'Tarea actualizada.')}>{['pending', 'in_progress', 'completed', 'cancelled', 'overdue'].map((value) => <option key={value}>{value}</option>)}</select> },
         { key: 'complete', header: '', render: (row) => row.status !== 'completed' ? <Button className="min-h-8 px-2" variant="secondary" onClick={() => mutate(() => completeTask(row._id), 'Tarea completada.')}><CheckCircle2 className="h-4 w-4" /></Button> : null }
       ]} /></Card>}

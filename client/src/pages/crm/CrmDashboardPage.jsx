@@ -46,19 +46,19 @@ export function CrmDashboardPage() {
           <Card>
             <CardHeader title="Desempeno por agente" description="Contactos, oportunidades y tareas dentro del equipo visible." />
             <Table data={data.performance.map((row) => ({ ...row, id: row.agent._id, name: row.agent.name }))} columns={[
-              { key: 'name', header: 'Agente' },
-              { key: 'contacts', header: 'Contactos' },
-              { key: 'openOpportunities', header: 'Abiertas' },
-              { key: 'wonOpportunities', header: 'Ganadas' },
-              { key: 'pendingTasks', header: 'Tareas pendientes' }
+              { key: 'name', header: 'Agente', truncate: true, width: '14rem' },
+              { key: 'contacts', header: 'Contactos', nowrap: true, align: 'right' },
+              { key: 'openOpportunities', header: 'Abiertas', nowrap: true, align: 'right' },
+              { key: 'wonOpportunities', header: 'Ganadas', nowrap: true, align: 'right' },
+              { key: 'pendingTasks', header: 'Tareas pendientes', nowrap: true, align: 'right' }
             ]} />
           </Card>
           <Card>
             <CardHeader title="Actividad reciente" />
             <Table data={data.recentActivity.map((item) => ({ ...item, id: item._id, date: localDate(item.createdAt), user: item.userId?.name || 'Sistema' }))} columns={[
-              { key: 'date', header: 'Fecha' },
-              { key: 'user', header: 'Usuario' },
-              { key: 'type', header: 'Tipo' },
+              { key: 'date', header: 'Fecha', nowrap: true },
+              { key: 'user', header: 'Usuario', truncate: true, width: '12rem', hideBelow: 'md' },
+              { key: 'type', header: 'Tipo', nowrap: true, hideBelow: 'sm' },
               { key: 'summary', header: 'Resumen' }
             ]} />
           </Card>

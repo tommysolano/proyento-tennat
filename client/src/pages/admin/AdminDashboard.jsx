@@ -28,6 +28,10 @@ import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { ContactManager } from '../../components/ContactManager.jsx';
 import { FormField, FormSection } from '../../components/FormField.jsx';
+import {
+  ImpersonateUserButton,
+  ImpersonationSwitcherButton
+} from '../../components/ImpersonationSwitcher.jsx';
 import { MetricCard } from '../../components/MetricCard.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { Table } from '../../components/Table.jsx';
@@ -380,6 +384,7 @@ export function AdminDashboard() {
           <CardHeader
             title="Usuarios internos"
             description="Supervisores y agentes persistidos en esta empresa."
+            action={<ImpersonationSwitcherButton />}
           />
           <Table
             data={users.map((user) => ({ ...user, id: user._id }))}
@@ -397,6 +402,13 @@ export function AdminDashboard() {
                 key: 'status',
                 header: 'Estado',
                 render: (row) => <Badge tone={row.status}>{row.status}</Badge>
+              },
+              {
+                key: 'impersonate',
+                header: 'Acceso delegado',
+                render: (row) => (
+                  <ImpersonateUserButton target={row} onError={setError} />
+                )
               }
             ]}
           />

@@ -6,11 +6,37 @@ import { Login } from '../pages/Login.jsx';
 import { NotFound } from '../pages/NotFound.jsx';
 import { AdminDashboard } from '../pages/admin/AdminDashboard.jsx';
 import { CallCenterDashboard } from '../pages/callcenter/CallCenterDashboard.jsx';
-import { DistributorDashboard } from '../pages/distributor/DistributorDashboard.jsx';
 import { CompanyDetailForDistributor } from '../pages/distributor/CompanyDetailForDistributor.jsx';
-import { DistributorCommercePage } from '../pages/distributor/DistributorCommercePage.jsx';
+import {
+  DistributorAdminsPage,
+  DistributorBrandingPage,
+  DistributorCompaniesPage,
+  DistributorDashboardPage,
+  DistributorFinancePage,
+  DistributorInvoicesPage,
+  DistributorModulesPage,
+  DistributorOnboardingPage,
+  DistributorPaymentsPage,
+  DistributorPlansPage,
+  DistributorPlatformPage,
+  DistributorSettingsPage,
+  DistributorSubscriptionsPage
+} from '../pages/distributor/DistributorPages.jsx';
 import { SupervisorDashboard } from '../pages/supervisor/SupervisorDashboard.jsx';
-import { SuperAdminDashboard } from '../pages/superadmin/SuperAdminDashboard.jsx';
+import {
+  SuperAdminAuditPage,
+  SuperAdminBillingPage,
+  SuperAdminDistributorsPage,
+  SuperAdminModulesPage,
+  SuperAdminOverviewPage,
+  SuperAdminPlansPage,
+  SuperAdminSubscriptionsPage
+} from '../pages/superadmin/SuperAdminPages.jsx';
+import {
+  DISTRIBUTOR_HASH_ROUTES,
+  HashRedirect,
+  SUPERADMIN_HASH_ROUTES
+} from './HashRedirect.jsx';
 import { ContactDetailPage } from '../pages/crm/ContactDetailPage.jsx';
 import { ContactsPage } from '../pages/crm/ContactsPage.jsx';
 import { CrmDashboardPage } from '../pages/crm/CrmDashboardPage.jsx';
@@ -134,27 +160,46 @@ export const router = createBrowserRouter([
           {
             element: <RoleBasedRoute allowedRoles={['SUPERADMIN']} />,
             children: [
-              { path: '/superadmin', element: <SuperAdminDashboard /> },
-              { path: '/superadmin/distributors', element: <SuperAdminDashboard section="distributors" /> },
-              { path: '/superadmin/platform-plans', element: <SuperAdminDashboard section="plans" /> },
-              { path: '/superadmin/subscriptions', element: <SuperAdminDashboard section="subscriptions" /> },
-              { path: '/superadmin/billing', element: <SuperAdminDashboard section="billing" /> },
-              { path: '/superadmin/modules', element: <SuperAdminDashboard section="modules" /> },
-              { path: '/superadmin/audit', element: <SuperAdminDashboard section="audit" /> }
+              {
+                path: '/superadmin',
+                element: (
+                  <HashRedirect map={SUPERADMIN_HASH_ROUTES}>
+                    <SuperAdminOverviewPage />
+                  </HashRedirect>
+                )
+              },
+              { path: '/superadmin/distributors', element: <SuperAdminDistributorsPage /> },
+              { path: '/superadmin/platform-plans', element: <SuperAdminPlansPage /> },
+              { path: '/superadmin/subscriptions', element: <SuperAdminSubscriptionsPage /> },
+              { path: '/superadmin/billing', element: <SuperAdminBillingPage /> },
+              { path: '/superadmin/modules', element: <SuperAdminModulesPage /> },
+              { path: '/superadmin/audit', element: <SuperAdminAuditPage /> }
             ]
           },
           {
             element: <RoleBasedRoute allowedRoles={['DISTRIBUTOR']} />,
             children: [
-              { path: '/distributor/dashboard', element: <DistributorDashboard /> },
-              { path: '/distributor/companies', element: <DistributorCommercePage section="companies" /> },
+              {
+                path: '/distributor/dashboard',
+                element: (
+                  <HashRedirect map={DISTRIBUTOR_HASH_ROUTES}>
+                    <DistributorDashboardPage />
+                  </HashRedirect>
+                )
+              },
+              { path: '/distributor/admins', element: <DistributorAdminsPage /> },
+              { path: '/distributor/plans', element: <DistributorPlansPage /> },
+              { path: '/distributor/subscriptions', element: <DistributorSubscriptionsPage /> },
+              { path: '/distributor/modules', element: <DistributorModulesPage /> },
+              { path: '/distributor/platform', element: <DistributorPlatformPage /> },
+              { path: '/distributor/companies', element: <DistributorCompaniesPage /> },
               { path: '/distributor/companies/:id', element: <CompanyDetailForDistributor /> },
-              { path: '/distributor/finance', element: <DistributorCommercePage section="finance" /> },
-              { path: '/distributor/invoices', element: <DistributorCommercePage section="invoices" /> },
-              { path: '/distributor/payments', element: <DistributorCommercePage section="payments" /> },
-              { path: '/distributor/branding', element: <DistributorCommercePage section="branding" /> },
-              { path: '/distributor/settings', element: <DistributorCommercePage section="settings" /> },
-              { path: '/distributor/onboarding', element: <DistributorCommercePage section="onboarding" /> }
+              { path: '/distributor/finance', element: <DistributorFinancePage /> },
+              { path: '/distributor/invoices', element: <DistributorInvoicesPage /> },
+              { path: '/distributor/payments', element: <DistributorPaymentsPage /> },
+              { path: '/distributor/branding', element: <DistributorBrandingPage /> },
+              { path: '/distributor/settings', element: <DistributorSettingsPage /> },
+              { path: '/distributor/onboarding', element: <DistributorOnboardingPage /> }
             ]
           },
           {

@@ -33,7 +33,7 @@ export function PipelineKanbanPage() {
 
   const pipeline = pipelines.find((item) => item._id === pipelineId);
   return (
-    <PageShell eyebrow="CRM" title="Pipeline Kanban" description="Vista por etapas con movimiento mediante selector, sin dependencias de drag and drop.">
+    <PageShell width="full" eyebrow="CRM" title="Pipeline Kanban" description="Vista por etapas con movimiento mediante selector, sin dependencias de drag and drop.">
       <CrmNotice notice={notice} error={error} />
       <select className={`${inputClass} max-w-sm`} value={pipelineId} onChange={(event) => setPipelineId(event.target.value)}>{pipelines.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select>
       {loading ? <CrmLoading /> : (

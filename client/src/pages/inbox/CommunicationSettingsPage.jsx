@@ -120,6 +120,7 @@ export function CommunicationSettingsPage() {
 
   return (
     <PageShell
+      width="narrow"
       eyebrow="Inbox"
       title="Consentimiento y DND"
       description="Horarios silenciosos, supresiones y diagnostico basico por empresa."

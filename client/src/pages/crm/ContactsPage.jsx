@@ -23,6 +23,7 @@ import {
   ColumnSelector,
   CreateCrmListForm
 } from '../../components/CrmCollectionTools.jsx';
+import { Drawer } from '../../components/Drawer.jsx';
 import { FormField } from '../../components/FormField.jsx';
 import {
   CrmLoadError,
@@ -83,6 +84,7 @@ export function ContactsPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const permissions = new Set(access.permissions || []);
   const canCreate = user.role === 'ADMIN' && permissions.has('contacts:manage');
   const canImport = user.role === 'ADMIN' && permissions.has('contacts:import');
@@ -240,29 +242,31 @@ export function ContactsPage() {
         />
       )
     },
-    { key: 'name', header: 'Contacto', render: (row) => <Link className="font-semibold text-cyan-700 hover:underline" to={`/crm/contacts/${row._id}`}>{row.name}</Link> },
-    { key: 'phone', header: 'Telefono', render: (row) => row.phone || '-' },
-    { key: 'email', header: 'Email', render: (row) => row.email || '-' },
-    { key: 'source', header: 'Fuente', render: (row) => row.source || '-' },
-    { key: 'channel', header: 'Canal', render: (row) => row.attribution?.entryChannel || row.attribution?.channel || '-' },
-    { key: 'campaign', header: 'Campana', render: (row) => row.attribution?.campaignId?.name || row.attribution?.campaignName || row.attribution?.utmCampaign || '-' },
-    { key: 'medium', header: 'Fuente / medio', render: (row) => [row.attribution?.source || row.attribution?.utmSource, row.attribution?.medium || row.attribution?.utmMedium].filter(Boolean).join(' / ') || '-' },
-    { key: 'consultedProduct', header: 'Producto consultado', render: (row) => row.attribution?.consultedProduct || '-' },
-    { key: 'purchasedProduct', header: 'Producto comprado', render: (row) => row.attribution?.purchasedProduct || '-' },
-    { key: 'marketingOrigin', header: 'Origen marketing', render: (row) => row.attribution?.integrationId?.name || (row.attribution?.funnelId ? 'Funnel' : row.attribution?.landingPageId ? 'Landing' : row.attribution?.formId ? 'Formulario' : '-') },
-    { key: 'globalDnd', header: 'DND', render: (row) => contactDndStatus(row).active ? <Badge tone="cancelled">Activo</Badge> : <Badge tone="active">Inactivo</Badge> },
-    { key: 'preferredChannel', header: 'Canal preferido', render: (row) => row.communicationPreferences?.preferredChannel || '-' },
-    { key: 'city', header: 'Ciudad', render: (row) => row.city || '-' },
-    { key: 'assignedTo', header: 'Responsable', render: (row) => row.assignedTo?.name || 'Sin asignar' },
-    { key: 'tags', header: 'Tags', render: (row) => <div className="flex flex-wrap gap-1">{row.tags?.map((tag) => <span key={tag._id} style={{ backgroundColor: `${tag.color}20`, color: tag.color }} className="rounded-full px-2 py-0.5 text-xs font-semibold">{tag.name}</span>)}</div> },
-    { key: 'lists', header: 'Listas', render: (row) => row.lists?.map((list) => list.name).join(', ') || '-' },
-    { key: 'priority', header: 'Prioridad', render: (row) => <Badge tone={row.priority}>{row.priority}</Badge> },
-    { key: 'status', header: 'Estado', render: (row) => <Badge tone={row.status}>{row.status.replaceAll('_', ' ')}</Badge> },
-    { key: 'lastContactAt', header: 'Ultima interaccion', render: (row) => localDate(row.lastContactAt) },
-    { key: 'createdAt', header: 'Creacion', render: (row) => localDate(row.createdAt) },
+    { key: 'name', header: 'Contacto', truncate: true, width: '14rem', render: (row) => <Link className="font-semibold text-cyan-700 hover:underline" to={`/crm/contacts/${row._id}`}>{row.name}</Link> },
+    { key: 'phone', header: 'Telefono', nowrap: true, render: (row) => row.phone || '-' },
+    { key: 'email', header: 'Email', truncate: true, width: '15rem', render: (row) => row.email || '-' },
+    { key: 'source', header: 'Fuente', truncate: true, width: '10rem', render: (row) => row.source || '-' },
+    { key: 'channel', header: 'Canal', nowrap: true, render: (row) => row.attribution?.entryChannel || row.attribution?.channel || '-' },
+    { key: 'campaign', header: 'Campana', truncate: true, width: '12rem', render: (row) => row.attribution?.campaignId?.name || row.attribution?.campaignName || row.attribution?.utmCampaign || '-' },
+    { key: 'medium', header: 'Fuente / medio', truncate: true, width: '12rem', render: (row) => [row.attribution?.source || row.attribution?.utmSource, row.attribution?.medium || row.attribution?.utmMedium].filter(Boolean).join(' / ') || '-' },
+    { key: 'consultedProduct', header: 'Producto consultado', truncate: true, width: '12rem', render: (row) => row.attribution?.consultedProduct || '-' },
+    { key: 'purchasedProduct', header: 'Producto comprado', truncate: true, width: '12rem', render: (row) => row.attribution?.purchasedProduct || '-' },
+    { key: 'marketingOrigin', header: 'Origen marketing', truncate: true, width: '12rem', render: (row) => row.attribution?.integrationId?.name || (row.attribution?.funnelId ? 'Funnel' : row.attribution?.landingPageId ? 'Landing' : row.attribution?.formId ? 'Formulario' : '-') },
+    { key: 'globalDnd', header: 'DND', nowrap: true, render: (row) => contactDndStatus(row).active ? <Badge tone="cancelled">Activo</Badge> : <Badge tone="active">Inactivo</Badge> },
+    { key: 'preferredChannel', header: 'Canal preferido', nowrap: true, render: (row) => row.communicationPreferences?.preferredChannel || '-' },
+    { key: 'city', header: 'Ciudad', truncate: true, width: '10rem', render: (row) => row.city || '-' },
+    { key: 'assignedTo', header: 'Responsable', truncate: true, width: '12rem', render: (row) => row.assignedTo?.name || 'Sin asignar' },
+    { key: 'tags', header: 'Tags', width: '14rem', render: (row) => <div className="flex flex-wrap gap-1">{row.tags?.map((tag) => <span key={tag._id} style={{ backgroundColor: `${tag.color}20`, color: tag.color }} className="rounded-full px-2 py-0.5 text-xs font-semibold">{tag.name}</span>)}</div> },
+    { key: 'lists', header: 'Listas', truncate: true, width: '12rem', render: (row) => row.lists?.map((list) => list.name).join(', ') || '-' },
+    { key: 'priority', header: 'Prioridad', nowrap: true, render: (row) => <Badge tone={row.priority}>{row.priority}</Badge> },
+    { key: 'status', header: 'Estado', nowrap: true, render: (row) => <Badge tone={row.status}>{row.status.replaceAll('_', ' ')}</Badge> },
+    { key: 'lastContactAt', header: 'Ultima interaccion', nowrap: true, render: (row) => localDate(row.lastContactAt) },
+    { key: 'createdAt', header: 'Creacion', nowrap: true, render: (row) => localDate(row.createdAt) },
     ...fields.map((field) => ({
       key: `custom:${field.key}`,
       header: field.label,
+      truncate: true,
+      width: '12rem',
       render: (row) => {
         const value = row.customFields?.[field.key];
         if (Array.isArray(value)) return value.join(', ') || '-';
@@ -270,7 +274,7 @@ export function ContactsPage() {
         return value ?? '-';
       }
     })),
-    { key: 'action', header: 'Accion', render: (row) => <Button as={Link} to={`/crm/contacts/${row._id}`} variant="secondary" className="min-h-8 px-3">Ver</Button> }
+    { key: 'action', header: 'Accion', nowrap: true, render: (row) => <Button as={Link} to={`/crm/contacts/${row._id}`} variant="secondary" className="min-h-8 px-3">Ver</Button> }
   ].filter((column) =>
     ((column.key === 'selection' && canBulk) ||
     (column.key !== 'selection' && visibleColumns.includes(column.key))) &&
@@ -279,7 +283,17 @@ export function ContactsPage() {
   );
 
   return (
-    <PageShell eyebrow="CRM" title={user.role === 'CALLCENTER' ? 'Mis contactos' : user.role === 'SUPERVISOR' ? 'Contactos del equipo' : 'Contactos'} description="Busqueda, segmentacion, etiquetas y seguimientos con alcance por rol.">
+    <PageShell
+      width="full"
+      eyebrow="CRM"
+      title={user.role === 'CALLCENTER' ? 'Mis contactos' : user.role === 'SUPERVISOR' ? 'Contactos del equipo' : 'Contactos'}
+      description="Busqueda, segmentacion, etiquetas y seguimientos con alcance por rol."
+      actions={canCreate ? (
+        <Button onClick={() => setCreateOpen(true)} disabled={busy}>
+          <Plus className="h-4 w-4" />Crear contacto
+        </Button>
+      ) : null}
+    >
       <CrmNotice notice={notice} error={error} />
       <Card>
         <CardHeader title="Filtros avanzados" action={<div className="flex flex-wrap gap-2"><ColumnSelector columns={availableColumns} selected={visibleColumns} defaults={defaultColumns} busy={busy} onSave={saveColumns} />{canImport ? <Button as={Link} to="/crm/import" variant="secondary"><Upload className="h-4 w-4" />Importar</Button> : null}{canExport ? <Button variant="secondary" onClick={() => exportContacts(filters).catch((e) => setError(e.message))}><Download className="h-4 w-4" />Exportar</Button> : null}</div>} />
@@ -368,9 +382,22 @@ export function ContactsPage() {
         </Card>
       ) : null}
       {canCreate ? (
-        <Card>
-          <CardHeader title="Crear contacto" description="El tenant se obtiene de la sesion autenticada." />
-          <form onSubmit={create} className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+        <Drawer
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          title="Crear contacto"
+          description="El tenant se obtiene de la sesion autenticada."
+          size="lg"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+              <Button type="submit" form="crm-contact-create" disabled={busy}>
+                <Plus className="h-4 w-4" />{busy ? 'Creando...' : 'Crear contacto'}
+              </Button>
+            </>
+          }
+        >
+          <form id="crm-contact-create" onSubmit={create} className="grid gap-4 md:grid-cols-2">
             <FormField label="Nombre completo" htmlFor="crm-contact-name" required>
               <input id="crm-contact-name" required name="name" className={inputClass} placeholder="Ej. Ana Perez" />
             </FormField>
@@ -398,11 +425,10 @@ export function ContactsPage() {
             <FormField label="Proximo seguimiento" htmlFor="crm-contact-follow-up">
               <input id="crm-contact-follow-up" type="datetime-local" name="nextFollowUpAt" className={inputClass} />
             </FormField>
-            <fieldset className="rounded-md border border-slate-200 p-3"><legend className="px-1 text-xs font-semibold text-slate-500">Tags</legend><div className="flex flex-wrap gap-3">{tags.filter((tag) => tag.status === 'active').map((tag) => <label key={tag._id} className="flex items-center gap-1 text-sm"><input type="checkbox" name="tags" value={tag._id} />{tag.name}</label>)}</div></fieldset>
+            <fieldset className="rounded-md border border-slate-200 p-3 md:col-span-2"><legend className="px-1 text-xs font-semibold text-slate-500">Tags</legend><div className="flex flex-wrap gap-3">{tags.filter((tag) => tag.status === 'active').map((tag) => <label key={tag._id} className="flex items-center gap-1 text-sm"><input type="checkbox" name="tags" value={tag._id} />{tag.name}</label>)}</div></fieldset>
             {fields.map((field) => <CustomFieldInput key={field._id} field={field} />)}
-            <Button type="submit" disabled={busy}><Plus className="h-4 w-4" />{busy ? 'Creando...' : 'Crear contacto'}</Button>
           </form>
-        </Card>
+        </Drawer>
       ) : null}
     </PageShell>
   );

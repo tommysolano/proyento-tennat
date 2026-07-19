@@ -195,9 +195,9 @@ export function SupervisorDashboard() {
           }))}
           emptyText="No hay agentes vinculados a este supervisor"
           columns={[
-            { key: 'name', header: 'Agente' },
-            { key: 'email', header: 'Email' },
-            { key: 'contactCount', header: 'Contactos asignados' },
+            { key: 'name', header: 'Agente', truncate: true, width: '14rem' },
+            { key: 'email', header: 'Email', truncate: true, width: '16rem', hideBelow: 'md' },
+            { key: 'contactCount', header: 'Contactos asignados', nowrap: true, align: 'right' },
             {
               key: 'status',
               header: 'Estado',
@@ -239,9 +239,9 @@ export function SupervisorDashboard() {
           }))}
           emptyText="No hay actividad del equipo"
           columns={[
-            { key: 'dateLabel', header: 'Fecha' },
-            { key: 'userLabel', header: 'Usuario' },
-            { key: 'type', header: 'Tipo' },
+            { key: 'dateLabel', header: 'Fecha', nowrap: true },
+            { key: 'userLabel', header: 'Usuario', truncate: true, width: '12rem', hideBelow: 'md' },
+            { key: 'type', header: 'Tipo', nowrap: true, hideBelow: 'sm' },
             { key: 'summary', header: 'Resumen' }
           ]}
         />

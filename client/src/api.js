@@ -153,6 +153,9 @@ export const updatePlan = (planId, plan) =>
     body: JSON.stringify(plan)
   });
 
+export const getImpersonationTargets = (filters = {}) =>
+  apiRequest(`/auth/impersonation/targets${queryString(filters)}`);
+
 export const getUsers = () => apiRequest('/users');
 export const createUser = (user) =>
   apiRequest('/users', {

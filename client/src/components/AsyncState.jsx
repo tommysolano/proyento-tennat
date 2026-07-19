@@ -7,6 +7,9 @@ import {
   RefreshCcw
 } from 'lucide-react';
 import { Button } from './Button.jsx';
+import { SkeletonMetrics, SkeletonTable } from './Skeleton.jsx';
+
+export { EmptyState } from './EmptyState.jsx';
 
 const variants = {
   empty: {
@@ -31,7 +34,30 @@ const variants = {
   }
 };
 
-export function LoadingState({ label = 'Cargando informacion...' }) {
+/**
+ * Estado de carga. Por defecto muestra el spinner clasico; con
+ * `variant="table"` o `variant="page"` dibuja skeletons con la forma del
+ * contenido que va a llegar, que se percibe mas rapido que un spinner.
+ */
+export function LoadingState({
+  label = 'Cargando informacion...',
+  variant = 'spinner',
+  rows = 5,
+  columns = 4
+}) {
+  if (variant === 'table') {
+    return <SkeletonTable rows={rows} columns={columns} />;
+  }
+
+  if (variant === 'page') {
+    return (
+      <div className="space-y-6">
+        <SkeletonMetrics />
+        <SkeletonTable rows={rows} columns={columns} />
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex min-h-36 items-center justify-center gap-3 rounded-lg border border-slate-200 bg-white p-8 text-sm text-slate-500"
@@ -84,10 +110,6 @@ export function ErrorState(props) {
       {...props}
     />
   );
-}
-
-export function EmptyState(props) {
-  return <AsyncState type="empty" title="Todavia no hay informacion" {...props} />;
 }
 
 export function PermissionState(props) {
