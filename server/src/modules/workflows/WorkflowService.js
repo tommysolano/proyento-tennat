@@ -35,6 +35,8 @@ import { OperationalAlertService } from '../ops/OperationalAlertService.js';
 import { RealtimeService } from '../realtime/RealtimeService.js';
 import { WorkflowActionExecutor } from './WorkflowActionExecutor.js';
 import { evaluateCondition, getSafePath } from './workflowValidation.js';
+import { resolveContactId } from './workflowMessaging.js';
+import { classifyReply } from './replyClassification.js';
 
 const ENTITY_MODELS = {
   appointment: Appointment,
@@ -311,7 +313,9 @@ export class WorkflowService {
       workflowId: workflow._id,
       runId: run._id,
       event: event.toObject({ getters: false }),
-      payload: event.payload || {},
+      // La respuesta capturada por un paso delay.wait_reply se fusiona en el
+      // payload para que las condiciones posteriores lean payload.lastReply.
+      payload: { ...(event.payload || {}), ...(run.metadata?.replyPayload || {}) },
       entity: entity || {},
       actor,
       chainDepth: Number(run.metadata?.chainDepth || 0)
@@ -380,6 +384,49 @@ export class WorkflowService {
             companyId: run.companyId,
             distributorId: run.distributorId,
             metadata: { workflowId: workflow._id, runId: run._id, resumed: true }
+          });
+          return run;
+        }
+
+        // Pausa hasta que el contacto responda (resumeWaitingForReply) o venza el
+        // timeout (job programado). Al reanudar por respuesta, payload.lastReply
+        // queda 'yes'|'no'|'other' para que las condiciones siguientes bifurquen.
+        if (action.type === 'delay.wait_reply') {
+          const timeoutMinutes = Math.min(
+            Math.max(Number(action.config?.timeoutMinutes) || 1440, 1),
+            43200
+          );
+          const runAt = new Date(Date.now() + timeoutMinutes * 60000);
+          run.executedActions.push({
+            actionIndex: index,
+            actionType: action.type,
+            status: 'waiting_reply',
+            result: { runAt },
+            completedAt: new Date(),
+            durationMs: Date.now() - actionStarted
+          });
+          run.status = 'waiting';
+          run.metadata = {
+            ...(run.metadata || {}),
+            cursor: index + 1,
+            waitingForReply: true,
+            waitContactId: resolveContactId(context)
+              ? String(resolveContactId(context))
+              : null,
+            waitConversationId:
+              context.payload?.conversationId ||
+              (context.event.entityType === 'conversation' ? context.event.entityId : null),
+            waitingUntil: runAt
+          };
+          run.markModified('metadata');
+          await run.save();
+          await JobService.enqueue({
+            type: 'workflow.run',
+            payload: { runId: run._id },
+            runAt,
+            companyId: run.companyId,
+            distributorId: run.distributorId,
+            metadata: { workflowId: workflow._id, runId: run._id, waitReplyTimeout: true }
           });
           return run;
         }
@@ -493,6 +540,54 @@ export class WorkflowService {
       data: { workflowId: run.workflowId, runId: run._id, status: run.status }
     });
     return run;
+  }
+
+  /**
+   * Reanuda los runs pausados en un paso delay.wait_reply cuando llega un mensaje
+   * entrante del contacto. Clasifica la respuesta (yes/no/other) en
+   * metadata.replyPayload para que las condiciones posteriores bifurquen, y encola
+   * la continuacion. Idempotente: limpia waitingForReply para no re-disparar con un
+   * segundo mensaje. Fire-and-forget desde la ingesta de entrantes.
+   */
+  static async resumeWaitingForReply({ companyId, conversationId, contactId, text }) {
+    if (!companyId || (!conversationId && !contactId)) return { resumed: 0 };
+    const match = [];
+    if (contactId) match.push({ 'metadata.waitContactId': String(contactId) });
+    if (conversationId) match.push({ 'metadata.waitConversationId': String(conversationId) });
+    const runs = await WorkflowRun.find({
+      companyId,
+      status: 'waiting',
+      'metadata.waitingForReply': true,
+      $or: match
+    }).limit(50);
+    if (!runs.length) return { resumed: 0 };
+
+    const reply = classifyReply(text);
+    let resumed = 0;
+    for (const run of runs) {
+      run.metadata = {
+        ...(run.metadata || {}),
+        waitingForReply: false,
+        replyPayload: {
+          lastReply: reply,
+          lastReplyText: String(text || '').slice(0, 200)
+        }
+      };
+      run.markModified('metadata');
+      run.status = 'queued';
+      // eslint-disable-next-line no-await-in-loop
+      await run.save();
+      // eslint-disable-next-line no-await-in-loop
+      await JobService.enqueue({
+        type: 'workflow.run',
+        payload: { runId: run._id },
+        companyId: run.companyId,
+        distributorId: run.distributorId,
+        metadata: { workflowId: run.workflowId, runId: run._id, resumedByReply: true }
+      });
+      resumed += 1;
+    }
+    return { resumed };
   }
 
   static async preview(workflow, input = {}) {

@@ -34,7 +34,17 @@ export class AppointmentReminderService {
       userId: appointment.createdBy,
       type: 'appointment_reminder_sent',
       summary: `Recordatorio enviado: ${appointment.title}`,
-      metadata: { appointmentId: appointment._id, jobId: job._id }
+      // contactId/startAt/title en el payload del evento para que un workflow
+      // `appointment.reminder_sent -> whatsapp.send_template` resuelva el contacto
+      // e interpole la cita (tambien accesibles via {{entity.*}} de la cita cargada).
+      metadata: {
+        appointmentId: appointment._id,
+        jobId: job._id,
+        contactId: appointment.contactId || null,
+        opportunityId: appointment.opportunityId || null,
+        title: appointment.title,
+        startAt: appointment.startAt
+      }
     });
     const { WorkflowEventEmitter } = await import(
       '../workflows/WorkflowEventEmitter.js'

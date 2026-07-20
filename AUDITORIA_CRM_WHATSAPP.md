@@ -12,6 +12,59 @@
 
 ---
 
+## ✅ Estado de implementación (actualizado)
+
+Ya implementado y verificado (la app arranca e importa limpio):
+
+- **E.1 — Config.** `server/.env.example` documenta `WHATSAPP_QR_ENABLED`,
+  `CREDENTIALS_ENCRYPTION_KEY`, todo el tuning `WHATSAPP_QR_*`, y sube Graph API
+  `v20 → v23`.
+- **D.1 — Workflows que envían WhatsApp.** Acciones `whatsapp.send` (texto/media)
+  y `whatsapp.send_template` (HSM) implementadas en `WorkflowActionExecutor`,
+  reutilizando `ConversationService.createOutboundMessage` (consentimiento,
+  ventana 24h, cola, uso, realtime). Helper `workflowMessaging.js`. Un bloqueo de
+  política se registra como *skip* (no reintenta); un error 4xx se marca
+  no-reintentable. Activadas en `workflowCatalog` + `workflowValidation`.
+  - Ejemplo (config JSON de la acción en la UI de Workflows):
+    - `whatsapp.send` → `{ "text": "Hola {{entity.name}}, gracias por escribir" }`
+    - `whatsapp.send_template` → `{ "templateId": "<id>", "variables": { "1": "{{entity.name}}", "2": "{{entity.startAt}}" } }`
+- **D.2 — Triggers de chat + wait_reply.**
+  - **Keyword:** el evento `message.inbound_received` ahora lleva `payload.text` y
+    `payload.textNormalized` (minúsculas/sin acentos). Regla por palabra clave =
+    condición del workflow: `payload.textNormalized` `contains` `"hola"`.
+  - **`delay.wait_reply`:** nueva acción de control de flujo; pausa el run hasta
+    que el contacto responde (o vence `timeoutMinutes`, default 1440).
+  - **Clasificación sí/no:** `replyClassification.js` (`classifyReply`); al
+    reanudar, `payload.lastReply` = `yes|no|other` para bifurcar con condiciones.
+  - Reanudación cableada desde la ingesta de entrantes
+    (`ConversationService.createInboundMessage` → `WorkflowService.resumeWaitingForReply`).
+  - Ejemplo bot confirmación: trigger `contact.created` → `whatsapp.send`
+    ("¿Confirmas? sí/no") → `delay.wait_reply` → condición `payload.lastReply
+    equals yes` → `whatsapp.send` ("¡Listo!").
+- **D.3 — Plantillas con media header.** `WhatsAppCloudAdapter.uploadResumableHeader`
+  (Resumable Upload API: `/app` → `/uploads` → subida → `handle`) y
+  `TemplateSyncService.registerTemplate` sube el binario de `headerMediaUrl` y
+  registra con el `header_handle` real (antes se mandaba la URL cruda que Meta
+  rechaza). Valida MIME (imagen JPG/PNG, documento PDF, video MP4).
+- **D.6 — Recordatorios de cita por WhatsApp.** El recordatorio ya emite
+  `appointment.reminder_sent`; con D.1 basta un workflow
+  `appointment.reminder_sent → whatsapp.send_template`. El motor carga la cita en
+  `context.entity` (interpola `{{entity.title}}`/`{{entity.startAt}}`) y ahora el
+  payload también trae `contactId`/`startAt`/`title` para resolver el contacto.
+
+Pendiente (siguiente iteración): **D.4** (motor de campañas/goteo por segmento),
+**email.send/sms.send** (requieren proveedor de email/SMS — siguen en `planned` a
+propósito para no ofrecer en la UI algo que fallaría), y **D.7** (CAPI/CTWA/editor
+en grafo). La UI de Workflows ya expone las acciones nuevas automáticamente (el
+formulario de acción es **JSON libre** poblado desde el catálogo).
+
+> **Requisito operativo para que D.1/D.2/D.6 envíen:** un número de WhatsApp por
+> defecto **conectado** (QR o Cloud), el módulo `whatsapp` habilitado, el
+> `JobWorker` activo, y que el contacto tenga teléfono y (para categoría
+> `commercial`) consentimiento `opted_in`. Ver PARTE E.
+
+---
+
 ## 0. Resumen ejecutivo (lo que hay que entender antes de tocar código)
 
 Las dos bases de código resuelven lo mismo (un CRM con mensajería WhatsApp), pero con

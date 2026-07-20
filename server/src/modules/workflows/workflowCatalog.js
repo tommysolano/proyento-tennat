@@ -112,7 +112,9 @@ export const WORKFLOW_ACTIONS = [
   ['whatsapp.send', []],
   ['whatsapp.send_template', ['templateId']],
   ['delay.wait_minutes', ['minutes']],
-  ['delay.wait_until', ['until']]
+  ['delay.wait_until', ['until']],
+  // Pausa el flujo hasta que el contacto responda (o venza timeoutMinutes).
+  ['delay.wait_reply', []]
 ].map(([type, requiredConfig]) => ({
   type,
   requiredConfig,

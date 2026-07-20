@@ -19,6 +19,7 @@ import { assertOutboundAllowed } from './conversationValidation.js';
 import { CommunicationPolicyService } from '../communications/CommunicationPolicyService.js';
 import { MESSAGE_CATEGORIES } from '../communications/communicationPolicyRules.js';
 import { hasUserPermission } from '../../core/permissions/permissions.js';
+import { normalizeKeyword } from '../workflows/replyClassification.js';
 
 function safePreview(text, fallback = '') {
   return String(text || fallback).slice(0, 500);
@@ -289,9 +290,25 @@ export class ConversationService {
         conversationId: conversation._id,
         contactId: conversation.contactId,
         messageId: message._id,
-        externalMessageId: message.externalMessageId
+        externalMessageId: message.externalMessageId,
+        // Texto y su version normalizada: permiten disparar workflows por palabra
+        // clave con una condicion `payload.textNormalized contains "..."`.
+        text: message.text || '',
+        textNormalized: normalizeKeyword(message.text)
       }
     });
+    // Reanuda los workflows que esperaban la respuesta de este contacto (paso
+    // delay.wait_reply). Fire-and-forget con import dinamico para no crear ciclos.
+    import('../workflows/WorkflowService.js')
+      .then(({ WorkflowService }) =>
+        WorkflowService.resumeWaitingForReply({
+          companyId: conversation.companyId,
+          conversationId: conversation._id,
+          contactId: conversation.contactId,
+          text: message.text || ''
+        })
+      )
+      .catch(() => {});
     await CommunicationPolicyService.processInboundOptOut({
       companyId: conversation.companyId,
       distributorId: conversation.distributorId,
