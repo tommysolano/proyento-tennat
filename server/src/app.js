@@ -63,6 +63,7 @@ import communicationRoutes from './routes/communicationRoutes.js';
 import whatsappSessionRoutes from './routes/whatsappSessionRoutes.js';
 import { logger } from './utils/logger.js';
 import { sanitizeError, sanitizeUrl } from './utils/sanitize.js';
+import { isOperationalReasonCode } from './core/operationalErrors.js';
 
 export const app = express();
 
@@ -197,11 +198,17 @@ app.use((error, req, res, next) => {
           : 500);
   const duplicateField = error.code === 11000 ? Object.keys(error.keyPattern || {})[0] : null;
   const safeError = sanitizeError(error);
+  // Los errores OPERATIVOS con reasonCode conocido son instrucciones para el
+  // usuario, no fugas internas: su mensaje (ya sanitizado) se conserva aunque el
+  // status sea 5xx. Solo los 5xx genericos se enmascaran en produccion.
+  const operational = isOperationalReasonCode(error.code);
+  const maskGeneric =
+    status >= 500 && process.env.NODE_ENV === 'production' && !operational;
   res.status(status).json({
     message:
       duplicateField
         ? `${duplicateField} ya esta registrado`
-        : status >= 500 && process.env.NODE_ENV === 'production'
+        : maskGeneric
           ? 'Error interno del servidor'
           : safeError.message || 'Error interno del servidor',
     ...(typeof error.code === 'string' ? { reasonCode: error.code } : {}),

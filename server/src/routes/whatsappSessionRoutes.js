@@ -104,6 +104,11 @@ router.get(
     try {
       const company = await targetCompany(req);
       await assertModules(company);
+      // Autocura la relacion numero<->sesion antes de listar (idempotente): sana
+      // ChannelConfigs QR creados sin sesion por flujos antiguos.
+      await WhatsAppQrSessionManager.reconcileCompanyQr(company._id, {
+        actorId: req.user._id
+      }).catch(() => {});
       const sessions = await WhatsAppSession.find({ companyId: company._id })
         .populate('integrationId', 'displayName channel status phoneNumberId')
         .populate('createdBy disconnectedBy authDeletedBy', 'name email role')

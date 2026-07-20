@@ -460,16 +460,40 @@ class SessionManager {
     });
     if (manual) return;
     if (loggedOut) {
+      // Cierre DEFINITIVO desde el telefono: el authState guardado ya no sirve.
+      // Se borra la autenticacion cifrada para exigir un QR nuevo (si no, la
+      // reconexion entraria en bucle con credenciales invalidas).
+      await deleteMongoAuthState(sessionId).catch(() => {});
       await this.updateSession(sessionId, {
         status: 'logged_out',
-        lastError: 'WhatsApp cerro la sesion vinculada',
+        phone: '',
+        connectedAt: null,
+        reconnectAttempts: 0,
+        lastError: 'WhatsApp cerro la sesion vinculada. Escanea un QR nuevo para volver a conectar.',
         qrGeneratedAt: null,
         qrExpiresAt: null
       });
       await ChannelConfig.updateOne(
         { _id: session.integrationId },
-        { $set: { status: 'error', error: 'La sesion QR fue cerrada desde WhatsApp' } }
+        { $set: { status: 'pending', error: 'La sesion QR fue cerrada desde WhatsApp; vincula de nuevo con un QR.' } }
       );
+      return;
+    }
+    // Sesion abierta en otro dispositivo: no tiene sentido reconectar en bucle.
+    const replaced =
+      statusCode === baileys.DisconnectReason.connectionReplaced ||
+      statusCode === 440;
+    if (replaced) {
+      await this.updateSession(sessionId, {
+        status: 'error',
+        lastError: 'La sesion se abrio en otro dispositivo. Reconecta si quieres retomarla aqui.',
+        qrGeneratedAt: null,
+        qrExpiresAt: null
+      });
+      await ChannelConfig.updateOne(
+        { _id: session.integrationId },
+        { $set: { status: 'error', error: 'La sesion se abrio en otro dispositivo' } }
+      ).catch(() => {});
       return;
     }
     await this.scheduleReconnect(
@@ -1093,6 +1117,55 @@ class SessionManager {
         (item) => !companyId || item.companyId === String(companyId)
       ).length
     };
+  }
+
+  /**
+   * Reconcilia la relacion 1:1 numero(ChannelConfig QR) <-> WhatsAppSession.
+   * Idempotente: (1) un ChannelConfig QR sin sesion recibe una sesion vinculada
+   * (disconnected); (2) una sesion cuyo ChannelConfig ya no existe se marca como
+   * huerfana (no se borra). Se llama al listar para autocurar estados previos.
+   */
+  async reconcileCompanyQr(companyId, { actorId = null } = {}) {
+    if (!companyId) return { created: 0, orphanSessions: 0 };
+    let created = 0;
+
+    const configs = await ChannelConfig.find({
+      companyId,
+      channel: 'whatsapp_qr',
+      status: { $ne: 'disabled' }
+    }).select('_id displayName distributorId createdBy');
+    for (const config of configs) {
+      if (await WhatsAppSession.exists({ companyId, integrationId: config._id })) continue;
+      const session = new WhatsAppSession({
+        companyId,
+        distributorId: config.distributorId || null,
+        integrationId: config._id,
+        name: config.displayName || 'WhatsApp QR',
+        status: 'disconnected',
+        providerVersion: PROVIDER_VERSION,
+        createdBy: config.createdBy || actorId,
+        metadata: { provider: 'whatsapp_qr', reconciled: true }
+      });
+      session.setEncryptedConfig({ allowGroups: process.env.WHATSAPP_QR_ALLOW_GROUPS === 'true' });
+      await session.save();
+      created += 1;
+    }
+
+    let orphanSessions = 0;
+    const sessions = await WhatsAppSession.find({ companyId }).select('_id integrationId metadata');
+    for (const session of sessions) {
+      const hasConfig =
+        session.integrationId &&
+        (await ChannelConfig.exists({ _id: session.integrationId, companyId }));
+      if (hasConfig || session.metadata?.orphan) continue;
+      await WhatsAppSession.updateOne(
+        { _id: session._id },
+        { $set: { 'metadata.orphan': true, lastError: 'Sesion sin numero vinculado (config ausente).' } }
+      );
+      orphanSessions += 1;
+    }
+
+    return { created, orphanSessions };
   }
 
   async stop() {

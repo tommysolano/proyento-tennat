@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { Job } from '../models/Job.js';
 import { getJobWorkerState } from '../modules/jobs/JobWorker.js';
 import { getStorageProvider } from '../modules/storage/index.js';
+import { whatsappQrConfigStatus } from '../modules/conversations/whatsappQrConfig.js';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.get('/', async (req, res) => {
     },
     realtimeEnabled: process.env.REALTIME_ENABLED !== 'false',
     whatsappSignatureRequired: process.env.REQUIRE_WEBHOOK_SIGNATURE === 'true',
+    whatsappQr: whatsappQrConfigStatus(),
     alertsEnabled: process.env.ALERTS_ENABLED !== 'false',
     version: process.env.npm_package_version || '0.1.0',
     timestamp: new Date().toISOString()

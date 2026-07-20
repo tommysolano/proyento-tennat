@@ -23,6 +23,8 @@ import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
 import { CrmLoading, inputClass, localDate } from '../../components/CrmCommon.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { whatsappQrErrorMessage } from '../../utils/whatsappQrErrors.js';
 
 const transientStatuses = new Set([
   'initializing',
@@ -39,6 +41,8 @@ function confirmationFor(session, action) {
 }
 
 export function WhatsAppQrSessionsPanel() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'SUPERADMIN';
   const [sessions, setSessions] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [qr, setQr] = useState(null);
@@ -117,7 +121,7 @@ export function WhatsAppQrSessionsPanel() {
       await load(false);
       return result;
     } catch (requestError) {
-      setError(requestError.message);
+      setError(whatsappQrErrorMessage(requestError, { isSuperAdmin }));
       return null;
     } finally {
       setBusy(false);

@@ -60,6 +60,9 @@ export async function apiRequest(path, options = {}) {
       : String(response.status);
     const error = new Error(data.message || `La API respondio HTTP ${statusLabel}`);
     error.status = response.status;
+    // El reasonCode operativo (WHATSAPP_QR_DISABLED, etc.) viaja aunque el
+    // mensaje se enmascare: la UI lo mapea a una guia accionable.
+    if (data.reasonCode) error.reasonCode = data.reasonCode;
     error.url = url;
     throw error;
   }

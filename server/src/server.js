@@ -4,6 +4,7 @@ import { ensureSuperAdmin } from './data/superAdminBootstrap.js';
 import { startJobWorker } from './modules/jobs/JobWorker.js';
 import { logger } from './utils/logger.js';
 import { WhatsAppQrSessionManager } from './modules/conversations/WhatsAppQrSessionManager.js';
+import { warnWhatsAppQrConfig } from './modules/conversations/whatsappQrConfig.js';
 
 loadEnv();
 
@@ -33,6 +34,9 @@ try {
   const { app } = await import('./app.js');
 
   const worker = startJobWorker();
+  // Aviso claro si el QR esta activado pero la clave de cifrado falta/es debil.
+  warnWhatsAppQrConfig();
+  // Auto-restore: reconecta sesiones con authState guardado (Mongo ya conectado).
   await WhatsAppQrSessionManager.restoreSessions();
   const server = app.listen(port, () => {
     logger.info('server.started', { port });

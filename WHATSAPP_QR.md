@@ -125,6 +125,83 @@ responde" (incluida la caida al numero por defecto si una conexion QR queda
 deshabilitada) la centraliza `accountGateway` — ver
 [WHATSAPP.md](WHATSAPP.md#gestion-multi-numero).
 
+## Operacion QR endurecida
+
+### Requisitos de `.env`
+
+El proveedor QR esta desactivado por defecto. Para usarlo:
+
+```env
+WHATSAPP_QR_ENABLED=true
+CREDENTIALS_ENCRYPTION_KEY=<32+ caracteres>
+```
+
+Sin `WHATSAPP_QR_ENABLED=true`, "Iniciar conexion" devuelve el reasonCode
+`WHATSAPP_QR_DISABLED`. Si el QR esta activado pero falta
+`CREDENTIALS_ENCRYPTION_KEY`, el arranque loggea un warning
+(`whatsapp_qr.config_invalid`) y `GET /health` lo expone en `whatsappQr`
+(`enabled`, `credentialsKeyConfigured`, `ready`, `warning`).
+
+### Errores operativos nunca enmascarados
+
+El error handler de `app.js` enmascara los 5xx genericos en produccion, pero
+**conserva** el mensaje de los errores con un reasonCode operativo conocido
+(`server/src/core/operationalErrors.js`): `WHATSAPP_QR_DISABLED`,
+`WHATSAPP_QR_SESSION_BUSY`, `WHATSAPP_QR_SESSION_LIMIT`, `MEDIA_TOO_LARGE`, etc.
+El reasonCode viaja siempre en la respuesta; la UI del panel QR lo mapea a un
+mensaje accionable (`whatsappQrErrors.js`), con detalle de `.env` solo para
+SUPERADMIN.
+
+### Numero QR y sesion: 1:1
+
+Crear un numero QR (desde "Numeros de WhatsApp" o desde el panel) crea
+**atomicamente** un `ChannelConfig` (`whatsapp_qr`) y su `WhatsAppSession`
+vinculada; si algo falla, se revierte el `ChannelConfig`. Al listar sesiones,
+`reconcileCompanyQr` autocura de forma idempotente: un `ChannelConfig` QR sin
+sesion recibe una (disconnected), y una sesion cuyo `ChannelConfig` desaparecio
+se marca huerfana (no se borra).
+
+### Estados y desconexiones
+
+`initializing -> qr_pending -> authenticating -> connected`, o `error` /
+`logged_out`. El manejo del cierre distingue por el `statusCode` de Baileys:
+
+- **loggedOut (401)**: cierre definitivo desde el telefono. Se **borra** el
+  authState cifrado (`deleteMongoAuthState`), estado `logged_out` y se exige un
+  QR nuevo (si no, la reconexion entraria en bucle con credenciales invalidas).
+- **connectionReplaced (440)**: la sesion se abrio en otro dispositivo. Estado
+  `error` con mensaje claro; no se reconecta en bucle.
+- **resto**: reconexion con backoff exponencial y contador de intentos.
+
+Al reiniciar el server, `restoreSessions` (con `WHATSAPP_QR_AUTO_RESTORE`)
+restaura las sesiones con authState guardado sin pedir QR (Mongo se conecta
+antes de restaurar).
+
+### Limite conocido
+
+Los mensajes `fromMe` (enviados desde el telefono vinculado) aun se descartan en
+el inbound normalizer y no aparecen como salientes en la conversacion. El indice
+unico de deduplicacion (`companyId + provider + channelConfigId +
+externalMessageId`) ya permitiria ingerirlos sin duplicar los enviados desde la
+app; queda pendiente cablear esa ingesta. No se simula: hoy simplemente no se
+reflejan.
+
+### Checklist manual con chip real (priorizado)
+
+1. `.env` con `WHATSAPP_QR_ENABLED=true` + clave valida; `GET /health` muestra
+   `whatsappQr.ready=true`.
+2. Crear numero QR -> se crea sesion vinculada; "Iniciar conexion" muestra el QR
+   (no "Error interno del servidor").
+3. Escanear -> `authenticating -> connected`; el telefono real aparece en
+   `connectedPhone`/tabla.
+4. Enviar y recibir texto; verificar dedupe reenviando el mismo mensaje.
+5. Imagen entrante se descarga y se ve; imagen saliente por URL entrega.
+6. Cerrar sesion desde el telefono -> estado `logged_out`, pide QR nuevo (auth
+   borrado).
+7. Abrir la sesion en otro dispositivo -> estado `error` "abierta en otro
+   dispositivo".
+8. Matar y levantar el server con una sesion vinculada -> se restaura sin QR.
+
 ## Indices al actualizar una base existente
 
 `Message` ahora deduplica por empresa, proveedor, `channelConfigId` e ID

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   createChannelConfig,
+  createWhatsAppSession,
   disableChannelConfig,
   getChannelConfigs,
   refreshChannelQuality,
@@ -101,22 +102,28 @@ export function WhatsAppNumbersPage() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const channel = data.get('channel');
+    // QR: se crea la sesion, que ATOMICAMENTE crea su ChannelConfig vinculado
+    // (evita numeros QR sin sesion). Cloud: se crea el ChannelConfig normal.
+    if (channel === 'whatsapp_qr') {
+      const result = await mutate(
+        () => createWhatsAppSession({ name: data.get('displayName') }),
+        'Numero QR creado. Vinculalo escaneando el codigo QR desde su panel.'
+      );
+      if (result) { form.reset(); setCreateOpen(false); }
+      return;
+    }
     const payload = {
       channel,
       displayName: data.get('displayName'),
       displayPhone: data.get('displayPhone'),
-      status: channel === 'whatsapp_qr' ? 'pending' : data.get('status')
+      status: data.get('status'),
+      phoneNumberId: data.get('phoneNumberId'),
+      externalBusinessId: data.get('externalBusinessId'),
+      verifyToken: data.get('verifyToken'),
+      accessToken: data.get('accessToken'),
+      appSecret: data.get('appSecret'),
+      apiVersion: data.get('apiVersion')
     };
-    if (channel !== 'whatsapp_qr') {
-      Object.assign(payload, {
-        phoneNumberId: data.get('phoneNumberId'),
-        externalBusinessId: data.get('externalBusinessId'),
-        verifyToken: data.get('verifyToken'),
-        accessToken: data.get('accessToken'),
-        appSecret: data.get('appSecret'),
-        apiVersion: data.get('apiVersion')
-      });
-    }
     const result = await mutate(() => createChannelConfig(payload), 'Numero creado.');
     if (result) { form.reset(); setCreateOpen(false); }
   }

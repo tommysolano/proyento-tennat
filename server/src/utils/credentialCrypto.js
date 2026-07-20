@@ -19,6 +19,22 @@ function encryptionKey() {
   return createHash('sha256').update(configured, 'utf8').digest();
 }
 
+const RECOMMENDED_KEY_LENGTH = 32;
+
+/**
+ * Estado de la clave de cifrado de credenciales, para health/diagnostico. La
+ * clave se deriva con SHA-256, asi que cualquier valor no vacio funciona; la
+ * longitud de 32+ es una recomendacion de seguridad, no un requisito tecnico.
+ */
+export function credentialsKeyStatus() {
+  const configured = process.env.CREDENTIALS_ENCRYPTION_KEY?.trim() || '';
+  return {
+    configured: Boolean(configured),
+    length: configured.length,
+    meetsRecommendedLength: configured.length >= RECOMMENDED_KEY_LENGTH
+  };
+}
+
 export function isEncryptedValue(value) {
   return Boolean(
     value &&
