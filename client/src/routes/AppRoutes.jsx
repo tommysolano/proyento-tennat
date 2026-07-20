@@ -53,6 +53,7 @@ import { PipelineKanbanPage } from '../pages/crm/PipelineKanbanPage.jsx';
 import { TasksPage } from '../pages/crm/TasksPage.jsx';
 import { InboxPage } from '../pages/inbox/InboxPage.jsx';
 import { ChannelSettingsPage } from '../pages/inbox/ChannelSettingsPage.jsx';
+import { WhatsAppNumbersPage } from '../pages/inbox/WhatsAppNumbersPage.jsx';
 import { MessageTemplatesPage } from '../pages/inbox/MessageTemplatesPage.jsx';
 import { NotificationsPage } from '../pages/inbox/NotificationsPage.jsx';
 import { RoutingRulesPage } from '../pages/inbox/RoutingRulesPage.jsx';
@@ -273,6 +274,7 @@ export const router = createBrowserRouter([
               { path: '/crm/custom-fields', element: <CustomFieldsPage /> },
               { path: '/crm/import', element: <ImportContactsPage /> },
               { path: '/crm/pipelines', element: <PipelinesPage /> },
+              { path: '/inbox/whatsapp-numbers', element: <WhatsAppNumbersPage /> },
               { path: '/inbox/channels', element: <ChannelSettingsPage /> },
               { path: '/inbox/templates', element: <MessageTemplatesPage /> },
               { path: '/inbox/routing', element: <RoutingRulesPage /> },

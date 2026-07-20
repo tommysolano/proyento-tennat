@@ -17,6 +17,8 @@ import { Message } from '../models/Message.js';
 import { checkModuleAccess } from '../middleware/moduleMiddleware.js';
 import { usageSnapshot } from '../utils/usage.js';
 import { OperationalAlertService } from '../modules/ops/OperationalAlertService.js';
+import { setDefaultAccount } from '../modules/communications/accountGateway.js';
+import { WhatsAppQualityService } from '../modules/communications/WhatsAppQualityService.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -90,6 +92,7 @@ router.post('/', async (req, res, next) => {
       phoneNumberId: cleanString(req.body.phoneNumberId),
       externalBusinessId: cleanString(req.body.externalBusinessId),
       externalAccountId: cleanString(req.body.externalAccountId),
+      displayPhone: cleanString(req.body.displayPhone),
       status,
       lastConnectedAt: status === 'connected' ? new Date() : null,
       createdBy: req.user._id,
@@ -143,10 +146,14 @@ router.patch('/:id', async (req, res, next) => {
       'phoneNumberId',
       'externalBusinessId',
       'externalAccountId',
+      'displayPhone',
       'status'
     ]) {
       if (field in req.body) config[field] = req.body[field];
     }
+    // Deshabilitar el numero por defecto lo desmarca (getDefaultAccount tiene
+    // fallback; la UI avisa). isDefault no se toca aqui: se marca por su endpoint.
+    if (req.body.status === 'disabled') config.isDefault = false;
     if ('status' in req.body && !CHANNEL_CONFIG_STATUSES.includes(req.body.status)) {
       throw badRequest('status invalido');
     }
@@ -199,7 +206,8 @@ router.patch('/:id/disable', async (req, res, next) => {
   try {
     const config = await ChannelConfig.findOneAndUpdate(
       { _id: req.params.id, companyId: req.user.companyId },
-      { status: 'disabled' },
+      // Un canal deshabilitado no puede seguir siendo el numero por defecto.
+      { status: 'disabled', isDefault: false },
       { new: true }
     ).select('+credentials +verifyToken +webhookSecret');
     if (!config) return res.status(404).json({ message: 'Canal no encontrado' });
@@ -211,6 +219,50 @@ router.patch('/:id/disable', async (req, res, next) => {
     });
     res.json(safe(config));
   } catch (error) {
+    next(error);
+  }
+});
+
+// Marca este canal como numero por defecto de la empresa (unico por empresa).
+router.patch('/:id/set-default', async (req, res, next) => {
+  try {
+    const config = await setDefaultAccount(req.user.companyId, req.params.id);
+    await recordActivity({
+      user: req.user,
+      type: 'channel_default_changed',
+      summary: `Numero por defecto: ${config.displayName}`,
+      metadata: { channelConfigId: config._id, channel: config.channel }
+    });
+    res.json(safe(config));
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    next(error);
+  }
+});
+
+// Refresca la salud (quality_rating / messaging_limit) consultando Graph API.
+router.post('/:id/refresh-quality', async (req, res, next) => {
+  try {
+    const config = await ChannelConfig.findOne({
+      _id: req.params.id,
+      companyId: req.user.companyId
+    }).select('+credentials +verifyToken +webhookSecret');
+    if (!config) return res.status(404).json({ message: 'Canal no encontrado' });
+    if (canonicalConfigChannel(config.channel) !== 'whatsapp_cloud') {
+      throw badRequest('La salud del numero solo aplica a canales de Meta (Cloud API)');
+    }
+    const result = await getChannelAdapter('whatsapp_cloud', { channelConfig: config }).fetchQuality();
+    if (!result.success) {
+      return res.status(502).json({ message: result.error, code: result.code || null });
+    }
+    await WhatsAppQualityService.applyUpdate(
+      config,
+      { qualityRating: result.qualityRating, messagingLimit: result.messagingLimit },
+      { actorId: req.user._id }
+    );
+    res.json(safe(config));
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
     next(error);
   }
 });

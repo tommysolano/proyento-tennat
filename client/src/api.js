@@ -422,6 +422,10 @@ export const updateChannelConfig = (id, payload) =>
   });
 export const disableChannelConfig = (id) =>
   apiRequest(`/channel-configs/${id}/disable`, { method: 'PATCH', body: '{}' });
+export const setDefaultChannelConfig = (id) =>
+  apiRequest(`/channel-configs/${id}/set-default`, { method: 'PATCH', body: '{}' });
+export const refreshChannelQuality = (id) =>
+  apiRequest(`/channel-configs/${id}/refresh-quality`, { method: 'POST', body: '{}' });
 export const testChannelConfig = (id, live = false) =>
   apiRequest(`/channel-configs/${id}/test`, {
     method: 'PATCH',

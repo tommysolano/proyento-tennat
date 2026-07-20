@@ -443,4 +443,64 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
       return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
     }
   }
+
+  /**
+   * Consulta la salud real del Phone Number ID en Graph API (quality_rating,
+   * messaging_limit). Devuelve el error real del proveedor si falla, igual que
+   * testConnection.
+   */
+  async fetchQuality() {
+    const config = this.channelConfig;
+    const credentials = config?.getDecryptedCredentials?.() || {};
+    const accessToken = credentials.accessToken;
+    const phoneNumberId = config?.phoneNumberId;
+    const apiVersion =
+      config?.settings?.apiVersion ||
+      process.env.WHATSAPP_GRAPH_API_VERSION ||
+      process.env.WHATSAPP_GRAPH_VERSION;
+    const baseUrl =
+      process.env.WHATSAPP_GRAPH_API_BASE_URL || 'https://graph.facebook.com';
+    if (!accessToken || !phoneNumberId || !apiVersion) {
+      return {
+        success: false,
+        error: 'Faltan accessToken, phoneNumberId o version de Graph API'
+      };
+    }
+    try {
+      const response = await fetch(
+        `${baseUrl.replace(/\/$/, '')}/${apiVersion}/${phoneNumberId}?fields=quality_rating,messaging_limit,display_phone_number`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error?.message || `Meta respondio HTTP ${response.status}`,
+          code: result.error?.code || null
+        };
+      }
+      return {
+        success: true,
+        qualityRating: normalizeQualityRating(result.quality_rating),
+        messagingLimit: result.messaging_limit || '',
+        displayPhoneNumber: result.display_phone_number || ''
+      };
+    } catch (error) {
+      return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
+    }
+  }
+}
+
+/**
+ * Normaliza el quality_rating que devuelve Meta (GREEN/YELLOW/RED, a veces en
+ * minusculas o como "HIGH/MEDIUM/LOW") al enum del modelo.
+ */
+export function normalizeQualityRating(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  const map = {
+    GREEN: 'GREEN', HIGH: 'GREEN',
+    YELLOW: 'YELLOW', MEDIUM: 'YELLOW',
+    RED: 'RED', LOW: 'RED'
+  };
+  return map[raw] || 'UNKNOWN';
 }

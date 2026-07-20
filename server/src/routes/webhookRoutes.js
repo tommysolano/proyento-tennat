@@ -4,6 +4,7 @@ import { ChannelConfig } from '../models/ChannelConfig.js';
 import { JobService } from '../modules/jobs/JobService.js';
 import { getChannelAdapter } from '../modules/conversations/adapters/index.js';
 import { WhatsAppWebhookService } from '../modules/conversations/WhatsAppWebhookService.js';
+import { WhatsAppQualityService } from '../modules/communications/WhatsAppQualityService.js';
 import { logger } from '../utils/logger.js';
 import { OperationalAlertService } from '../modules/ops/OperationalAlertService.js';
 
@@ -82,9 +83,31 @@ router.post('/whatsapp/:channelConfigId', async (req, res, next) => {
       companyId: config.companyId,
       payloadHash: WhatsAppWebhookService.payloadHash(req.body)
     });
+
+    // Eventos de salud del numero (phone_number_quality_update): se procesan
+    // aqui, no necesitan el pipeline de mensajes. Nunca deben romper el 200.
+    const qualityChanges = WhatsAppQualityService.parseWebhookChanges(req.body);
+    if (qualityChanges.length) {
+      await WhatsAppQualityService.handleWebhook(config, req.body).catch((error) =>
+        logger.warn('webhook.quality_update_failed', {
+          channelConfigId: config._id,
+          error: error.message
+        })
+      );
+    }
+
     const hasStatuses = (req.body?.entry || []).some((entry) =>
       (entry.changes || []).some((change) => change.value?.statuses?.length)
     );
+    const hasMessages = (req.body?.entry || []).some((entry) =>
+      (entry.changes || []).some((change) => change.value?.messages?.length)
+    );
+    // Si el payload solo traia actualizaciones de calidad, no se encola un job de
+    // mensajes vacio.
+    if (qualityChanges.length && !hasStatuses && !hasMessages) {
+      return res.status(200).json({ received: true, qualityUpdates: qualityChanges.length });
+    }
+
     const job = await JobService.enqueue({
       type: hasStatuses ? 'webhook.whatsapp.status' : 'webhook.whatsapp.inbound',
       payload: {

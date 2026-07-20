@@ -111,6 +111,20 @@ bloqueo antes de habilitarlo.
 9. Confirmar que otra empresa no puede consultar el ID de la sesion.
 10. Repetir en produccion solo con alertas y limites conservadores.
 
+## Numero conectado y gestion multi-numero
+
+Al vincular por QR, Baileys reporta el numero real y se guarda en el
+`ChannelConfig` asociado como `connectedPhone` (ademas de `phoneNumberId`). Ese
+numero es el que muestra la UI unificada **Inbox -> Numeros de WhatsApp**, donde
+las conexiones QR conviven con las Cloud API: se puede marcar una conexion QR
+como numero por defecto de la empresa, habilitarla/deshabilitarla y editar su
+etiqueta. El flujo de escaneo/reconexion sigue viviendo en el panel de
+vinculacion por QR embebido en esa pagina; la salud (semaforo GREEN/YELLOW/RED)
+solo aplica a las conexiones Cloud API. La resolucion de "por que numero se
+responde" (incluida la caida al numero por defecto si una conexion QR queda
+deshabilitada) la centraliza `accountGateway` — ver
+[WHATSAPP.md](WHATSAPP.md#gestion-multi-numero).
+
 ## Indices al actualizar una base existente
 
 `Message` ahora deduplica por empresa, proveedor, `channelConfigId` e ID

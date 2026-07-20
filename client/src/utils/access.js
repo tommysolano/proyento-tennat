@@ -71,6 +71,11 @@ const ACCESS_RULES = [
     modules: ['reputation', 'reviews']
   },
   {
+    prefix: '/inbox/whatsapp-numbers',
+    permissions: ['channel_configs:manage'],
+    modules: ['conversations', 'inbox', 'whatsapp']
+  },
+  {
     prefix: '/inbox/channels',
     permissions: ['channel_configs:manage'],
     modules: ['conversations', 'inbox']

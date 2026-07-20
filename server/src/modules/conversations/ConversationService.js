@@ -1,5 +1,6 @@
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { ChannelConfig } from '../../models/ChannelConfig.js';
+import { resolveAccountForConversation } from '../communications/accountGateway.js';
 import { Contact } from '../../models/Contact.js';
 import { Conversation } from '../../models/Conversation.js';
 import { Message } from '../../models/Message.js';
@@ -536,13 +537,30 @@ export class ConversationService {
       template,
       media: message.media || {}
     });
-    const channelConfig = conversation.channelConfigId
-      ? await ChannelConfig.findOne({
-          _id: conversation.channelConfigId,
-          companyId: conversation.companyId
-        }).select('+credentials +verifyToken +webhookSecret')
+    const declaredCanonical = canonicalChannel(conversation.channel);
+    // El gateway es el UNICO camino por el que el envio elige numero: usa el de
+    // la conversacion si sigue habilitado, o cae al numero por defecto de la
+    // empresa. Solo aplica a WhatsApp; los mensajes internos no llevan canal.
+    const channelConfig = isWhatsAppChannel(declaredCanonical)
+      ? await resolveAccountForConversation(conversation)
       : null;
-    const canonical = canonicalChannel(conversation.channel);
+    // Se envia (y se registra) por el canal REALMENTE resuelto, que puede diferir
+    // del declarado si hubo fallback (ej. el canal fijado quedo deshabilitado).
+    const canonical = channelConfig
+      ? canonicalChannel(channelConfig.channel)
+      : declaredCanonical;
+    // Persistir SIEMPRE el channelConfigId con el que se envia, en el mensaje y
+    // en la conversacion si aun no lo tenia (o cambio por el fallback).
+    if (channelConfig) {
+      message.channelConfigId = channelConfig._id;
+      if (String(conversation.channelConfigId || '') !== String(channelConfig._id)) {
+        conversation.channelConfigId = channelConfig._id;
+        await Conversation.updateOne(
+          { _id: conversation._id, companyId: conversation.companyId },
+          { $set: { channelConfigId: channelConfig._id } }
+        ).catch(() => {});
+      }
+    }
     const sender = message.sentBy
       ? await User.findOne({ _id: message.sentBy, companyId: message.companyId })
       : null;
@@ -554,7 +572,7 @@ export class ConversationService {
           channel: canonical,
           category: message.category || 'commercial',
           conversation,
-          channelConfigId: conversation.channelConfigId,
+          channelConfigId: channelConfig?._id || conversation.channelConfigId,
           user: sender,
           adminOverride: Boolean(message.metadata?.adminOverride),
           overrideReason: message.metadata?.overrideReason || ''

@@ -22,6 +22,7 @@ import {
   Palette,
   Quote,
   Radio,
+  Smartphone,
   ReceiptText,
   Route,
   Send,
@@ -122,7 +123,8 @@ export const sidebarGroupsByRole = {
         { label: 'Notificaciones', icon: Bell, to: '/notifications' },
         { label: 'Plantillas', icon: FileText, to: '/inbox/templates' },
         { label: 'Routing', icon: Route, to: '/inbox/routing' },
-        { label: 'Canales', icon: Radio, to: '/inbox/channels' },
+        { label: 'Numeros de WhatsApp', icon: Smartphone, to: '/inbox/whatsapp-numbers' },
+        { label: 'Canales (avanzado)', icon: Radio, to: '/inbox/channels' },
         { label: 'Consentimiento y DND', icon: ShieldCheck, to: '/inbox/communication-policy' }
       ]
     },

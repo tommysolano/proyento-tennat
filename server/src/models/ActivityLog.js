@@ -117,6 +117,8 @@ const activityLogSchema = new mongoose.Schema(
         'channel_configured',
         'channel_config_updated',
         'channel_disabled',
+        'channel_default_changed',
+        'channel_quality_changed',
         'webhook_received',
         'webhook_processed',
         'webhook_failed',

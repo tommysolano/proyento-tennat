@@ -432,7 +432,9 @@ class SessionManager {
             status: 'connected',
             lastConnectedAt: new Date(),
             error: '',
-            phoneNumberId: phone
+            phoneNumberId: phone,
+            // Numero real que reporta WhatsApp al vincular (lo que se muestra).
+            connectedPhone: phone
           }
         }
       );

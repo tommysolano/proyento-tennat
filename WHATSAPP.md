@@ -73,6 +73,51 @@ tampoco se devuelve. Logs, errores, jobs ops y ActivityLog pasan por redaccion.
 En produccion use un secret manager, rote tokens, fije una version soportada
 de Graph API y active `REQUIRE_WEBHOOK_SIGNATURE=true`.
 
+## Gestion multi-numero
+
+Una empresa puede tener varios numeros (Cloud API y QR) sobre el mismo Inbox.
+La UI unificada esta en **Inbox -> Numeros de WhatsApp** (`/inbox/whatsapp-numbers`,
+ADMIN con `channel_configs:manage`); la pagina antigua de canales queda como
+"Canales (avanzado)" para diagnostico y rotacion de secretos.
+
+Campos nuevos en `ChannelConfig`:
+
+- `isDefault` (Boolean): numero por defecto de la empresa. Maximo uno; al marcar
+  otro se desmarca el anterior en la misma operacion. Solo puede marcarse un
+  canal habilitado; al deshabilitar el default se desmarca (no se reasigna solo).
+- `displayPhone` (E.164 que declara el usuario) y `connectedPhone` (el que reporta
+  WhatsApp al vincular por QR, poblado desde Baileys al conectar).
+- Salud (solo Cloud): `qualityRating` (`GREEN|YELLOW|RED|UNKNOWN`), `messagingLimit`
+  (ej. `TIER_1K`) y `qualityUpdatedAt`.
+
+### Resolucion de cuenta (accountGateway)
+
+`server/src/modules/communications/accountGateway.js` centraliza "por que numero
+responde cada conversacion", siempre scoped por `companyId`:
+
+- `getDefaultAccount(companyId)`: el canal habilitado marcado `isDefault`; si no
+  hay, el mas antiguo `connected`; `null` si ninguno.
+- `resolveAccountForConversation(conversation)`: **unico** camino por el que el
+  envio elige numero. Usa el `channelConfigId` de la conversacion si ese canal
+  sigue habilitado; si no (sin canal, borrado o deshabilitado) cae al default.
+  El id resuelto se persiste SIEMPRE en el mensaje y en la conversacion.
+- `getDefaultCloudAccount(companyId)`: para operaciones que exigen Cloud API
+  (plantillas). Prefiere cuentas completas (`phoneNumberId` + `accessToken` +
+  `externalBusinessId`); si ninguna lo esta, devuelve una para que el caller
+  reporte el campo faltante via `cloudAccountMissingFields`.
+- `setDefaultAccount(companyId, id)`: marca el default garantizando unicidad.
+
+### Salud del numero (Cloud API)
+
+- Webhook `phone_number_quality_update` (evento de Meta al webhook existente):
+  `WhatsAppQualityService` actualiza `qualityRating`/`messagingLimit`/
+  `qualityUpdatedAt` del canal por `phoneNumberId`. Al empeorar el rating
+  (GREEN->YELLOW/RED) se registra en ActivityLog (`channel_quality_changed`); al
+  pasar a RED se crea una OperationalAlert critica (`channel_quality_red`).
+- Refresco manual: `POST /api/channel-configs/:id/refresh-quality` consulta el
+  Phone Number ID en Graph API (`quality_rating`, `messaging_limit`) y actualiza;
+  devuelve el error real del proveedor si falla.
+
 ## Limites externos
 
 No se aprovisionan cuentas, numeros, permisos ni templates. Quedan pendientes

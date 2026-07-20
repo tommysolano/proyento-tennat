@@ -11,7 +11,8 @@ export const ALERT_TYPES = [
   'credentials_error',
   'integration_error',
   'workflow_failure',
-  'workflow_action'
+  'workflow_action',
+  'channel_quality_red'
 ];
 
 const operationalAlertSchema = new mongoose.Schema(

@@ -45,6 +45,22 @@ const channelConfigSchema = new mongoose.Schema(
     phoneNumberId: { type: String, trim: true, default: '' },
     externalBusinessId: { type: String, trim: true, default: '' },
     externalAccountId: { type: String, trim: true, default: '' },
+    // Numero E.164 que el usuario declara (lo que se muestra en la UI).
+    displayPhone: { type: String, trim: true, default: '' },
+    // Numero real que reporta WhatsApp al vincular por QR (Baileys).
+    connectedPhone: { type: String, trim: true, default: '' },
+    // Numero por defecto de la empresa: el que usan campanas/workflows y el
+    // fallback de envio cuando la conversacion no fija otro. Maximo uno activo
+    // por empresa (lo garantiza el gateway al marcarlo).
+    isDefault: { type: Boolean, default: false },
+    // Salud del numero (solo Cloud API, poblada por webhook o refresco manual).
+    qualityRating: {
+      type: String,
+      enum: ['GREEN', 'YELLOW', 'RED', 'UNKNOWN'],
+      default: 'UNKNOWN'
+    },
+    messagingLimit: { type: String, trim: true, default: '' },
+    qualityUpdatedAt: { type: Date, default: null },
     status: { type: String, enum: CHANNEL_CONFIG_STATUSES, default: 'not_configured' },
     lastConnectedAt: { type: Date, default: null },
     lastWebhookAt: { type: Date, default: null },
@@ -67,6 +83,8 @@ const channelConfigSchema = new mongoose.Schema(
 
 channelConfigSchema.index({ companyId: 1, channel: 1, displayName: 1 });
 channelConfigSchema.index({ companyId: 1, phoneNumberId: 1 });
+// Acelera getDefaultAccount (el numero por defecto de cada empresa).
+channelConfigSchema.index({ companyId: 1, isDefault: 1 });
 
 channelConfigSchema.pre('save', function encryptStoredSecrets(next) {
   try {
