@@ -508,6 +508,59 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
   }
 
   /**
+   * Sube el archivo de cabecera a la Resumable Upload API de Meta y devuelve el
+   * `handle` que EXIGE el registro de plantillas con cabecera IMAGE/VIDEO/DOCUMENT.
+   * Meta NO acepta una URL cruda en `example.header_handle` (da "las plantillas
+   * con tipo de titulo IMAGE requieren un ejemplo valido"); hay que subir el
+   * binario y usar el handle resultante. Flujo: /app -> /{appId}/uploads ->
+   * POST /{sessionId} (Authorization: OAuth <token>, file_offset: 0).
+   */
+  async uploadResumableHeader({ buffer, mimeType }) {
+    const { accessToken, apiVersion, baseUrl } = this.templateApiContext();
+    if (!accessToken || !apiVersion) {
+      return { success: false, error: 'Faltan accessToken o version de Graph API' };
+    }
+    if (!buffer?.length) {
+      return { success: false, error: 'El archivo de cabecera esta vacio' };
+    }
+    const metaError = (json, fallback) => {
+      const e = json?.error;
+      if (!e) return fallback;
+      return `${e.error_user_msg || e.message || fallback}${e.code ? ` (codigo ${e.code})` : ''}${e.fbtrace_id ? ` · fbtrace: ${e.fbtrace_id}` : ''}`;
+    };
+    try {
+      // 1) App ID desde el token.
+      const appRes = await fetch(`${baseUrl}/${apiVersion}/app?access_token=${encodeURIComponent(accessToken)}`);
+      const app = await appRes.json().catch(() => ({}));
+      if (!appRes.ok || !app.id) {
+        return { success: false, error: metaError(app, 'No se pudo resolver el App ID desde el token') };
+      }
+      // 2) Abrir sesion de subida.
+      const sessRes = await fetch(
+        `${baseUrl}/${apiVersion}/${app.id}/uploads?file_length=${buffer.length}&file_type=${encodeURIComponent(mimeType)}&access_token=${encodeURIComponent(accessToken)}`,
+        { method: 'POST' }
+      );
+      const sess = await sessRes.json().catch(() => ({}));
+      if (!sessRes.ok || !sess.id) {
+        return { success: false, error: metaError(sess, 'No se pudo abrir la sesion de subida') };
+      }
+      // 3) Subir los bytes.
+      const upRes = await fetch(`${baseUrl}/${apiVersion}/${sess.id}`, {
+        method: 'POST',
+        headers: { Authorization: `OAuth ${accessToken}`, file_offset: '0' },
+        body: buffer
+      });
+      const up = await upRes.json().catch(() => ({}));
+      if (!upRes.ok || !up.h) {
+        return { success: false, error: metaError(up, 'La subida del archivo a Meta fallo') };
+      }
+      return { success: true, handle: up.h };
+    } catch (error) {
+      return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
+    }
+  }
+
+  /**
    * Registra una plantilla en el WABA via Graph API
    * (POST /{WABA_ID}/message_templates). Devuelve el error real del proveedor si
    * falla. `components` ya viene construido por TemplateSyncService.

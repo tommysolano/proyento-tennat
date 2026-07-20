@@ -14,6 +14,10 @@ import { OperationalAlertService } from '../ops/OperationalAlertService.js';
 import { JobService } from '../jobs/JobService.js';
 import { recordActivity } from '../../utils/activity.js';
 import { getSafePath } from './workflowValidation.js';
+import { ConversationService } from '../conversations/ConversationService.js';
+import { MessageTemplate } from '../../models/MessageTemplate.js';
+import { buildOutboundTemplate } from '../communications/TemplateSyncService.js';
+import { resolveWorkflowConversation } from './workflowMessaging.js';
 
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400, retryable: false });
@@ -54,6 +58,29 @@ async function tenantUser(companyId, userId) {
   });
   if (!user) throw badRequest('El responsable no pertenece a la empresa');
   return user;
+}
+
+/**
+ * Ejecuta un envio saliente (ConversationService.createOutboundMessage) desde un
+ * workflow y normaliza sus fallos:
+ *  - Bloqueo por politica (opt-out/consentimiento/supresion/ventana 24h): NO es un
+ *    error del workflow — se devuelve { skipped, reason } y el flujo continua.
+ *  - Error de configuracion/permiso (4xx): se re-lanza como NO reintentable para
+ *    que no se repita 5 veces (retrying no lo arregla).
+ *  - Error transitorio (5xx/desconocido): se re-lanza tal cual (reintentable).
+ */
+async function sendOutbound(run) {
+  try {
+    const message = await run();
+    return { message };
+  } catch (error) {
+    if (error?.policy || error?.code === 'CONSENT_REQUIRED' || /opt|consent|supres|ventana|window|dnd/i.test(String(error?.code || ''))) {
+      return { skipped: true, reason: error.code || error.reasonCode || 'blocked' };
+    }
+    const status = Number(error?.status || 0);
+    if (status >= 400 && status < 500) error.retryable = false;
+    throw error;
+  }
 }
 
 async function logAction(actor, context, type, summary, metadata = {}) {
@@ -325,6 +352,99 @@ export class WorkflowActionExecutor {
           details: config.details || ''
         });
         return { activityId: activity?._id };
+      }
+      case 'whatsapp.send': {
+        const text = String(config.text || '').trim();
+        const hasMedia = Boolean(config.mediaStorageKey);
+        if (!text && !hasMedia) throw badRequest('whatsapp.send requiere text o mediaStorageKey');
+        const { conversation } = await resolveWorkflowConversation(context, {
+          contactId: config.contactId
+        });
+        const result = await sendOutbound(() =>
+          ConversationService.createOutboundMessage({
+            user: actor,
+            conversation,
+            text,
+            type: hasMedia ? (config.mediaType || 'image') : 'text',
+            media: hasMedia
+              ? {
+                  storageKey: config.mediaStorageKey,
+                  caption: config.caption || '',
+                  mimeType: config.mimeType || ''
+                }
+              : {},
+            category: config.category || 'commercial'
+          })
+        );
+        if (result.skipped) {
+          await logAction(actor, context, 'workflow_whatsapp_skipped', `WhatsApp no enviado (${result.reason})`, {
+            conversationId: conversation._id,
+            contactId: conversation.contactId,
+            reason: result.reason
+          });
+          return { conversationId: conversation._id, skipped: true, reason: result.reason };
+        }
+        await logAction(actor, context, 'workflow_whatsapp_sent', 'WhatsApp enviado por workflow', {
+          conversationId: conversation._id,
+          contactId: conversation.contactId,
+          messageId: result.message._id
+        });
+        return { conversationId: conversation._id, messageId: result.message._id, status: result.message.status };
+      }
+      case 'whatsapp.send_template': {
+        const template = await MessageTemplate.findOne({
+          _id: config.templateId,
+          companyId,
+          channel: 'whatsapp_cloud'
+        });
+        if (!template) throw badRequest('Plantilla de WhatsApp no encontrada en la empresa');
+        if (template.status !== 'approved') {
+          throw badRequest(`La plantilla "${template.name}" no esta aprobada por Meta (estado: ${template.status})`);
+        }
+        // Interpola valores {{event.…}}/{{entity.…}} dentro de las variables.
+        const variables = Object.fromEntries(
+          Object.entries(config.variables || {}).map(([key, value]) => [
+            key,
+            interpolate(value, context)
+          ])
+        );
+        const providerTemplate = buildOutboundTemplate(template, variables);
+        const { conversation } = await resolveWorkflowConversation(context, {
+          contactId: config.contactId,
+          preferCloud: true
+        });
+        const result = await sendOutbound(() =>
+          ConversationService.createOutboundMessage({
+            user: actor,
+            conversation,
+            text: template.content,
+            type: 'text',
+            template: providerTemplate,
+            templateId: template._id,
+            category: template.messageCategory === 'reply' ? 'commercial' : (template.messageCategory || 'commercial')
+          })
+        );
+        if (result.skipped) {
+          await logAction(actor, context, 'workflow_whatsapp_skipped', `Plantilla no enviada (${result.reason})`, {
+            conversationId: conversation._id,
+            contactId: conversation.contactId,
+            templateId: template._id,
+            reason: result.reason
+          });
+          return { conversationId: conversation._id, template: template.name, skipped: true, reason: result.reason };
+        }
+        await logAction(actor, context, 'workflow_whatsapp_template_sent', `Plantilla "${template.name}" enviada por workflow`, {
+          conversationId: conversation._id,
+          contactId: conversation.contactId,
+          messageId: result.message._id,
+          templateId: template._id
+        });
+        return {
+          conversationId: conversation._id,
+          messageId: result.message._id,
+          template: template.name,
+          status: result.message.status
+        };
       }
       default:
         throw badRequest(`Accion no implementada: ${action.type}`);

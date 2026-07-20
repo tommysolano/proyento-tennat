@@ -5,6 +5,30 @@ import { getDefaultCloudAccount, cloudAccountMissingFields } from './accountGate
 import { NotificationService } from '../notifications/NotificationService.js';
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { logger } from '../../utils/logger.js';
+import { mediaMaxBytes } from '../storage/mediaValidation.js';
+
+/**
+ * Descarga los bytes de la cabecera de una plantilla desde su URL publica para
+ * subirlos a Meta. Devuelve { buffer, mimeType } o null. Cap de tamaño para no
+ * cargar en memoria un archivo enorme.
+ */
+async function fetchHeaderMediaBytes(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const declared = Number(response.headers.get('content-length') || 0);
+    const max = mediaMaxBytes();
+    if (declared && declared > max) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > max) return null;
+    const mimeType = String(response.headers.get('content-type') || '')
+      .split(';')[0]
+      .trim();
+    return { buffer, mimeType };
+  } catch {
+    return null;
+  }
+}
 
 // ---- Helpers puros (sin base de datos, testeables directamente) ----
 
@@ -68,7 +92,7 @@ function metaButtonFormat(button) {
  * Construye el arreglo `components` de Graph API para REGISTRAR la plantilla
  * (con ejemplos). Puro: no toca red ni DB.
  */
-export function buildComponents(template) {
+export function buildComponents(template, headerHandle = '') {
   const components = [];
 
   if (template.headerType && template.headerType !== 'none') {
@@ -81,12 +105,14 @@ export function buildComponents(template) {
       }
       components.push(header);
     } else {
-      // Cabecera de media: el registro real exige un header_handle subido a Meta;
-      // aqui se pasa la URL publica como ejemplo (ver caveat en WHATSAPP.md).
+      // Cabecera de media: Meta EXIGE un header_handle real subido a su Resumable
+      // Upload API (una URL cruda la rechaza). El handle lo provee registerTemplate
+      // subiendo el binario; si por algun motivo no llegara, cae a la URL (Meta lo
+      // rechazara con un error claro en vez de en silencio).
       components.push({
         type: 'HEADER',
         format: template.headerType.toUpperCase(),
-        example: { header_handle: [template.headerMediaUrl || ''] }
+        example: { header_handle: [headerHandle || template.headerMediaUrl || ''] }
       });
     }
   }
@@ -396,11 +422,44 @@ export const TemplateSyncService = {
     }
 
     const cloudAdapter = adapter || getChannelAdapter('whatsapp_cloud', { channelConfig: account });
+
+    // Cabecera de media: subir el binario a Meta para obtener el header_handle real.
+    let headerHandle = '';
+    if (['image', 'document', 'video'].includes(template.headerType) && template.headerMediaUrl) {
+      const media = await fetchHeaderMediaBytes(template.headerMediaUrl);
+      if (!media) {
+        throw Object.assign(
+          new Error('No se pudo leer el archivo de cabecera desde headerMediaUrl. Verifica que sea una URL publica accesible.'),
+          { status: 400 }
+        );
+      }
+      const mimeOk =
+        (template.headerType === 'image' && /^image\/(png|jpe?g)$/i.test(media.mimeType)) ||
+        (template.headerType === 'document' && /pdf$/i.test(media.mimeType)) ||
+        (template.headerType === 'video' && /^video\//i.test(media.mimeType));
+      if (!mimeOk) {
+        throw Object.assign(
+          new Error(`El archivo de cabecera es ${media.mimeType || 'de tipo desconocido'} y no es valido para una cabecera ${template.headerType} (imagen: JPG/PNG, documento: PDF, video: MP4).`),
+          { status: 400 }
+        );
+      }
+      const upload = await cloudAdapter.uploadResumableHeader({
+        buffer: media.buffer,
+        mimeType: media.mimeType
+      });
+      if (!upload.success) {
+        throw Object.assign(new Error(`No se pudo subir la cabecera a Meta: ${upload.error}`), {
+          status: 502
+        });
+      }
+      headerHandle = upload.handle;
+    }
+
     const result = await cloudAdapter.createMessageTemplate({
       name: validation.normalizedName,
       language: template.language || 'es',
       category: metaCategoryFor(template),
-      components: buildComponents(template)
+      components: buildComponents(template, headerHandle)
     });
     if (!result.success) {
       throw Object.assign(new Error(result.error || 'Meta rechazo el registro de la plantilla'), {

@@ -106,17 +106,23 @@ export const WORKFLOW_ACTIONS = [
   ['notification.create', ['title']],
   ['alert.create', ['title', 'message']],
   ['activity_log.create', ['summary']],
+  // Mensajeria saliente al contacto (reutiliza ConversationService: politica de
+  // consentimiento, ventana 24h, cola y tracking de uso). whatsapp.send exige
+  // 'text' o 'mediaStorageKey' (validado aparte por ser requisito alternativo).
+  ['whatsapp.send', []],
+  ['whatsapp.send_template', ['templateId']],
   ['delay.wait_minutes', ['minutes']],
   ['delay.wait_until', ['until']]
 ].map(([type, requiredConfig]) => ({
   type,
   requiredConfig,
   requiredModules: [
-    type.startsWith('appointment.') ? 'calendar' :
-      type.startsWith('conversation.') ? 'conversations' :
-        type.startsWith('opportunity.') ? 'opportunities' :
-          type.startsWith('task.') ? 'tasks' :
-            type.startsWith('contact.') ? 'contacts' : 'core'
+    type.startsWith('whatsapp.') ? 'whatsapp' :
+      type.startsWith('appointment.') ? 'calendar' :
+        type.startsWith('conversation.') ? 'conversations' :
+          type.startsWith('opportunity.') ? 'opportunities' :
+            type.startsWith('task.') ? 'tasks' :
+              type.startsWith('contact.') ? 'contacts' : 'core'
   ],
   status: 'active'
 }));
@@ -124,7 +130,6 @@ export const WORKFLOW_ACTIONS = [
 export const PLANNED_ACTIONS = [
   'email.send',
   'sms.send',
-  'whatsapp.send',
   'webhook.call',
   'ai.generate',
   'funnel.enroll',

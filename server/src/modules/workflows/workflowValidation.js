@@ -122,9 +122,22 @@ export function validateWorkflowDefinition(input, { requireActions = false } = {
       'appointmentId',
       'contactId',
       'opportunityId',
-      'conversationId'
+      'conversationId',
+      'templateId'
     ]) {
       assertObjectId(action.config?.[field], `config.${field}`);
+    }
+    // whatsapp.send exige texto O un adjunto (requisito alternativo, no cubierto
+    // por requiredConfig que es una lista AND).
+    if (
+      action.type === 'whatsapp.send' &&
+      !String(action.config?.text || '').trim() &&
+      !String(action.config?.mediaStorageKey || '').trim()
+    ) {
+      throw Object.assign(
+        new Error('La accion whatsapp.send requiere config.text o config.mediaStorageKey'),
+        { status: 400 }
+      );
     }
     if (
       action.type === 'delay.wait_until' &&
