@@ -130,6 +130,11 @@ const ACCESS_RULES = [
     modules: ['automations', 'workflows']
   },
   {
+    prefix: '/marketing/broadcasts',
+    permissions: ['whatsapp_messages:send'],
+    modules: ['whatsapp']
+  },
+  {
     prefix: '/marketing/integrations',
     permissions: ['integrations:manage', 'integrations:read', 'integrations:read_team'],
     modules: ['integrations']

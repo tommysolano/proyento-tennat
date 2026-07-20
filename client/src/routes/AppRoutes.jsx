@@ -87,6 +87,7 @@ import {
   IntegrationsPage,
   MarketingReportsPage
 } from '../pages/marketing/MarketingOperationsPage.jsx';
+import { BroadcastsPage } from '../pages/marketing/BroadcastsPage.jsx';
 import {
   ReputationPage,
   ReviewRequestsPage,
@@ -261,6 +262,7 @@ export const router = createBrowserRouter([
               { path: '/marketing/funnels', element: <FunnelsPage /> }
               ,
               { path: '/marketing/campaigns', element: <CampaignsPage /> },
+              { path: '/marketing/broadcasts', element: <BroadcastsPage /> },
               { path: '/marketing/integrations', element: <IntegrationsPage /> },
               { path: '/marketing/reports', element: <MarketingReportsPage /> },
               { path: '/inbox/communication-policy', element: <CommunicationSettingsPage /> },

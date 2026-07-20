@@ -65,9 +65,11 @@ Ya implementado y verificado (la app arranca e importa limpio):
   `ConversationService.createOutboundMessage` (opt-out/consentimiento/ventana 24h/
   uso) y las estadísticas (`sent/failed/skipped`) se actualizan atómicamente. Gate:
   rol ADMIN/SUPERVISOR + permiso `whatsapp_messages:send` + módulo `whatsapp`.
-  *(Falta la UI: hoy operable por API; una `BroadcastsPage` es trabajo de cliente.)*
+  **UI incluida:** `client/src/pages/marketing/BroadcastsPage.jsx`, en el menú
+  **Marketing → Difusión masiva** (`/marketing/broadcasts`): crear, previsualizar
+  audiencia, lanzar, cancelar y ver progreso/estadísticas en vivo.
 
-Pendiente (siguiente iteración): **UI de difusión** (`BroadcastsPage`),
+Pendiente (siguiente iteración):
 **`sms.send`** (requiere proveedor SMS — sigue en `planned`), **segmentos con DSL
 de filtros** (hoy la audiencia es lista/etiqueta), y **D.7** (CAPI/CTWA/editor en
 grafo). La UI de Workflows ya expone las acciones nuevas automáticamente (el

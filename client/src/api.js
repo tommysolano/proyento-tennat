@@ -941,6 +941,20 @@ export const updateCampaign = (id, payload) =>
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
+export const getBroadcasts = () => apiRequest('/broadcasts');
+export const getBroadcast = (id) => apiRequest(`/broadcasts/${id}`);
+export const createBroadcast = (payload) =>
+  apiRequest('/broadcasts', { method: 'POST', body: JSON.stringify(payload) });
+export const previewBroadcast = (audience) =>
+  apiRequest('/broadcasts/preview', {
+    method: 'POST',
+    body: JSON.stringify({ audience })
+  });
+export const launchBroadcast = (id) =>
+  apiRequest(`/broadcasts/${id}/launch`, { method: 'POST', body: '{}' });
+export const cancelBroadcast = (id) =>
+  apiRequest(`/broadcasts/${id}/cancel`, { method: 'POST', body: '{}' });
+
 export const getIntegrations = (filters = {}) =>
   apiRequest(`/integrations${queryString(filters)}`);
 export const createIntegration = (payload) =>

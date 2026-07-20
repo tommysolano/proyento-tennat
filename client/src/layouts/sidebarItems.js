@@ -165,6 +165,7 @@ export const sidebarGroupsByRole = {
         { label: 'Landing pages', icon: LayoutTemplate, to: '/marketing/landing-pages' },
         { label: 'Funnels', icon: GitBranch, to: '/marketing/funnels' },
         { label: 'Campanas', icon: Radio, to: '/marketing/campaigns' },
+        { label: 'Difusion masiva', icon: Send, to: '/marketing/broadcasts' },
         { label: 'Integraciones', icon: Boxes, to: '/marketing/integrations' },
         { label: 'Respuestas', icon: ListPlus, to: '/marketing/submissions' },
         { label: 'Analytics', icon: BarChart3, to: '/marketing/analytics' },
@@ -235,6 +236,7 @@ export const sidebarGroupsByRole = {
         { label: 'Respuestas', icon: ListPlus, to: '/marketing/submissions' },
         { label: 'Funnels', icon: GitBranch, to: '/marketing/funnels' },
         { label: 'Campanas', icon: Radio, to: '/marketing/campaigns' },
+        { label: 'Difusion masiva', icon: Send, to: '/marketing/broadcasts' },
         { label: 'Integraciones', icon: Boxes, to: '/marketing/integrations' },
         { label: 'Reportes', icon: BarChart3, to: '/marketing/reports' }
       ]

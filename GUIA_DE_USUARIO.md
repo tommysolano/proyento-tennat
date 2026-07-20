@@ -426,19 +426,32 @@ recordatorio y `{ "templateId": "<id>", "variables": { "1": "{{entity.title}}", 
 
 > Enviar una **plantilla aprobada** a muchos contactos a la vez, con **goteo** (para no saturar el
 > número). Cada envío respeta el consentimiento/opt-out de cada contacto.
->
-> **Estado:** el motor está operativo por **API** (`/api/broadcasts`); la pantalla dedicada está en
-> desarrollo. Mientras tanto, para envíos automáticos recurrentes se recomienda un **workflow** con
-> `whatsapp.send_template` disparado por el evento que corresponda (ver 4.8).
 
-Flujo del envío masivo (cuando se opere por API o al llegar la UI):
-1. **Crear la difusión:** nombre, **plantilla** (aprobada), **audiencia** (una lista de contactos y/o
-   una **etiqueta**), y el **ritmo** (destinatarios por minuto).
-2. **Previsualizar:** el sistema cuenta cuántos contactos con teléfono alcanza.
-3. **Lanzar:** encola los envíos escalonados. Cada uno pasa por las reglas de consentimiento y la
-   ventana de 24 h; los que no cumplan quedan como *omitidos*.
-4. **Seguimiento:** estadísticas en vivo `enviados / fallidos / omitidos`. Puedes **cancelar** una
+Dónde: **Marketing → Difusión masiva** (`/marketing/broadcasts`), roles **ADMIN** y **SUPERVISOR**
+(requiere módulo WhatsApp y permiso de envío).
+
+Paso a paso:
+1. En **Nueva difusión** completa:
+   - **Nombre** de la difusión.
+   - **Plantilla aprobada** (el desplegable solo muestra plantillas de WhatsApp Cloud **aprobadas**;
+     si está vacío, primero crea y aprueba una en *Plantillas*, sección 4.4).
+   - **Audiencia — etiqueta:** elige una etiqueta (envía a todos los contactos con esa etiqueta), y/o
+   - **Audiencia — contactos específicos:** selecciona uno o varios contactos de la lista
+     (Ctrl/Cmd para multi-selección).
+   - **Ritmo (contactos/minuto):** cuántos envíos por minuto (goteo). Por defecto 60.
+   - **(Opcional) Variables de la plantilla (JSON):** ej. `{"1":"Promo de julio","2":"20%"}`.
+2. Pulsa **"Previsualizar destinatarios"** para ver a cuántos contactos con teléfono alcanza.
+3. Pulsa **"Crear difusión"** → queda como **Borrador**.
+4. En la tarjeta de la difusión, pulsa **"Lanzar"** (te pedirá confirmación). Los envíos salen
+   escalonados; cada uno pasa por las reglas de consentimiento y la ventana de 24 h (los que no
+   cumplan quedan como *omitidos*, no fallan).
+5. **Seguimiento en vivo:** la tarjeta muestra una barra de progreso y los contadores
+   **Total / Enviados / Omitidos / Fallidos** (se actualizan solos). Puedes **"Cancelar"** una
    difusión en curso (los pendientes se descartan).
+
+> Consejo: para envíos **recurrentes/automáticos** (no una sola ráfaga), usa un **workflow** con
+> `whatsapp.send_template` disparado por el evento adecuado (sección 4.8). La Difusión masiva es
+> para un envío puntual a una audiencia.
 
 ### 4.10 Marketing: formularios, landing pages, funnels
 
