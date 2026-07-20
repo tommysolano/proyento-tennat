@@ -12,12 +12,20 @@ import { cleanString } from '../utils/validation.js';
 
 const router = Router();
 
-router.use(authMiddleware);
-router.use(roleMiddleware('ADMIN'));
-router.use(requirePermission('availability:manage'));
-router.use(requireModule('calendar'));
+// Este router se monta en `/api` sin subruta propia, asi que recibe CUALQUIER
+// peticion `/api/*` que no haya casado antes. Por eso los guards NO pueden ir
+// en `router.use`: interceptarian todas las rutas montadas despues (appointments,
+// reputation, coupons, communications... y las publicas) rechazando a cualquiera
+// que no sea ADMIN e incluso pidiendo token en endpoints publicos. Se aplican
+// por-ruta para que las peticiones ajenas caigan limpiamente al siguiente router.
+const guards = [
+  authMiddleware,
+  roleMiddleware('ADMIN'),
+  requirePermission('availability:manage'),
+  requireModule('calendar')
+];
 
-router.patch('/availability-rules/:id', async (req, res, next) => {
+router.patch('/availability-rules/:id', ...guards, async (req, res, next) => {
   try {
     const rule = await AvailabilityRule.findOne({
       _id: req.params.id,
@@ -47,7 +55,7 @@ router.patch('/availability-rules/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/availability-rules/:id', async (req, res, next) => {
+router.delete('/availability-rules/:id', ...guards, async (req, res, next) => {
   try {
     const rule = await AvailabilityRule.findOneAndDelete({
       _id: req.params.id,
@@ -66,7 +74,7 @@ router.delete('/availability-rules/:id', async (req, res, next) => {
   }
 });
 
-router.patch('/availability-exceptions/:id', async (req, res, next) => {
+router.patch('/availability-exceptions/:id', ...guards, async (req, res, next) => {
   try {
     const exception = await AvailabilityException.findOne({
       _id: req.params.id,
@@ -93,7 +101,7 @@ router.patch('/availability-exceptions/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/availability-exceptions/:id', async (req, res, next) => {
+router.delete('/availability-exceptions/:id', ...guards, async (req, res, next) => {
   try {
     const exception = await AvailabilityException.findOneAndDelete({
       _id: req.params.id,

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../api.js';
+import { tokenIsExpired } from '../utils/session.js';
 
 const AuthContext = createContext(null);
 
@@ -31,7 +32,27 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(Boolean(token));
 
   useEffect(() => {
+    // Un 401 suelto NO debe cerrar la sesion: un poll en segundo plano (las
+    // notificaciones se refrescan cada 30s) o un endpoint puntual podian
+    // desloguear al usuario aunque su token siguiera vigente. Solo cerramos si
+    // el token realmente expiro; y si expira una sesion impersonada, se vuelve
+    // al actor raiz en vez de tirar toda la sesion.
     function handleUnauthorized() {
+      const current = localStorage.getItem('tenantdesk_token');
+      if (!current || !tokenIsExpired(current)) return;
+
+      const stored = localStorage.getItem('tenantdesk_original_session');
+      if (stored) {
+        try {
+          const root = JSON.parse(stored);
+          if (root?.token && !tokenIsExpired(root.token)) {
+            returnToOriginalSession();
+            return;
+          }
+        } catch {
+          // sesion raiz ilegible: se cae al logout normal
+        }
+      }
       logout();
     }
 

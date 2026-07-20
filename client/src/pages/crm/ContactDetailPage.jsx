@@ -119,15 +119,47 @@ export function ContactDetailPage() {
     'attribution:read_team',
     'attribution:read_assigned'
   ].some((permission) => permissions.has(permission));
+  // Fuentes auxiliares gateadas por modulo: si la empresa no tiene el modulo,
+  // la peticion daria 403 y (al ir en un Promise.all) tumbaria la ficha entera.
+  // Un CALLCENTER opera su contacto asignado aunque su empresa no tenga estos
+  // modulos; esas secciones simplemente no se muestran.
+  const hasInbox = modules.has('inbox') && modules.has('conversations');
+  const hasCalendar = modules.has('calendar');
+  const hasReputation = modules.has('reputation');
+  const hasLoyalty = modules.has('loyalty');
+  const canReadAppointments = hasCalendar && [
+    'appointments:manage',
+    'appointments:manage_team',
+    'appointments:manage_assigned',
+    'appointments:read_team',
+    'appointments:read_assigned',
+    'appointments:update_team',
+    'appointments:update_assigned'
+  ].some((permission) => permissions.has(permission));
+  const canIssueCoupons = hasLoyalty && [
+    'coupons:manage',
+    'coupons:issue_team',
+    'coupons:issue_assigned'
+  ].some((permission) => permissions.has(permission));
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError('');
+    // Una fuente auxiliar caida (sin modulo, sin permiso o error puntual) no
+    // debe bloquear la ficha: se degrada esa seccion con su valor por defecto.
+    const soft = (promise, fallback) => promise.catch(() => fallback);
+    const emptyReputation = { reviews: [], reviewRequests: [], couponRedemptions: [], referrals: [] };
     try {
+      // Nucleo: si esto falla, la ficha no puede renderizarse (p.ej. contacto
+      // fuera de alcance -> 404). Se propaga al AsyncState.
+      const [contactData, timelineData, tagData, fieldData] = await Promise.all([
+        getContact(id), getContactTimeline(id), getTags('contact'), getCustomFields('contact')
+      ]);
+      setContact(contactData); setTimeline(timelineData); setTags(tagData);
+      setFields(fieldData.filter((field) => field.status === 'active'));
+
+      // Auxiliares: en paralelo, cada una tolerante a fallos y gateada por su
+      // modulo/permiso para no disparar peticiones que sabemos que serian 403.
       const [
-        contactData,
-        timelineData,
-        tagData,
-        fieldData,
         userData,
         conversationData,
         appointmentData,
@@ -137,18 +169,16 @@ export function ContactDetailPage() {
         couponData,
         referralProgramData
       ] = await Promise.all([
-        getContact(id), getContactTimeline(id), getTags('contact'), getCustomFields('contact'),
-        user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
-        getConversations({ contactId: id }),
-        getAppointments({ contactId: id }),
-        canReadOpportunities ? getCommercialRelations({ contactId: id }) : Promise.resolve([]),
-        canReadOpportunities ? getOpportunities() : Promise.resolve([]),
-        getContactReputation(id),
-        getCoupons(),
-        user.role === 'ADMIN' ? getReferralPrograms() : Promise.resolve([])
+        user.role === 'CALLCENTER' ? Promise.resolve([]) : soft(getUsers(), []),
+        hasInbox ? soft(getConversations({ contactId: id }), []) : Promise.resolve([]),
+        canReadAppointments ? soft(getAppointments({ contactId: id }), []) : Promise.resolve([]),
+        canReadOpportunities ? soft(getCommercialRelations({ contactId: id }), []) : Promise.resolve([]),
+        canReadOpportunities ? soft(getOpportunities(), []) : Promise.resolve([]),
+        hasReputation ? soft(getContactReputation(id), emptyReputation) : Promise.resolve(emptyReputation),
+        canIssueCoupons ? soft(getCoupons(), []) : Promise.resolve([]),
+        user.role === 'ADMIN' ? soft(getReferralPrograms(), []) : Promise.resolve([])
       ]);
-      setContact(contactData); setTimeline(timelineData); setTags(tagData);
-      setFields(fieldData.filter((field) => field.status === 'active')); setUsers(userData);
+      setUsers(userData);
       setConversations(conversationData);
       setAppointments(appointmentData);
       setRelations(relationData);
@@ -158,7 +188,10 @@ export function ContactDetailPage() {
       setReferralPrograms(referralProgramData);
     } catch (requestError) { setLoadError(requestError.message); }
     finally { setLoading(false); }
-  }, [id, user.role, canReadOpportunities]);
+  }, [
+    id, user.role, canReadOpportunities, canReadAppointments,
+    hasInbox, hasReputation, canIssueCoupons
+  ]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -344,12 +377,12 @@ export function ContactDetailPage() {
             onCreate={createRelation}
             onDelete={removeRelation}
           /> : null}
-          <Card>
+          {hasReputation ? <Card>
             <CardHeader title="Reputacion y fidelizacion" description="Acciones vinculadas a este contacto" />
             <div className="space-y-4 p-5">
               <div className="flex flex-wrap gap-2">
                 <Button disabled={busy} onClick={requestReview}><Send className="h-4 w-4" />Solicitar resena</Button>
-                <Button disabled={busy || !coupons.some((coupon) => coupon.status === 'active')} variant="secondary" onClick={issueContactCoupon}><Gift className="h-4 w-4" />Emitir cupon</Button>
+                {canIssueCoupons ? <Button disabled={busy || !coupons.some((coupon) => coupon.status === 'active')} variant="secondary" onClick={issueContactCoupon}><Gift className="h-4 w-4" />Emitir cupon</Button> : null}
                 {user.role === 'ADMIN' ? <Button disabled={busy || !referralPrograms.some((program) => program.status === 'active')} variant="secondary" onClick={createContactReferral}><Share2 className="h-4 w-4" />Crear referido</Button> : null}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -360,16 +393,16 @@ export function ContactDetailPage() {
               </div>
               {reputation.reviews.slice(0, 3).map((review) => <div key={review._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center gap-1 text-amber-500">{Array.from({ length: review.rating }, (_, index) => <Star key={index} className="h-4 w-4 fill-current" />)}</div><p className="mt-2 text-sm text-slate-600">{review.comment}</p></div>)}
             </div>
-          </Card>
-          <Card>
+          </Card> : null}
+          {hasInbox ? <Card>
             <CardHeader title="Conversaciones" description={`${conversations.length} conversaciones vinculadas`} />
             <div className="space-y-3 p-5">
               {conversations.slice(0, 5).map((conversation) => <Link key={conversation._id} to={`/inbox?conversationId=${conversation._id}`} className="block rounded-lg border border-slate-200 p-3 hover:bg-slate-50"><div className="flex items-center justify-between"><span className="font-semibold text-slate-800">{conversation.channel}</span><Badge tone={conversation.status}>{conversation.status}</Badge></div><p className="mt-1 truncate text-sm text-slate-500">{conversation.lastMessage || 'Sin mensajes'}</p></Link>)}
               {!conversations.length ? <p className="text-sm text-slate-500">No hay conversaciones asociadas.</p> : null}
               {user.role !== 'CALLCENTER' ? <Button variant="secondary" disabled={busy} onClick={openInternalConversation}><MessageSquare className="h-4 w-4" />Abrir conversacion interna</Button> : null}
             </div>
-          </Card>
-          <Card>
+          </Card> : null}
+          {canReadAppointments ? <Card>
             <CardHeader
               title="Citas"
               description={`${appointments.length} citas vinculadas`}
@@ -379,7 +412,7 @@ export function ContactDetailPage() {
               {appointments.slice(0, 5).map((appointment) => <div key={appointment._id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between gap-2"><span className="font-semibold">{appointment.title}</span><Badge tone={appointment.status}>{appointment.status}</Badge></div><p className="mt-1 text-xs text-slate-500">{localDate(appointment.startAt)} - {appointment.assignedTo?.name}</p></div>)}
               {!appointments.length ? <p className="text-sm text-slate-500">No hay citas asociadas.</p> : null}
             </div>
-          </Card>
+          </Card> : null}
           {canAddNote ? <Card>
             <CardHeader title="Agregar nota" />
             <form onSubmit={note} className="space-y-3 p-5"><textarea required name="text" maxLength="5000" className={`${inputClass} min-h-28`} placeholder="Resultado de llamada, objecion o siguiente paso" /><Button type="submit" disabled={busy}><StickyNote className="h-4 w-4" />Guardar nota</Button></form>
