@@ -1,6 +1,7 @@
 import { ActivityLog } from '../../models/ActivityLog.js';
 import { ChannelConfig } from '../../models/ChannelConfig.js';
 import { resolveAccountForConversation } from '../communications/accountGateway.js';
+import { TemplateSyncService } from '../communications/TemplateSyncService.js';
 import { Contact } from '../../models/Contact.js';
 import { Conversation } from '../../models/Conversation.js';
 import { Message } from '../../models/Message.js';
@@ -322,6 +323,7 @@ export class ConversationService {
     text = '',
     type = 'text',
     template = null,
+    templateId = null,
     media = {},
     category = '',
     adminOverride = false,
@@ -447,6 +449,7 @@ export class ConversationService {
               providerTemplate: sanitize(template)
             }
           : {}),
+        ...(templateId ? { templateId: String(templateId) } : {}),
         policyEvaluation: sanitize(policy),
         adminOverride: Boolean(adminOverride),
         overrideReason: adminOverride ? String(overrideReason || '').trim() : ''
@@ -676,6 +679,13 @@ export class ConversationService {
           sandboxMode: Boolean(channelConfig?.settings?.sandboxMode)
         }
       });
+    }
+    // usageCount solo se incrementa tras un envio exitoso de la plantilla.
+    if (result.success && message.metadata?.templateId) {
+      await TemplateSyncService.recordSuccessfulUse(
+        message.metadata.templateId,
+        message.companyId
+      ).catch(() => {});
     }
     realtimeConversation('message.status_updated', conversation, {
       message: message.toJSON()

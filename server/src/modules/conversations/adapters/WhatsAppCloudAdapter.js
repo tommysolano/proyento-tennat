@@ -489,6 +489,106 @@ export class WhatsAppCloudAdapter extends BaseAdapter {
       return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
     }
   }
+
+  /** Resuelve baseUrl/apiVersion/WABA id/accessToken para llamadas de plantillas. */
+  templateApiContext() {
+    const config = this.channelConfig;
+    const credentials = config?.getDecryptedCredentials?.() || {};
+    return {
+      accessToken: credentials.accessToken,
+      wabaId: config?.externalBusinessId || '',
+      apiVersion:
+        config?.settings?.apiVersion ||
+        process.env.WHATSAPP_GRAPH_API_VERSION ||
+        process.env.WHATSAPP_GRAPH_VERSION,
+      baseUrl: (
+        process.env.WHATSAPP_GRAPH_API_BASE_URL || 'https://graph.facebook.com'
+      ).replace(/\/$/, '')
+    };
+  }
+
+  /**
+   * Registra una plantilla en el WABA via Graph API
+   * (POST /{WABA_ID}/message_templates). Devuelve el error real del proveedor si
+   * falla. `components` ya viene construido por TemplateSyncService.
+   */
+  async createMessageTemplate({ name, language, category, components }) {
+    const { accessToken, wabaId, apiVersion, baseUrl } = this.templateApiContext();
+    if (!accessToken || !wabaId || !apiVersion) {
+      return {
+        success: false,
+        error: 'Faltan accessToken, WhatsApp Business Account ID o version de Graph API'
+      };
+    }
+    try {
+      const response = await fetch(`${baseUrl}/${apiVersion}/${wabaId}/message_templates`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, language, category, components })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error?.message || `Meta respondio HTTP ${response.status}`,
+          code: result.error?.code || null
+        };
+      }
+      return {
+        success: true,
+        providerTemplateId: result.id || '',
+        status: result.status || '',
+        category: result.category || category
+      };
+    } catch (error) {
+      return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
+    }
+  }
+
+  /**
+   * Lista las plantillas del WABA (GET /{WABA_ID}/message_templates). Devuelve
+   * `templates` con la forma normalizada { name, language, status, category,
+   * providerTemplateId, rejectedReason, components }.
+   */
+  async listMessageTemplates() {
+    const { accessToken, wabaId, apiVersion, baseUrl } = this.templateApiContext();
+    if (!accessToken || !wabaId || !apiVersion) {
+      return {
+        success: false,
+        error: 'Faltan accessToken, WhatsApp Business Account ID o version de Graph API'
+      };
+    }
+    try {
+      const fields = 'name,language,status,category,id,rejected_reason,components';
+      const response = await fetch(
+        `${baseUrl}/${apiVersion}/${wabaId}/message_templates?fields=${fields}&limit=200`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error?.message || `Meta respondio HTTP ${response.status}`,
+          code: result.error?.code || null
+        };
+      }
+      const templates = (result.data || []).map((item) => ({
+        name: item.name || '',
+        language: item.language || '',
+        status: item.status || '',
+        category: item.category || '',
+        providerTemplateId: item.id || '',
+        rejectedReason: item.rejected_reason || '',
+        components: item.components || []
+      }));
+      return { success: true, templates };
+    } catch (error) {
+      return { success: false, error: `No se pudo conectar con Meta: ${error.message}` };
+    }
+  }
 }
 
 /**

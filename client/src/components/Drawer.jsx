@@ -4,7 +4,8 @@ import { Overlay } from './Overlay.jsx';
 
 const sizeClasses = {
   md: 'max-w-[480px]',
-  lg: 'max-w-[640px]'
+  lg: 'max-w-[640px]',
+  xl: 'max-w-[920px]'
 };
 
 /**

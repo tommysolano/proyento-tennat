@@ -5,6 +5,7 @@ import { JobService } from '../modules/jobs/JobService.js';
 import { getChannelAdapter } from '../modules/conversations/adapters/index.js';
 import { WhatsAppWebhookService } from '../modules/conversations/WhatsAppWebhookService.js';
 import { WhatsAppQualityService } from '../modules/communications/WhatsAppQualityService.js';
+import { TemplateSyncService } from '../modules/communications/TemplateSyncService.js';
 import { logger } from '../utils/logger.js';
 import { OperationalAlertService } from '../modules/ops/OperationalAlertService.js';
 
@@ -96,16 +97,33 @@ router.post('/whatsapp/:channelConfigId', async (req, res, next) => {
       );
     }
 
+    // Eventos de estado de plantilla (message_template_status_update): actualizan
+    // la plantilla local y notifican al ADMIN. Tampoco necesitan el pipeline de
+    // mensajes ni deben romper el 200.
+    const templateChanges = TemplateSyncService.parseStatusChanges(req.body);
+    if (templateChanges.length) {
+      await TemplateSyncService.handleStatusWebhook(config, req.body).catch((error) =>
+        logger.warn('webhook.template_status_failed', {
+          channelConfigId: config._id,
+          error: error.message
+        })
+      );
+    }
+
     const hasStatuses = (req.body?.entry || []).some((entry) =>
       (entry.changes || []).some((change) => change.value?.statuses?.length)
     );
     const hasMessages = (req.body?.entry || []).some((entry) =>
       (entry.changes || []).some((change) => change.value?.messages?.length)
     );
-    // Si el payload solo traia actualizaciones de calidad, no se encola un job de
-    // mensajes vacio.
-    if (qualityChanges.length && !hasStatuses && !hasMessages) {
-      return res.status(200).json({ received: true, qualityUpdates: qualityChanges.length });
+    // Si el payload solo traia actualizaciones de calidad o de estado de
+    // plantilla, no se encola un job de mensajes vacio.
+    if ((qualityChanges.length || templateChanges.length) && !hasStatuses && !hasMessages) {
+      return res.status(200).json({
+        received: true,
+        qualityUpdates: qualityChanges.length,
+        templateUpdates: templateChanges.length
+      });
     }
 
     const job = await JobService.enqueue({

@@ -20,6 +20,8 @@ import {
   preserveAssignedScope
 } from '../modules/conversations/conversationScope.js';
 import { canonicalChannel } from '../modules/conversations/adapters/index.js';
+import { resolveAccountForConversation } from '../modules/communications/accountGateway.js';
+import { TemplateSyncService } from '../modules/communications/TemplateSyncService.js';
 import { assignedResourceScope, validateCrmAssignee } from '../utils/crmScope.js';
 import { cleanString, isValidObjectId } from '../utils/validation.js';
 import { mediaUpload } from '../middleware/mediaUploadMiddleware.js';
@@ -411,7 +413,8 @@ router.post(
       ? await MessageTemplate.findOne({
           _id: req.body.templateId,
           companyId: req.user.companyId,
-          status: 'active'
+          // Usable = quick reply local (active) o plantilla HSM aprobada por Meta.
+          status: { $in: ['active', 'approved'] }
         })
       : null;
     if (req.body.templateId && !template) throw badRequest('Plantilla no disponible');
@@ -424,6 +427,13 @@ router.post(
       throw badRequest('La plantilla no corresponde al canal de la conversacion');
     }
     const providerTemplate = template?.type === 'whatsapp_template';
+    if (providerTemplate) {
+      // Una plantilla HSM solo sale por un numero con API de Meta. Si la
+      // conversacion resuelve a un numero QR, se rechaza con un error claro en
+      // vez de simular un envio que Meta no soporta.
+      const account = await resolveAccountForConversation(conversation);
+      TemplateSyncService.assertCloudAccountForTemplate(account);
+    }
     const message = await ConversationService.createOutboundMessage({
       user: req.user,
       conversation,
@@ -431,11 +441,14 @@ router.post(
       type: providerTemplate ? 'template' : req.body.type || 'text',
       category: template?.messageCategory || req.body.category || '',
       template: providerTemplate
-        ? {
-            name: template.providerTemplateId || template.name,
-            language: { code: template.language }
-          }
+        ? TemplateSyncService.buildOutboundTemplate(
+            template,
+            req.body.templateVariables && typeof req.body.templateVariables === 'object'
+              ? req.body.templateVariables
+              : {}
+          )
         : null,
+      templateId: providerTemplate ? template._id : null,
       media: req.body.media || {},
       adminOverride: req.body.adminOverride === true,
       overrideReason: cleanString(req.body.overrideReason)

@@ -125,6 +125,8 @@ const activityLogSchema = new mongoose.Schema(
         'message_template_created',
         'message_template_updated',
         'message_template_disabled',
+        'message_template_registered',
+        'message_template_synced',
         'contact_created_from_inbound',
         'routing_rule_created',
         'routing_rule_updated',

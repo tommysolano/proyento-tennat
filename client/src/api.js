@@ -517,6 +517,19 @@ export const updateMessageTemplate = (id, payload) =>
   });
 export const disableMessageTemplate = (id) =>
   apiRequest(`/message-templates/${id}/disable`, { method: 'PATCH', body: '{}' });
+export const registerMessageTemplate = (id) =>
+  apiRequest(`/message-templates/${id}/register`, { method: 'POST', body: '{}' });
+export const syncMessageTemplates = (id) =>
+  apiRequest(id ? `/message-templates/${id}/sync` : '/message-templates/sync', {
+    method: 'POST',
+    body: '{}'
+  });
+export const duplicateMessageTemplate = (id) =>
+  apiRequest(`/message-templates/${id}/duplicate`, { method: 'POST', body: '{}' });
+export const deleteMessageTemplate = (id) =>
+  apiRequest(`/message-templates/${id}`, { method: 'DELETE' });
+export const getTemplateCloudStatus = () =>
+  apiRequest('/message-templates/meta/cloud-status');
 
 export function webhookUrl(channelConfigId) {
   const apiBase = API_URL.replace(/\/api\/?$/, '');

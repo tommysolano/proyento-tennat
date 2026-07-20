@@ -118,6 +118,78 @@ responde cada conversacion", siempre scoped por `companyId`:
   Phone Number ID en Graph API (`quality_rating`, `messaging_limit`) y actualiza;
   devuelve el error real del proveedor si falla.
 
+## Ciclo de vida de plantillas (HSM)
+
+Las plantillas de WhatsApp (`channel: whatsapp_cloud`, `type: whatsapp_template`)
+tienen ciclo completo: se redactan localmente (`draft`), se **registran** en el
+WABA via Graph API y su estado se **sincroniza** desde Meta. La UI esta en
+**Inbox -> Plantillas de mensajes**. El consumidor de
+`accountGateway.getDefaultCloudAccount(companyId)` es este flujo.
+
+### Modelo (`MessageTemplate`, retrocompatible)
+
+- `headerType` (`none|text|image|document|video`), `headerText`, `headerMediaUrl`.
+- `footer`, `buttons` (`[{ type: quick_reply|url|phone, text, url, phone }]`, max 3;
+  `url` requiere URL, `phone` requiere numero; validado a nivel de esquema).
+- `metaCategory` (`MARKETING|UTILITY|AUTHENTICATION`): categoria que se envia a
+  Meta. Default derivado de `messageCategory` (mapeo suave, ver abajo).
+- `status`: se agregan los estados del ciclo Meta (`draft`, `pending`, `approved`,
+  `rejected`, `disabled`) manteniendo los legados. `pending_provider_approval` se
+  muestra como `pending`.
+- `variableSamples` (`[{ key, example }]`): Meta EXIGE un ejemplo por variable del
+  cuerpo. `variables` sigue guardando los nombres; los ejemplos se indexan por
+  nombre o por posicion (`{{1}}` -> `key: '1'`).
+- `rejectionReason`, `syncedAt`, `usageCount` (se incrementa **solo** tras un
+  envio exitoso de la plantilla, sea chat, workflow o campana).
+
+Mapeo de categoria (documentado): `commercial`/`reply` -> `MARKETING`;
+`transactional`/`operational` -> `UTILITY`. Un `metaCategory` explicito manda.
+
+### Registro y sincronizacion (`TemplateSyncService`)
+
+- `POST /api/message-templates/:id/register`: valida localmente (nombre en
+  snake_case, un ejemplo por variable, botones validos), resuelve
+  `getDefaultCloudAccount` y hace `POST /{WABA_ID}/message_templates` con los
+  `components` construidos desde el modelo (HEADER/BODY/FOOTER/BUTTONS con
+  ejemplos). Guarda `providerTemplateId` y `status='pending'`. Si la cuenta cloud
+  esta incompleta, reporta el campo exacto que falta (`cloudAccountMissingFields`).
+  Devuelve el error real de Meta si el registro falla ("Probar con Meta").
+- `POST /api/message-templates/sync` (global) y `.../:id/sync`: hace
+  `GET /{WABA_ID}/message_templates` y reconcilia por nombre+idioma: actualiza
+  `status`/`rejectionReason`/`providerTemplateId`/`syncedAt` e **importa** como
+  registros locales las plantillas que existen en Meta pero no localmente.
+- `POST /api/message-templates/:id/duplicate`: una plantilla aprobada NO se edita;
+  se duplica como borrador editable (sin `providerTemplateId`, `usageCount` a 0).
+- `DELETE /api/message-templates/:id`: elimina la copia local (no la borra de Meta).
+- `GET /api/message-templates/meta/cloud-status`: indica si hay una cuenta cloud
+  completa (la UI muestra un EmptyState accionable hacia **Numeros de WhatsApp**
+  cuando falta).
+
+Solo un `draft` cambia su estructura (el PATCH rechaza con 409 editar una
+plantilla ya enviada a Meta).
+
+### Envio
+
+El punto de envio de plantillas construye los `components` con las variables
+sustituidas (`buildOutboundTemplate`, cae al ejemplo si no se pasa valor) y usa la
+cuenta resuelta por el gateway. Si la conversacion resuelve a un numero **QR**, se
+rechaza con un error claro ("El numero QR no admite plantillas") en vez de simular
+un exito. Al enviar OK, `usageCount += 1`.
+
+### Estado desde el webhook
+
+El webhook de Meta trae `message_template_status_update`; se procesa junto al de
+calidad (sin pipeline de mensajes, sin romper el 200): actualiza `status`/
+`rejectionReason`/`syncedAt` de la plantilla y **notifica al ADMIN** de la empresa
+(`template_status_changed`).
+
+### Caveat de cabecera de media
+
+El registro de una cabecera de imagen/documento/video exige a Meta un
+`header_handle` subido por el upload reanudable; aqui se pasa la `headerMediaUrl`
+publica como ejemplo. La subida binaria del handle queda como paso manual con
+credenciales reales. Los tests no llaman a Meta (adapter mockeado).
+
 ## Limites externos
 
 No se aprovisionan cuentas, numeros, permisos ni templates. Quedan pendientes
