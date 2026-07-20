@@ -1,5 +1,6 @@
 import { LoaderCircle } from 'lucide-react';
-import { ErrorState } from './AsyncState.jsx';
+import { ErrorState, PermissionState } from './AsyncState.jsx';
+import { friendlyErrorMessage } from '../utils/errors.js';
 
 export const inputClass = 'w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100';
 
@@ -22,6 +23,12 @@ export function CrmLoading({ label = 'Cargando CRM...' }) {
 }
 
 export function CrmLoadError({ message, onRetry }) {
+  // Nunca mostramos claves tecnicas del backend: un 403 de permisos/modulo se
+  // convierte en un mensaje humano y se usa el estado amable en lugar del rojo.
+  const friendly = friendlyErrorMessage(message);
+  if (friendly !== message) {
+    return <PermissionState description={friendly} onAction={onRetry} actionLabel="Reintentar" />;
+  }
   return <ErrorState description={message || 'No se pudo cargar la informacion.'} onAction={onRetry} />;
 }
 

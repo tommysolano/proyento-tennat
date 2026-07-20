@@ -57,9 +57,14 @@ test('cada punto de apertura pasa el contexto que le corresponde', () => {
   assert.match(companiesSection, /contextLabel=\{row\.name\}/);
   assert.match(companyDetail, /companyId=\{id\} contextLabel=\{company\.name\}/);
 
-  // El header es la apertura global: no debe acotarse a ninguna empresa.
+  // El header pasa contexto SOLO durante una impersonacion: acota a la empresa
+  // (o cartera) del usuario actual, y sin impersonacion abre global.
+  assert.match(header, /if \(!impersonator\) return \{\};/);
+  assert.match(header, /companyId,\s*\n\s*contextLabel: tenant\?\.company\?\.name/);
+  assert.match(header, /distributorId, contextLabel: tenant\?\.distributor\?\.name/);
+  // El JSX del selector se alimenta del contexto calculado, no de un companyId fijo.
   const headerSwitcher = header.slice(header.indexOf('<ImpersonationSwitcher'));
-  assert.equal(/companyId=/.test(headerSwitcher), false);
+  assert.match(headerSwitcher, /\{\.\.\.switcherContext\}/);
 });
 
 test('sin agentes asignables se explica el motivo y el payload no cambia', () => {

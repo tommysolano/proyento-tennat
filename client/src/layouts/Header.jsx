@@ -42,6 +42,32 @@ export function Header({ onMenuClick }) {
   const [criticalAlertCount, setCriticalAlertCount] = useState(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  // "Cambiar de usuario" propone por defecto el contexto ACTUAL solo durante una
+  // impersonacion: si estas dentro de una empresa (ADMIN/SUPERVISOR/CALLCENTER)
+  // acota a esa empresa; si estas dentro de un distribuidor, a su cartera. Sin
+  // impersonacion abre global, como antes. El actor raiz sigue decidiendo el
+  // alcance real (y puede ampliar con el toggle del propio selector).
+  const switcherContext = (() => {
+    if (!impersonator) return {};
+    if (['ADMIN', 'SUPERVISOR', 'CALLCENTER'].includes(user?.role)) {
+      const companyId = tenant?.company?._id || user?.companyId;
+      if (companyId) {
+        return {
+          companyId,
+          contextLabel: tenant?.company?.name,
+          allowCompanyAdmin: user?.role !== 'ADMIN'
+        };
+      }
+    }
+    if (user?.role === 'DISTRIBUTOR') {
+      const distributorId = tenant?.distributor?._id || user?.distributorId;
+      if (distributorId) {
+        return { distributorId, contextLabel: tenant?.distributor?.name };
+      }
+    }
+    return {};
+  })();
   const canReceiveNotifications = canAccessPath('/notifications', access);
   const canReadOpsAlerts = ['SUPERADMIN', 'ADMIN'].includes(user?.role);
   const currentSection = useMemo(() => {
@@ -274,6 +300,7 @@ export function Header({ onMenuClick }) {
       <ImpersonationSwitcher
         open={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
+        {...switcherContext}
       />
     </header>
   );

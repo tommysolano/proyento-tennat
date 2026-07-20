@@ -238,6 +238,33 @@ export const ROLE_PERMISSIONS = {
   ]
 };
 
+/**
+ * Minimo operativo por rol: los permisos de LECTURA por dominio sin los cuales
+ * la interfaz de trabajo diario del usuario se rompe (p.ej. ver oportunidades de
+ * su equipo/asignadas al abrir el calendario). Se derivan del catalogo para no
+ * duplicar: la familia `read_*` mas notificaciones. La migracion de reparacion
+ * usa este minimo para no pisar personalizaciones legitimas: solo restaura lo
+ * que impide operar, nunca los permisos de escritura/gestion.
+ */
+function minimumFor(role) {
+  const all = ROLE_PERMISSIONS[role] || [];
+  const readFamily = all.filter((permission) =>
+    /:(read|read_team|read_assigned|read_self)$/.test(permission)
+  );
+  const essentials = all.filter((permission) => permission === 'notifications:read');
+  return Array.from(new Set([...readFamily, ...essentials]));
+}
+
+export const ROLE_MINIMUM_PERMISSIONS = {
+  SUPERVISOR: minimumFor('SUPERVISOR'),
+  CALLCENTER: minimumFor('CALLCENTER')
+};
+
+/** Permisos por defecto completos del rol (copia inmutable). */
+export function defaultPermissionsForRole(role) {
+  return [...(ROLE_PERMISSIONS[role] || [])];
+}
+
 export function hasPermission(role, permission) {
   return role === 'SUPERADMIN' || ROLE_PERMISSIONS[role]?.includes(permission) || false;
 }

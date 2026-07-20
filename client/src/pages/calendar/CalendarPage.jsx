@@ -145,8 +145,18 @@ function AppointmentCard({ item, busy, onStatus, onReschedule }) {
 }
 
 export function CalendarPage() {
-  const { user } = useAuth();
+  const { user, access } = useAuth();
   const [searchParams] = useSearchParams();
+  const permissions = new Set(access?.permissions || []);
+  const modules = new Set(access?.modules || []);
+  // Las oportunidades solo alimentan el selector del formulario de cita; si el
+  // usuario no puede leerlas (o su empresa no tiene el modulo), esa parte se
+  // degrada en vez de romper todo el calendario.
+  const canReadOpportunities = modules.has('opportunities') && [
+    'opportunities:manage',
+    'opportunities:read_team',
+    'opportunities:read_assigned'
+  ].some((permission) => permissions.has(permission));
   const [view, setView] = useState(() =>
     views.includes(searchParams.get('view')) ? searchParams.get('view') : 'week'
   );
@@ -195,26 +205,27 @@ export function CalendarPage() {
       })
         .then((data) => ({ data }))
         .catch((requestError) => ({ error: requestError.message }));
-      const [
-        calendarData,
-        appointmentData,
-        metricData,
-        contactData,
-        opportunityData,
-        userData,
-        analyticsResult
-      ] =
-        await Promise.all([
-          getCalendars({ status: 'active' }),
-          getAppointments(requestFilters),
-          getAppointmentMetrics().catch(() => ({})),
-          getContacts({ limit: 500 }),
-          getOpportunities(),
-          user.role === 'CALLCENTER' ? Promise.resolve([]) : getUsers(),
-          analyticsRequest
-        ]);
+      // Una fuente auxiliar caida (sin modulo/permiso o error puntual) no debe
+      // tumbar el calendario entero: se degrada esa parte con su valor vacio.
+      const soft = (promise, fallback) => promise.catch(() => fallback);
+      // Nucleo: calendarios y citas. Si esto falla, el calendario no puede
+      // mostrarse y el error se propaga al AsyncState.
+      const [calendarData, appointmentData] = await Promise.all([
+        getCalendars({ status: 'active' }),
+        getAppointments(requestFilters)
+      ]);
       setCalendars(calendarData);
       setAppointments(appointmentData);
+
+      // Auxiliares en paralelo, tolerantes a fallos y gateadas por permiso.
+      const [metricData, contactData, opportunityData, userData, analyticsResult] =
+        await Promise.all([
+          soft(getAppointmentMetrics(), {}),
+          soft(getContacts({ limit: 500 }), []),
+          canReadOpportunities ? soft(getOpportunities(), []) : Promise.resolve([]),
+          user.role === 'CALLCENTER' ? Promise.resolve([]) : soft(getUsers(), []),
+          analyticsRequest
+        ]);
       setMetrics(metricData);
       setContacts(contactData);
       setOpportunities(opportunityData);
@@ -227,6 +238,7 @@ export function CalendarPage() {
       setLoading(false);
     }
   }, [
+    canReadOpportunities,
     range.start.getTime(),
     range.end.getTime(),
     searchParams,
@@ -452,12 +464,12 @@ export function CalendarPage() {
                 {contacts.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
               </select>
             </label>
-            <label className="text-xs font-semibold">Oportunidad
+            {canReadOpportunities ? <label className="text-xs font-semibold">Oportunidad
               <select name="opportunityId" defaultValue={searchParams.get('opportunityId') || ''} className={inputClass}>
                 <option value="">Sin oportunidad</option>
                 {opportunities.map((item) => <option key={item._id} value={item._id}>{item.title}</option>)}
               </select>
-            </label>
+            </label> : null}
             {user.role !== 'CALLCENTER' ? (
               <label className="text-xs font-semibold">Responsable
                 <select name="assignedTo" className={inputClass}>
