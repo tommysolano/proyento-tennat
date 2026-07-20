@@ -1,5 +1,14 @@
 import { Router } from 'express';
-import { MODULE_REGISTRY, getRegisteredModule } from '../core/modules/moduleRegistry.js';
+import {
+  MODULE_REGISTRY,
+  getRegisteredModule,
+  moduleRequires,
+  moduleRecommends
+} from '../core/modules/moduleRegistry.js';
+import {
+  traceScopeModules,
+  explainModuleForScope
+} from '../core/modules/moduleAccess.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requirePermission } from '../middleware/permissionMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
@@ -792,6 +801,53 @@ router.get('/modules', requirePermission('modules:manage'), async (req, res, nex
     if (req.query.scopeId) filter.scopeId = req.query.scopeId;
     const entitlements = await ModuleEntitlement.find(filter).sort({ createdAt: -1 }).limit(500);
     res.json({ registry: MODULE_REGISTRY, entitlements });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Matriz: estado EFECTIVO de cada modulo para un alcance (distribuidor o plan de
+// plataforma), con su origen y dependencias. Es capa de presentacion sobre la
+// misma resolucion que consume requireModule.
+router.get('/modules/matrix', requirePermission('modules:manage'), async (req, res, next) => {
+  try {
+    const scopeType = cleanString(req.query.scopeType);
+    const scopeId = cleanString(req.query.scopeId);
+    if (!['distributor', 'platform_plan'].includes(scopeType)) {
+      return res.status(400).json({ message: 'scopeType debe ser distributor o platform_plan' });
+    }
+    if (!isValidObjectId(scopeId)) {
+      return res.status(400).json({ message: 'scopeId invalido' });
+    }
+    const { modules } = await traceScopeModules(scopeType, scopeId);
+    res.json({
+      scopeType,
+      scopeId,
+      modules: modules.map((module) => ({
+        ...module,
+        requires: moduleRequires(module.key),
+        recommends: moduleRecommends(module.key)
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Diagnostico "por que veo/no veo X": cadena de resolucion real de un modulo.
+router.get('/modules/diagnose', requirePermission('modules:manage'), async (req, res, next) => {
+  try {
+    const scopeType = cleanString(req.query.scopeType);
+    const scopeId = cleanString(req.query.scopeId);
+    const moduleKey = cleanString(req.query.moduleKey).toLowerCase();
+    if (!['distributor', 'platform_plan', 'company'].includes(scopeType)) {
+      return res.status(400).json({ message: 'scopeType invalido' });
+    }
+    if (!isValidObjectId(scopeId) || !getRegisteredModule(moduleKey)) {
+      return res.status(400).json({ message: 'scopeId o moduleKey invalido' });
+    }
+    const diagnosis = await explainModuleForScope(scopeType, scopeId, moduleKey);
+    res.json({ scopeType, scopeId, ...diagnosis, requires: moduleRequires(moduleKey), recommends: moduleRecommends(moduleKey) });
   } catch (error) {
     next(error);
   }

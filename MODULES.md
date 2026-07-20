@@ -39,6 +39,19 @@ Cada entrada define `key`, nombre, descripcion, version, estado,
 Los modulos no implementados permanecen con estado `planned` y desactivados
 por defecto.
 
+## Dependencias entre modulos
+
+El registro declara dependencias:
+
+- `requires` (duras): `whatsapp -> [conversations]`, `inbox -> [conversations]`.
+  Activar un modulo cuyo `requires` no esta cubierto ofrece activacion en
+  cascada (previa confirmacion) en la UI; desactivar uno del que otros dependen
+  avisa que se rompen (`modulesDependingOn`).
+- `recommends` (suaves): `inbox -> [media, realtime]`. No bloquean; solo sugieren.
+
+Helpers en `moduleRegistry.js`: `moduleRequires`, `moduleRecommends`,
+`resolveRequiredModules` (cierre transitivo) y `modulesDependingOn`.
+
 ## Entitlements
 
 `ModuleEntitlement` soporta:
@@ -53,6 +66,52 @@ En la UI de plataforma se gestionan overrides para plan de plataforma y
 distribuidor. Los planes comerciales pueden declarar `includedModules`. Las
 rutas comerciales usan `requireModule('billing')`, por lo que desactivar el
 modulo bloquea billing en backend aunque la navegacion siga siendo visible.
+
+## Resolucion con traza (fuente unica de verdad)
+
+`moduleAccess.js` resuelve los modulos efectivos y produce la **cadena de
+resolucion** por modulo. `getDistributorAuthorizedModules` y
+`getCompanyAuthorizedModules` (lo que consume `requireModule`) delegan en
+`traceDistributorModules` / `traceCompanyModules`, por lo que el diagnostico es
+exactamente la logica del backend, no una copia.
+
+Orden real (de arriba hacia abajo):
+
+- **Distribuidor**: `registry_default` (informativo, no se aplica) -> base
+  (`core` + `platform_plan.includedModules` + `distributor.settings.enabledModules`)
+  -> override `platform_plan` -> override `platform_subscription` -> override
+  `distributor`.
+- **Empresa**: sobre lo anterior, `company_plan` (`subscription.planId.includedModules`)
+  ∩ autorizacion del distribuidor (`distributor_gate`) -> override
+  `company_subscription` (solo resta) -> override `company` (solo resta).
+
+`explainModuleForScope(scopeType, scopeId, moduleKey)` devuelve `{ enabled,
+origin, blockedBy, chain }`, marcando el eslabon que habilita o bloquea.
+
+### Endpoints
+
+- SUPERADMIN: `GET /superadmin/modules/matrix?scopeType=&scopeId=` (estado
+  efectivo por distribuidor o plan de plataforma) y
+  `GET /superadmin/modules/diagnose?scopeType=&scopeId=&moduleKey=`. El toggle
+  sigue usando `PUT /superadmin/modules/entitlements` (sin cambios).
+- DISTRIBUTOR: `GET /distributor/modules/diagnose?moduleKey=` (por que un modulo
+  esta o no autorizado a mi) y
+  `GET /distributor/companies/:id/modules/diagnose?moduleKey=` (cadena completa
+  a nivel empresa).
+
+La UI de SUPERADMIN pinta la matriz con toggles (optimistic UI + revert) y un
+icono de diagnostico por modulo; el editor de planes del distribuidor gestiona
+`includedModules` con toggles (los no autorizados quedan deshabilitados con
+tooltip) y expone el mismo diagnostico.
+
+## Refresco de modulos sin re-login
+
+El session access (`buildSessionAccess`) se reconstruye en `/auth/login`,
+`/auth/me` y **siempre** al impersonar. `AuthContext.refreshSession()` llama a
+`/auth/me` y actualiza `access.modules`, por lo que el sidebar se actualiza sin
+cerrar sesion. Como no hay push SSE de cambios de entitlement, tras editar
+plan/entitlement la UI avisa: "Los usuarios activos veran los cambios al
+recargar su sesion".
 
 Las rutas de Fase 3 requieren `crm` y, segun el recurso, `contacts`,
 `opportunities` o `tasks`. Estos modulos estan activos y

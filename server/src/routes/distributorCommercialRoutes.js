@@ -1,10 +1,16 @@
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
-import { MODULE_REGISTRY, getRegisteredModule } from '../core/modules/moduleRegistry.js';
+import {
+  MODULE_REGISTRY,
+  getRegisteredModule,
+  moduleRequires,
+  moduleRecommends
+} from '../core/modules/moduleRegistry.js';
 import {
   assertDistributorModulesAuthorized,
   getCompanyAuthorizedModules,
-  getDistributorAuthorizedModules
+  getDistributorAuthorizedModules,
+  explainModuleForScope
 } from '../core/modules/moduleAccess.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireModule } from '../middleware/moduleMiddleware.js';
@@ -170,7 +176,9 @@ router.get('/modules', requirePermission('modules:read'), async (req, res, next)
     res.json({
       modules: MODULE_REGISTRY.map((module) => ({
         ...module,
-        authorized: authorizedModules.has(module.key)
+        authorized: authorizedModules.has(module.key),
+        requires: moduleRequires(module.key),
+        recommends: moduleRecommends(module.key)
       })),
       authorizedModuleKeys: [...authorizedModules]
     });
@@ -178,6 +186,46 @@ router.get('/modules', requirePermission('modules:read'), async (req, res, next)
     next(error);
   }
 });
+
+// Diagnostico "por que este modulo (no) esta autorizado a mi distribuidor".
+router.get('/modules/diagnose', requirePermission('modules:read'), async (req, res, next) => {
+  try {
+    const moduleKey = cleanString(req.query.moduleKey).toLowerCase();
+    if (!getRegisteredModule(moduleKey)) {
+      return res.status(400).json({ message: 'moduleKey invalido' });
+    }
+    const diagnosis = await explainModuleForScope('distributor', req.user.distributorId, moduleKey);
+    res.json({ scopeType: 'distributor', ...diagnosis, requires: moduleRequires(moduleKey), recommends: moduleRecommends(moduleKey) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Diagnostico a nivel empresa (empresa + modulo): cadena completa registro ->
+// plan plataforma -> distribuidor -> plan comercial -> estado final.
+router.get(
+  '/companies/:id/modules/diagnose',
+  requirePermission('companies:manage'),
+  async (req, res, next) => {
+    try {
+      const company = await ownedCompany(req.user.distributorId, req.params.id);
+      const moduleKey = cleanString(req.query.moduleKey).toLowerCase();
+      if (!getRegisteredModule(moduleKey)) {
+        return res.status(400).json({ message: 'moduleKey invalido' });
+      }
+      const diagnosis = await explainModuleForScope('company', company._id, moduleKey);
+      res.json({
+        scopeType: 'company',
+        companyId: company._id,
+        ...diagnosis,
+        requires: moduleRequires(moduleKey),
+        recommends: moduleRecommends(moduleKey)
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.get(
   '/billing/overview',

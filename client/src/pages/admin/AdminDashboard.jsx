@@ -42,6 +42,10 @@ import { contactStatusLabel, formatDate } from '../../utils/contacts.js';
 const inputClass =
   'w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100';
 
+// Techo por peticion del dashboard: si una fuente no responde a tiempo, se
+// degrada en vez de dejar el spinner "Cargando..." indefinido.
+const DASHBOARD_REQUEST_TIMEOUT_MS = 20000;
+
 const permissionEffects = {
   manage: 'Permite crear, editar y administrar este recurso.',
   read: 'Permite consultar este recurso.',
@@ -101,65 +105,66 @@ export function AdminDashboard() {
     setCommercialError('');
     setModuleWarning('');
 
+    // soft(): una llamada gateada por modulo (o lenta/colgada) NUNCA debe romper
+    // ni bloquear todo el dashboard. Cada fuente degrada a un fallback y su fallo
+    // se reporta aparte. El timeout evita el spinner infinito si una peticion no
+    // resuelve (fetch no lleva timeout propio). Mismo patron que la ficha de
+    // contacto y el calendario.
+    const issues = [];
+    const soft = (promise, fallback, label) =>
+      Promise.race([
+        Promise.resolve(promise).catch((requestError) => {
+          issues.push(`${label}: ${requestError.message}`);
+          return fallback;
+        }),
+        new Promise((resolve) =>
+          setTimeout(() => {
+            issues.push(`${label}: sin respuesta a tiempo`);
+            resolve(fallback);
+          }, DASHBOARD_REQUEST_TIMEOUT_MS)
+        )
+      ]);
+
     try {
-      const [
-        userData,
-        activityData,
-        companyData,
-        subscriptionData,
-        permissionData
-      ] =
+      const [userData, activityData, companyData, subscriptionData, permissionData] =
         await Promise.all([
-          getUsers(),
-          getActivityLogs(),
-          getCompanies(),
-          getSubscriptions(),
-          getPermissionTemplates()
+          soft(getUsers(), [], 'usuarios'),
+          soft(getActivityLogs(), [], 'actividad'),
+          soft(getCompanies(), [], 'empresa'),
+          soft(getSubscriptions(), [], 'suscripcion'),
+          soft(getPermissionTemplates(), { modules: [], templates: [], availablePermissions: {} }, 'permisos')
         ]);
-      const optionalErrors = [];
-      const [contactData, crmData] = canUseContacts
-        ? await Promise.all([getContacts(), getCrmDashboard()]).catch((requestError) => {
-            optionalErrors.push(requestError.message);
-            return [[], null];
-          })
-        : [[], null];
-      const inboxData = canUseInbox
-        ? await getInboxMetrics().catch((requestError) => {
-            optionalErrors.push(requestError.message);
-            return null;
-          })
-        : null;
       setUsers(userData);
-      setContacts(contactData);
       setActivities(activityData);
       setCompany(companyData[0] || null);
       setSubscription(subscriptionData[0] || null);
+      setPermissionCatalog(permissionData);
+
+      const [contactData, crmData] = canUseContacts
+        ? await Promise.all([soft(getContacts(), [], 'contactos'), soft(getCrmDashboard(), null, 'crm')])
+        : [[], null];
+      const inboxData = canUseInbox ? await soft(getInboxMetrics(), null, 'inbox') : null;
+      setContacts(contactData);
       setCrmSummary(crmData);
       setInboxSummary(inboxData);
-      setPermissionCatalog(permissionData);
-      setModuleWarning([...new Set(optionalErrors)].join(' '));
 
       const [settingsData, onboardingData] = await Promise.all([
-        getCompanySettings(),
-        getCompanyOnboarding()
+        soft(getCompanySettings(), null, 'configuracion'),
+        soft(getCompanyOnboarding(), null, 'onboarding')
       ]);
       setCompanySettings(settingsData);
       setOnboarding(onboardingData);
 
-      const billingData = canUseBilling
-        ? await Promise.all([
-            getCompanyInvoices(),
-            getCompanyPayments()
-          ]).catch((billingError) => {
-            setCommercialError(billingError.message);
-            return null;
-          })
-        : null;
-      if (billingData) {
-        setCommercialError('');
-        setCompanyInvoices(billingData[0]);
-        setCompanyPayments(billingData[1]);
+      if (canUseBilling) {
+        const [invoices, payments] = await Promise.all([
+          soft(getCompanyInvoices(), null, 'facturas'),
+          soft(getCompanyPayments(), null, 'pagos')
+        ]);
+        if (invoices) setCompanyInvoices(invoices);
+        if (payments) setCompanyPayments(payments);
       }
+
+      setModuleWarning([...new Set(issues)].join(' '));
     } catch (requestError) {
       setError(requestError.message);
     } finally {

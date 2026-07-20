@@ -67,6 +67,10 @@ export const MODULE_REGISTRY = [
     enabledByDefault: true,
     requiredPermissions: [],
     requiredPlanFeatures: [],
+    // El inbox opera SOBRE conversaciones: sin ellas no hay bandeja.
+    requires: ['conversations'],
+    // Recomendados (no duros): media para adjuntos, realtime para vivo.
+    recommends: ['media', 'realtime'],
     status: 'active'
   },
   {
@@ -77,6 +81,8 @@ export const MODULE_REGISTRY = [
     enabledByDefault: true,
     requiredPermissions: [],
     requiredPlanFeatures: [],
+    // WhatsApp entra por el pipeline de conversaciones/mensajes.
+    requires: ['conversations'],
     status: 'active'
   },
   {
@@ -283,4 +289,37 @@ export const MODULE_REGISTRY = [
 
 export function getRegisteredModule(moduleKey) {
   return MODULE_REGISTRY.find((module) => module.key === moduleKey) || null;
+}
+
+/** Dependencias duras (requires) de un modulo. Vacio si no tiene. */
+export function moduleRequires(moduleKey) {
+  return getRegisteredModule(moduleKey)?.requires || [];
+}
+
+/** Dependencias recomendadas (recommends) de un modulo. Vacio si no tiene. */
+export function moduleRecommends(moduleKey) {
+  return getRegisteredModule(moduleKey)?.recommends || [];
+}
+
+/**
+ * Cierre transitivo de las dependencias duras de `moduleKey` (sin incluirlo).
+ * Ej: whatsapp -> [conversations]; si conversations tuviera requires, tambien.
+ */
+export function resolveRequiredModules(moduleKey, seen = new Set()) {
+  for (const dependency of moduleRequires(moduleKey)) {
+    if (seen.has(dependency)) continue;
+    seen.add(dependency);
+    resolveRequiredModules(dependency, seen);
+  }
+  return [...seen];
+}
+
+/**
+ * Modulos registrados que dependen (duro) de `moduleKey`. Sirve para avisar que
+ * se rompe al desactivarlo.
+ */
+export function modulesDependingOn(moduleKey) {
+  return MODULE_REGISTRY.filter((module) => (module.requires || []).includes(moduleKey)).map(
+    (module) => module.key
+  );
 }

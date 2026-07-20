@@ -713,6 +713,10 @@ export const updateModuleEntitlement = (payload) =>
     method: 'PUT',
     body: JSON.stringify(payload)
   });
+export const getModuleMatrix = (scopeType, scopeId) =>
+  apiRequest(`/superadmin/modules/matrix${queryString({ scopeType, scopeId })}`);
+export const diagnoseModule = (scopeType, scopeId, moduleKey) =>
+  apiRequest(`/superadmin/modules/diagnose${queryString({ scopeType, scopeId, moduleKey })}`);
 export const getAuditLog = () => apiRequest('/superadmin/audit');
 
 export const getMyPlatformSubscription = () =>
@@ -724,6 +728,10 @@ export const getMyUsage = () => apiRequest('/billing/my-usage');
 export const getDistributorBillingOverview = () =>
   apiRequest('/distributor/billing/overview');
 export const getDistributorModules = () => apiRequest('/distributor/modules');
+export const diagnoseDistributorModule = (moduleKey) =>
+  apiRequest(`/distributor/modules/diagnose${queryString({ moduleKey })}`);
+export const diagnoseCompanyModule = (companyId, moduleKey) =>
+  apiRequest(`/distributor/companies/${companyId}/modules/diagnose${queryString({ moduleKey })}`);
 export const getDistributorCompanies = () => apiRequest('/distributor/companies');
 export const getDistributorCompanyDetail = (companyId) =>
   apiRequest(`/distributor/companies/${companyId}/detail`);

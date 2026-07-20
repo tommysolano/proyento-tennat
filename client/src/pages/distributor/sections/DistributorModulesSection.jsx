@@ -11,6 +11,10 @@ export function DistributorModulesSection({ workspace }) {
         title="Opciones autorizadas"
         description="Solo estos modulos pueden incluirse en planes o configuraciones del distribuidor."
       />
+      <div className="mx-5 mt-5 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+        <strong>Solo lectura.</strong> Estos modulos los concede la plataforma. Para habilitar uno que
+        aparezca como <em>No autorizado</em>, contacta a tu proveedor.
+      </div>
       {moduleCatalog.modules.length ? (
         <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {moduleCatalog.modules.map((module) => (
