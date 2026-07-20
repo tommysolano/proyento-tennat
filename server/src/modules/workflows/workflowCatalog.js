@@ -111,6 +111,9 @@ export const WORKFLOW_ACTIONS = [
   // 'text' o 'mediaStorageKey' (validado aparte por ser requisito alternativo).
   ['whatsapp.send', []],
   ['whatsapp.send_template', ['templateId']],
+  // Email transaccional/marketing (proveedor HTTP: Resend/SendGrid). Si el
+  // proveedor no esta configurado, se registra como skip (no falla el flujo).
+  ['email.send', ['subject']],
   ['delay.wait_minutes', ['minutes']],
   ['delay.wait_until', ['until']],
   // Pausa el flujo hasta que el contacto responda (o venza timeoutMinutes).
@@ -130,7 +133,6 @@ export const WORKFLOW_ACTIONS = [
 }));
 
 export const PLANNED_ACTIONS = [
-  'email.send',
   'sms.send',
   'webhook.call',
   'ai.generate',

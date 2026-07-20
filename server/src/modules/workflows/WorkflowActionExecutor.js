@@ -18,6 +18,7 @@ import { ConversationService } from '../conversations/ConversationService.js';
 import { MessageTemplate } from '../../models/MessageTemplate.js';
 import { buildOutboundTemplate } from '../communications/TemplateSyncService.js';
 import { resolveWorkflowConversation } from './workflowMessaging.js';
+import { EmailProvider } from '../communications/EmailProvider.js';
 
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400, retryable: false });
@@ -352,6 +353,25 @@ export class WorkflowActionExecutor {
           details: config.details || ''
         });
         return { activityId: activity?._id };
+      }
+      case 'email.send': {
+        const to = String(config.to || context.entity?.email || context.payload?.email || '').trim();
+        if (!to) throw badRequest('email.send requiere config.to o un email en la entidad del evento');
+        const result = await EmailProvider.send({
+          to,
+          subject: config.subject || '',
+          html: config.body || config.html || '',
+          text: config.text || ''
+        });
+        if (result.skipped) {
+          await logAction(actor, context, 'workflow_email_skipped', `Email no enviado (${result.reason})`, { to, reason: result.reason });
+          return { to, skipped: true, reason: result.reason };
+        }
+        if (result.success === false) {
+          throw Object.assign(new Error(result.error || 'No se pudo enviar el email'), { retryable: true });
+        }
+        await logAction(actor, context, 'workflow_email_sent', `Email enviado a ${to}`, { to, providerId: result.id });
+        return { to, providerId: result.id };
       }
       case 'whatsapp.send': {
         const text = String(config.text || '').trim();

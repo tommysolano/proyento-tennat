@@ -51,11 +51,26 @@ Ya implementado y verificado (la app arranca e importa limpio):
   `appointment.reminder_sent → whatsapp.send_template`. El motor carga la cita en
   `context.entity` (interpola `{{entity.title}}`/`{{entity.startAt}}`) y ahora el
   payload también trae `contactId`/`startAt`/`title` para resolver el contacto.
+- **Email — acción `email.send` activa.** Proveedor HTTP `EmailProvider`
+  (Resend/SendGrid vía `fetch`, sin nuevas dependencias). Config por env
+  (`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`). Si no está
+  configurado, `email.send` se registra como *skip* (no rompe el flujo). Sacada
+  de `planned`; disponible en workflows. Config: `{ "to": "{{entity.email}}",
+  "subject": "...", "body": "<html>" }` (o `text`).
+- **D.4 — Difusión (broadcast) por lista/etiqueta.** Modelo `Broadcast` + servicio
+  `BroadcastService` + rutas `/api/broadcasts` (crear, listar, `preview`,
+  `launch`, `cancel`). Envía una **plantilla aprobada** a una audiencia por
+  `contactIds` y/o `tagId`, con **goteo** (`throttlePerMinute`) vía jobs
+  escalonados (`broadcast.recipient`). Cada envío pasa por
+  `ConversationService.createOutboundMessage` (opt-out/consentimiento/ventana 24h/
+  uso) y las estadísticas (`sent/failed/skipped`) se actualizan atómicamente. Gate:
+  rol ADMIN/SUPERVISOR + permiso `whatsapp_messages:send` + módulo `whatsapp`.
+  *(Falta la UI: hoy operable por API; una `BroadcastsPage` es trabajo de cliente.)*
 
-Pendiente (siguiente iteración): **D.4** (motor de campañas/goteo por segmento),
-**email.send/sms.send** (requieren proveedor de email/SMS — siguen en `planned` a
-propósito para no ofrecer en la UI algo que fallaría), y **D.7** (CAPI/CTWA/editor
-en grafo). La UI de Workflows ya expone las acciones nuevas automáticamente (el
+Pendiente (siguiente iteración): **UI de difusión** (`BroadcastsPage`),
+**`sms.send`** (requiere proveedor SMS — sigue en `planned`), **segmentos con DSL
+de filtros** (hoy la audiencia es lista/etiqueta), y **D.7** (CAPI/CTWA/editor en
+grafo). La UI de Workflows ya expone las acciones nuevas automáticamente (el
 formulario de acción es **JSON libre** poblado desde el catálogo).
 
 > **Requisito operativo para que D.1/D.2/D.6 envíen:** un número de WhatsApp por

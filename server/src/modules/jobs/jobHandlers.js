@@ -12,6 +12,7 @@ import { logger } from '../../utils/logger.js';
 import { sanitize } from '../../utils/sanitize.js';
 import { AppointmentReminderService } from '../calendar/AppointmentReminderService.js';
 import { WorkflowService } from '../workflows/WorkflowService.js';
+import { BroadcastService } from '../marketing/BroadcastService.js';
 
 async function processMedia(job) {
   const message = await Message.findById(job.payload.messageId);
@@ -171,6 +172,8 @@ export async function handleJob(job) {
       return AppointmentReminderService.process(job);
     case 'workflow.run':
       return WorkflowService.executeWorkflowRun(job.payload.runId);
+    case 'broadcast.recipient':
+      return BroadcastService.processRecipient(job);
     default:
       throw Object.assign(new Error(`No existe handler para ${job.type}`), {
         retryable: false

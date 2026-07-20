@@ -52,6 +52,7 @@ export { FunnelStep } from './FunnelStep.js';
 export { PageView } from './PageView.js';
 export { ConversionEvent } from './ConversionEvent.js';
 export { Campaign } from './Campaign.js';
+export { Broadcast } from './Broadcast.js';
 export { Integration } from './Integration.js';
 export { IntegrationEvent } from './IntegrationEvent.js';
 export { ReviewRequest } from './ReviewRequest.js';
