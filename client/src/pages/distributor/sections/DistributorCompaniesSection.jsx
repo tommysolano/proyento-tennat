@@ -125,7 +125,7 @@ export function DistributorCompaniesSection({ workspace }) {
                   <ImpersonationSwitcherButton
                     label="Entrar como..."
                     companyId={row._id}
-                    companyName={row.name}
+                    contextLabel={row.name}
                     allowCompanyAdmin={row.canImpersonate}
                   />
                   <ActionsMenu

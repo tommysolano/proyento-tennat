@@ -7,6 +7,7 @@ import {
   idOf,
   toDateTimeLocal
 } from '../utils/contacts.js';
+import { AssigneeSelect } from './AssigneeSelect.jsx';
 import { Badge } from './Badge.jsx';
 import { Button } from './Button.jsx';
 import { Card, CardHeader } from './Card.jsx';
@@ -214,12 +215,11 @@ export function ContactManager({
                   </select>
                 </FormField>
                 <FormField label="Responsable" htmlFor="contact-create-assignee">
-                  <select id="contact-create-assignee" name="assignedTo" className={fieldClass} defaultValue="">
-                    <option value="">Sin asignar</option>
-                    {agents.map((agent) => (
-                      <option key={agent._id} value={agent._id}>{agent.name}</option>
-                    ))}
-                  </select>
+                  <AssigneeSelect
+                    id="contact-create-assignee"
+                    options={agents}
+                    className={fieldClass}
+                  />
                 </FormField>
               </div>
               <FormField label="Proximo seguimiento" htmlFor="contact-create-follow-up">
@@ -281,17 +281,12 @@ export function ContactManager({
                   </FormField>
                   {canAssign ? (
                     <FormField label="Responsable" htmlFor="contact-edit-assignee">
-                      <select
+                      <AssigneeSelect
                         id="contact-edit-assignee"
-                        name="assignedTo"
+                        options={agents}
                         defaultValue={idOf(selectedContact.assignedTo) || ''}
                         className={fieldClass}
-                      >
-                        <option value="">Sin asignar</option>
-                        {agents.map((agent) => (
-                          <option key={agent._id} value={agent._id}>{agent.name}</option>
-                        ))}
-                      </select>
+                      />
                     </FormField>
                   ) : null}
                 </div>

@@ -24,6 +24,7 @@ import {
   issueCoupon,
   updateContact
 } from '../../api.js';
+import { AssigneeSelect, assignableUsers } from '../../components/AssigneeSelect.jsx';
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
@@ -315,7 +316,7 @@ export function ContactDetailPage() {
               <label className="text-xs font-semibold text-slate-600">Origen<input name="source" defaultValue={contact.source || ''} className={inputClass} /></label>
               <label className="text-xs font-semibold text-slate-600">Ciclo<select name="lifecycleStage" defaultValue={contact.lifecycleStage} className={inputClass}>{['lead', 'prospect', 'customer', 'lost'].map((value) => <option key={value}>{value}</option>)}</select></label>
               <label className="text-xs font-semibold text-slate-600">Prioridad<select name="priority" defaultValue={contact.priority} className={inputClass}>{['low', 'medium', 'high'].map((value) => <option key={value}>{value}</option>)}</select></label>
-              <label className="text-xs font-semibold text-slate-600">Responsable<select name="assignedTo" defaultValue={contact.assignedTo?._id || ''} className={inputClass}><option value="">Sin asignar</option>{users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select></label>
+              <label className="text-xs font-semibold text-slate-600">Responsable<AssigneeSelect options={assignableUsers(users)} defaultValue={contact.assignedTo?._id || ''} className={inputClass} /></label>
               <label className="text-xs font-semibold text-slate-600">Ciudad<input name="city" defaultValue={contact.city || ''} className={inputClass} /></label>
               <label className="text-xs font-semibold text-slate-600">Pais<input name="country" defaultValue={contact.country || ''} className={inputClass} /></label>
             </> : <div className="md:col-span-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{contact.phone || 'Sin telefono'}<br />{contact.email || 'Sin email'}<br />{contact.source || 'Sin origen'}</div>}

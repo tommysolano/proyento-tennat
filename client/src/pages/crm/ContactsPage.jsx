@@ -15,6 +15,7 @@ import {
   runCrmBulkAction,
   updateCrmViewPreference
 } from '../../api.js';
+import { AssigneeSelect, assignableUsers } from '../../components/AssigneeSelect.jsx';
 import { Badge } from '../../components/Badge.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Card, CardHeader } from '../../components/Card.jsx';
@@ -420,7 +421,7 @@ export function ContactsPage() {
               <select id="crm-contact-priority" name="priority" className={inputClass} defaultValue="medium">{priorityOptions.map((item) => <option key={item}>{item}</option>)}</select>
             </FormField>
             <FormField label="Responsable" htmlFor="crm-contact-assignee">
-              <select id="crm-contact-assignee" name="assignedTo" className={inputClass} defaultValue=""><option value="">Sin asignar</option>{users.filter((item) => ['SUPERVISOR', 'CALLCENTER'].includes(item.role)).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select>
+              <AssigneeSelect id="crm-contact-assignee" options={assignableUsers(users)} className={inputClass} />
             </FormField>
             <FormField label="Proximo seguimiento" htmlFor="crm-contact-follow-up">
               <input id="crm-contact-follow-up" type="datetime-local" name="nextFollowUpAt" className={inputClass} />

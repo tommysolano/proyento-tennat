@@ -59,7 +59,11 @@ function permissionEffect(permission) {
 }
 
 export function AdminDashboard() {
-  const { access } = useAuth();
+  const { access, tenant, user } = useAuth();
+  // La empresa del contexto actual: acota el selector de impersonacion para
+  // que no ofrezca usuarios de otras empresas de la plataforma.
+  const currentCompanyId = tenant?.company?._id || user?.companyId || '';
+  const currentCompanyName = tenant?.company?.name || '';
   const enabledModules = new Set(access.modules || []);
   const canUseContacts = enabledModules.has('crm') && enabledModules.has('contacts');
   const canUseInbox =
@@ -384,7 +388,13 @@ export function AdminDashboard() {
           <CardHeader
             title="Usuarios internos"
             description="Supervisores y agentes persistidos en esta empresa."
-            action={<ImpersonationSwitcherButton />}
+            action={
+              <ImpersonationSwitcherButton
+                companyId={currentCompanyId}
+                contextLabel={currentCompanyName}
+                allowCompanyAdmin={false}
+              />
+            }
           />
           <Table
             data={users.map((user) => ({ ...user, id: user._id }))}

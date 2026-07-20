@@ -121,7 +121,9 @@ export function CompanyDetailForDistributor() {
           <CardHeader
             title="Usuarios principales"
             description="Roles y estado dentro de la empresa."
-            action={<ImpersonationSwitcherButton companyId={id} />}
+            action={
+              <ImpersonationSwitcherButton companyId={id} contextLabel={company.name} />
+            }
           />
           <Table
             data={users.map((user) => ({ ...user, id: user._id }))}

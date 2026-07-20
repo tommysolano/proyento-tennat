@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, LogIn, Search } from 'lucide-react';
+import { Building2, Globe2, LogIn, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getImpersonationTargets } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { roleHome } from '../routes/roleHome.js';
 import { Badge } from './Badge.jsx';
 import { Button } from './Button.jsx';
+import { EmptyState } from './EmptyState.jsx';
 import { Modal } from './Modal.jsx';
 
 export const impersonationRoleLabels = {
@@ -94,17 +95,24 @@ export function ImpersonationSwitcher({
   onClose,
   companyId,
   distributorId,
-  companyName,
+  contextLabel,
   allowCompanyAdmin = true
 }) {
   const navigate = useNavigate();
-  const { impersonateUser, impersonateAdmin, user } = useAuth();
+  const { impersonateUser, impersonateAdmin, user, rootActor } = useAuth();
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
+  // Ampliar el alcance es siempre una decision explicita: por defecto el
+  // selector se queda en el contexto desde el que se abrio, para no invitar a
+  // entrar por error como un usuario de otra empresa.
+  const [scopeAll, setScopeAll] = useState(false);
+
+  const hasContext = Boolean(companyId || distributorId);
+  const contextActive = hasContext && !scopeAll;
 
   const loadTargets = useCallback(async () => {
     setLoading(true);
@@ -113,8 +121,10 @@ export function ImpersonationSwitcher({
       const data = await getImpersonationTargets({
         search,
         role,
-        companyId,
-        distributorId
+        // El backend sigue validando contra el actor raiz; esto solo acota lo
+        // que se muestra.
+        companyId: contextActive ? companyId : undefined,
+        distributorId: contextActive ? distributorId : undefined
       });
       setUsers(data.users || []);
     } catch (requestError) {
@@ -123,7 +133,7 @@ export function ImpersonationSwitcher({
     } finally {
       setLoading(false);
     }
-  }, [search, role, companyId, distributorId]);
+  }, [search, role, companyId, distributorId, contextActive]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -136,6 +146,7 @@ export function ImpersonationSwitcher({
       setSearch('');
       setRole('');
       setError('');
+      setScopeAll(false);
     }
   }, [open]);
 
@@ -160,13 +171,43 @@ export function ImpersonationSwitcher({
   const handleEnter = (target) =>
     enterWith(target._id, () => impersonateUser(target._id));
 
+  // Solo tiene sentido ofrecer "salir del contexto" a quien realmente alcanza
+  // mas alla de el. Un ADMIN raiz ya esta limitado a su propia empresa.
+  const widenLabel =
+    rootActor?.role === 'SUPERADMIN'
+      ? 'Buscar en toda la plataforma'
+      : rootActor?.role === 'DISTRIBUTOR'
+        ? 'Buscar en toda mi cartera'
+        : '';
+  const canWiden = hasContext && Boolean(widenLabel);
+
+  const roleLabel = role ? impersonationRoleLabels[role] || role : '';
+  const emptyTitle = contextActive
+    ? role
+      ? `Sin usuarios de rol ${roleLabel}`
+      : 'Esta empresa no tiene usuarios disponibles'
+    : 'No hay perfiles con estos filtros';
+  const emptyDescription = contextActive
+    ? `${contextLabel || 'Esta empresa'} no tiene usuarios${
+        role ? ` de rol ${roleLabel}` : ''
+      } que puedas asumir.${canWiden ? ` Activa "${widenLabel}" para ampliar la busqueda.` : ''}`
+    : 'Prueba con otro texto de busqueda o cambia el filtro de rol.';
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       size="lg"
-      title="Entrar como otro usuario"
-      description="Solo aparecen perfiles por debajo de tu rol dentro de tu alcance."
+      title={
+        contextActive && contextLabel
+          ? `Entrar como usuario de ${contextLabel}`
+          : 'Entrar como otro usuario'
+      }
+      description={
+        contextActive
+          ? 'Solo se listan los usuarios de este contexto.'
+          : 'Solo aparecen perfiles por debajo de tu rol dentro de tu alcance.'
+      }
       bodyClassName=""
     >
       <>
@@ -196,6 +237,26 @@ export function ImpersonationSwitcher({
           </select>
         </div>
 
+        {canWiden ? (
+          <label className="flex items-center gap-2 border-b border-slate-100 px-5 py-2.5 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={scopeAll}
+              onChange={(event) => setScopeAll(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+            />
+            <span className="flex items-center gap-1.5">
+              <Globe2 className="h-3.5 w-3.5 text-slate-400" />
+              {widenLabel}
+            </span>
+            {scopeAll ? (
+              <span className="ml-auto text-amber-700">
+                Mostrando usuarios fuera de {contextLabel || 'este contexto'}
+              </span>
+            ) : null}
+          </label>
+        ) : null}
+
         {error ? (
           <p className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">
             {error}
@@ -214,8 +275,8 @@ export function ImpersonationSwitcher({
                 Administrador de la empresa
               </p>
               <p className="truncate text-xs text-slate-500">
-                {companyName
-                  ? `Acceso directo al ADMIN de ${companyName}.`
+                {contextLabel
+                  ? `Acceso directo al ADMIN de ${contextLabel}.`
                   : 'Acceso directo al ADMIN de esta empresa.'}
               </p>
             </div>
@@ -245,13 +306,25 @@ export function ImpersonationSwitcher({
                       {target.name}
                     </p>
                     <p className="truncate text-xs text-slate-500">{target.email}</p>
-                    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    {/*
+                      Con el alcance ampliado conviven usuarios de empresas
+                      distintas, asi que la pertenencia se lee antes de pulsar.
+                    */}
+                    <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                       <Badge tone="info">
                         {impersonationRoleLabels[target.role] || target.role}
                       </Badge>
-                      {target.companyId?.name ? <span>{target.companyId.name}</span> : null}
+                      {target.companyId?.name ? (
+                        <span className="inline-flex items-center gap-1 font-medium text-slate-700">
+                          <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          {target.companyId.name}
+                        </span>
+                      ) : null}
                       {target.distributorId?.name ? (
-                        <span>{target.distributorId.name}</span>
+                        <span className="inline-flex items-center gap-1 text-slate-500">
+                          <Globe2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          {target.distributorId.name}
+                        </span>
                       ) : null}
                     </p>
                   </div>
@@ -268,9 +341,20 @@ export function ImpersonationSwitcher({
               ))}
             </ul>
           ) : (
-            <p className="px-5 py-8 text-center text-sm text-slate-500">
-              No hay perfiles disponibles con estos filtros.
-            </p>
+            <EmptyState
+              icon={contextActive ? Building2 : Search}
+              title={emptyTitle}
+              description={emptyDescription}
+              className="m-4 min-h-0 border-dashed"
+              action={
+                canWiden && contextActive ? (
+                  <Button variant="secondary" onClick={() => setScopeAll(true)}>
+                    <Globe2 className="h-4 w-4" />
+                    {widenLabel}
+                  </Button>
+                ) : null
+              }
+            />
           )}
         </div>
       </>
@@ -287,7 +371,7 @@ export function ImpersonationSwitcherButton({
   variant = 'secondary',
   companyId,
   distributorId,
-  companyName,
+  contextLabel,
   allowCompanyAdmin = true
 }) {
   const { canImpersonate } = useAuth();
@@ -306,7 +390,7 @@ export function ImpersonationSwitcherButton({
         onClose={() => setOpen(false)}
         companyId={companyId}
         distributorId={distributorId}
-        companyName={companyName}
+        contextLabel={contextLabel}
         allowCompanyAdmin={allowCompanyAdmin}
       />
     </>
