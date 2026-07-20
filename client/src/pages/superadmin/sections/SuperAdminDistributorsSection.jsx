@@ -1,7 +1,8 @@
-import { LogIn, Plus } from 'lucide-react';
+import { Ban, LogIn, Pencil, Plus, Power } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createDistributor, updateDistributor } from '../../../api.js';
+import { ActionsMenu } from '../../../components/ActionsMenu.jsx';
 import { Badge } from '../../../components/Badge.jsx';
 import { Button } from '../../../components/Button.jsx';
 import { Card, CardHeader } from '../../../components/Card.jsx';
@@ -126,18 +127,9 @@ export function SuperAdminDistributorsSection({ workspace }) {
               key: 'actions',
               header: 'Acciones',
               nowrap: true,
+              align: 'right',
               render: (row) => (
-                <div className="flex gap-2">
-                  <Button className="px-3" variant="secondary" onClick={() => handleEditDistributor(row)}>
-                    Editar
-                  </Button>
-                  <Button
-                    className="px-3"
-                    variant={row.status === 'suspended' ? 'primary' : 'danger'}
-                    onClick={() => handleDistributorStatus(row)}
-                  >
-                    {row.status === 'suspended' ? 'Reactivar' : 'Suspender'}
-                  </Button>
+                <div className="flex items-center justify-end gap-2">
                   <Button
                     className="px-3"
                     variant="secondary"
@@ -146,6 +138,24 @@ export function SuperAdminDistributorsSection({ workspace }) {
                   >
                     <LogIn className="h-4 w-4" /> Entrar
                   </Button>
+                  <ActionsMenu
+                    items={[
+                      {
+                        label: 'Editar distribuidor',
+                        icon: Pencil,
+                        onClick: () => handleEditDistributor(row)
+                      },
+                      {
+                        label:
+                          row.status === 'suspended'
+                            ? 'Reactivar distribuidor'
+                            : 'Suspender distribuidor',
+                        icon: row.status === 'suspended' ? Power : Ban,
+                        tone: row.status === 'suspended' ? 'default' : 'danger',
+                        onClick: () => handleDistributorStatus(row)
+                      }
+                    ]}
+                  />
                 </div>
               )
             }

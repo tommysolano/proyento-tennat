@@ -456,3 +456,87 @@ test('los candidatos listados respetan el alcance del actor raiz', async () => {
   });
   assert.equal(denied.status, 403);
 });
+
+// Regresion: en una sesion ya impersonada el listado debe seguir midiendose
+// contra el actor raiz. Si se midiera contra el usuario impersonado, un
+// SUPERADMIN que entra como CALLCENTER perderia el selector (403) y un
+// DISTRIBUTOR impersonado veria candidatos fuera de su cartera.
+test('los candidatos siguen el alcance del actor raiz en una sesion encadenada', async () => {
+  const rootToken = await signSessionToken(ID.superadmin);
+
+  // El objetivo tiene un rol que por si solo NO puede impersonar.
+  const asAgent = await impersonate(rootToken, { targetUserId: ID.callcenterOne });
+  assert.equal(asAgent.status, 200);
+  assert.equal(asAgent.body.user.role, 'CALLCENTER');
+
+  const response = await fetch(`${baseUrl}/api/auth/impersonation/targets`, {
+    headers: { Authorization: `Bearer ${asAgent.body.token}` }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.actor.id, ID.superadmin, 'el actor reportado es la raiz');
+  assert.equal(body.actor.role, 'SUPERADMIN');
+  // El universo es el del SUPERADMIN, no el del CALLCENTER impersonado: si se
+  // midiera contra req.user, un CALLCENTER no podria impersonar y esto seria 403.
+  assert.equal(body.users.some((user) => user.role === 'DISTRIBUTOR'), true);
+  assert.equal(body.users.some((user) => user.role === 'ADMIN'), true);
+  // El filtro solo excluye al actor raiz; el usuario impersonado en curso sigue
+  // en la lista y es el cliente quien deshabilita su propia fila.
+  assert.equal(body.users.some((user) => user._id === ID.superadmin), false);
+
+  // Un DISTRIBUTOR raiz que impersona a un ADMIN sigue limitado a su cartera.
+  const distributorToken = await signSessionToken(ID.distributorUserOne);
+  const asAdmin = await impersonate(distributorToken, { targetUserId: ID.adminOne });
+  assert.equal(asAdmin.status, 200);
+
+  const scoped = await fetch(`${baseUrl}/api/auth/impersonation/targets`, {
+    headers: { Authorization: `Bearer ${asAdmin.body.token}` }
+  });
+  const scopedBody = await scoped.json();
+  assert.equal(scoped.status, 200);
+  assert.equal(scopedBody.actor.id, ID.distributorUserOne);
+  assert.equal(
+    scopedBody.users.every((user) => String(user.distributorId) === ID.distributorOne),
+    true,
+    'no se filtran usuarios de otro distribuidor'
+  );
+});
+
+// Regresion: la re-impersonacion se acepta por las tres ramas de entrada, no
+// solo por `targetUserId`. Antes las ramas legacy devolvian 409.
+test('la cadena tambien funciona por companyId y por distributorId', async () => {
+  const rootToken = await signSessionToken(ID.superadmin);
+  const asDistributor = await impersonate(rootToken, { targetUserId: ID.distributorUserOne });
+  assert.equal(asDistributor.status, 200);
+
+  // Rama legacy companyId desde una sesion ya impersonada.
+  const chainedByCompany = await impersonate(asDistributor.body.token, {
+    companyId: ID.companyOne
+  });
+  assert.equal(chainedByCompany.status, 200, 'companyId no debe devolver 409');
+  assert.equal(chainedByCompany.body.user._id, ID.adminOne);
+  assert.equal(chainedByCompany.body.chained, true);
+  assert.equal(chainedByCompany.body.impersonatedBy.id, ID.superadmin);
+
+  // Rama legacy distributorId desde una sesion ya impersonada.
+  const chainedByDistributor = await impersonate(chainedByCompany.body.token, {
+    distributorId: ID.distributorOne
+  });
+  assert.equal(chainedByDistributor.status, 200, 'distributorId no debe devolver 409');
+  assert.equal(chainedByDistributor.body.user._id, ID.distributorUserOne);
+  assert.equal(chainedByDistributor.body.impersonatedBy.id, ID.superadmin);
+
+  // La raiz nunca se desplaza: terminar vuelve al SUPERADMIN original.
+  const ended = await endImpersonation(chainedByDistributor.body.token);
+  assert.equal(ended.status, 200);
+  assert.equal(ended.body.actor.id, ID.superadmin);
+
+  // Y el alcance se sigue midiendo contra la raiz: un DISTRIBUTOR raiz no
+  // alcanza una empresa ajena por la rama companyId. Devuelve 404 y no 403
+  // porque la busqueda ya va filtrada por su distribuidor: para el, esa
+  // empresa no existe, y asi no se revela que pertenece a otro.
+  const distributorToken = await signSessionToken(ID.distributorUserOne);
+  const foreign = await impersonate(distributorToken, { companyId: ID.companyTwo });
+  assert.equal(foreign.status, 404);
+});

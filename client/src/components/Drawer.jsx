@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { Overlay } from './Overlay.jsx';
 
 const sizeClasses = {
   md: 'max-w-[480px]',
@@ -23,41 +24,18 @@ export function Drawer({
   const panelRef = useRef(null);
 
   useEffect(() => {
-    if (!open) return undefined;
-
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') onClose?.();
-    }
-
-    // El scroll del body se congela para que el fondo no se mueva detras.
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', handleKeyDown);
-    panelRef.current?.focus();
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
+    if (open) panelRef.current?.focus();
+  }, [open]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <button
-        type="button"
-        aria-label="Cerrar panel"
-        onClick={onClose}
-        className="absolute inset-0 h-full w-full cursor-default bg-slate-900/50"
-      />
+    <Overlay open={open} onClose={onClose} align="end">
       <div
         ref={panelRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative flex h-full w-full flex-col bg-white shadow-2xl outline-none ${
+        className={`relative flex h-full w-full flex-col bg-white shadow-2xl shadow-slate-950/40 outline-none ${
           sizeClasses[size] || sizeClasses.md
         }`}
       >
@@ -88,6 +66,6 @@ export function Drawer({
           </div>
         ) : null}
       </div>
-    </div>
+    </Overlay>
   );
 }

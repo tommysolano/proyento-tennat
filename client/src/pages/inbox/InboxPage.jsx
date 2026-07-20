@@ -65,6 +65,7 @@ import { Drawer } from '../../components/Drawer.jsx';
 import { EmptyState } from '../../components/EmptyState.jsx';
 import { FormField } from '../../components/FormField.jsx';
 import { FormGrid } from '../../components/FormGrid.jsx';
+import { Overlay } from '../../components/Overlay.jsx';
 import { PageShell } from '../../components/PageShell.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
@@ -233,8 +234,8 @@ function AppointmentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
-      <Card className="max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto p-5" role="dialog" aria-modal="true">
+    <Overlay open onClose={onClose} align="center">
+      <Card className="relative max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto p-5 shadow-2xl shadow-slate-950/40" role="dialog" aria-modal="true">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-lg font-bold text-slate-900">Agendar desde la conversacion</p>
@@ -287,7 +288,7 @@ function AppointmentModal({
           </form>
         ) : null}
       </Card>
-    </div>
+    </Overlay>
   );
 }
 

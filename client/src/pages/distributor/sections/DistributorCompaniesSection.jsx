@@ -1,7 +1,8 @@
-import { LogIn, Plus } from 'lucide-react';
+import { Ban, Plus, Power } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { createCompany, reactivateCompany, suspendCompany } from '../../../api.js';
+import { ActionsMenu } from '../../../components/ActionsMenu.jsx';
 import { Badge } from '../../../components/Badge.jsx';
 import { Button } from '../../../components/Button.jsx';
 import { Card, CardHeader } from '../../../components/Card.jsx';
@@ -10,7 +11,6 @@ import { FormField } from '../../../components/FormField.jsx';
 import { FormGrid } from '../../../components/FormGrid.jsx';
 import { ImpersonationSwitcherButton } from '../../../components/ImpersonationSwitcher.jsx';
 import { Table } from '../../../components/Table.jsx';
-import { useAuth } from '../../../context/AuthContext.jsx';
 import { formatMoney } from '../../../utils/billing.js';
 
 const inputClass =
@@ -22,9 +22,7 @@ function dateLabel(value) {
 }
 
 export function DistributorCompaniesSection({ workspace }) {
-  const navigate = useNavigate();
-  const { impersonateAdmin } = useAuth();
-  const { commerceCompanies = [], settings, busy, mutate, setError } = workspace;
+  const { commerceCompanies = [], settings, busy, mutate } = workspace;
   const [open, setOpen] = useState(false);
 
   const currency = settings?.billingSettings?.currency;
@@ -58,16 +56,6 @@ export function DistributorCompaniesSection({ workspace }) {
       () => (reactivating ? reactivateCompany(company._id) : suspendCompany(company._id)),
       `Empresa ${reactivating ? 'reactivada' : 'suspendida'}.`
     );
-  }
-
-  async function handleEnterCompany(company) {
-    setError('');
-    try {
-      const data = await impersonateAdmin(company._id);
-      navigate(data.redirectPath, { replace: true });
-    } catch (requestError) {
-      setError(requestError.message);
-    }
   }
 
   return (
@@ -118,11 +106,14 @@ export function DistributorCompaniesSection({ workspace }) {
               render: (row) => <Badge tone={row.status}>{row.status}</Badge>
             },
             {
+              // Solo dos acciones visibles; el resto va al menu para que la
+              // columna no ensanche la tabla y recorte la primera columna.
               key: 'actions',
               header: 'Acciones',
               nowrap: true,
+              align: 'right',
               render: (row) => (
-                <div className="flex gap-2">
+                <div className="flex items-center justify-end gap-2">
                   <Button
                     as={Link}
                     to={`/distributor/companies/${row._id}`}
@@ -131,22 +122,23 @@ export function DistributorCompaniesSection({ workspace }) {
                   >
                     Detalle
                   </Button>
-                  <Button
-                    className="px-3"
-                    variant="secondary"
-                    disabled={!row.canImpersonate || Boolean(busy)}
-                    onClick={() => handleEnterCompany(row)}
-                  >
-                    <LogIn className="h-4 w-4" /> Entrar
-                  </Button>
-                  <ImpersonationSwitcherButton label="Entrar como..." companyId={row._id} />
-                  <Button
-                    className="px-3"
-                    variant={row.status === 'suspended' ? 'primary' : 'danger'}
-                    onClick={() => handleCompanyStatus(row)}
-                  >
-                    {row.status === 'suspended' ? 'Reactivar' : 'Suspender'}
-                  </Button>
+                  <ImpersonationSwitcherButton
+                    label="Entrar como..."
+                    companyId={row._id}
+                    companyName={row.name}
+                    allowCompanyAdmin={row.canImpersonate}
+                  />
+                  <ActionsMenu
+                    items={[
+                      {
+                        label: row.status === 'suspended' ? 'Reactivar empresa' : 'Suspender empresa',
+                        icon: row.status === 'suspended' ? Power : Ban,
+                        tone: row.status === 'suspended' ? 'default' : 'danger',
+                        disabled: Boolean(busy),
+                        onClick: () => handleCompanyStatus(row)
+                      }
+                    ]}
+                  />
                 </div>
               )
             }

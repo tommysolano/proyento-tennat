@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LogIn, Search, X } from 'lucide-react';
+import { Building2, LogIn, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getImpersonationTargets } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { roleHome } from '../routes/roleHome.js';
 import { Badge } from './Badge.jsx';
 import { Button } from './Button.jsx';
+import { Modal } from './Modal.jsx';
 
 export const impersonationRoleLabels = {
   SUPERADMIN: 'Programador / Superadmin',
@@ -88,9 +89,16 @@ export function ImpersonateUserButton({
  * Selector de objetivo de impersonacion. El backend decide el universo real
  * segun el actor raiz; aqui solo se listan y filtran los candidatos.
  */
-export function ImpersonationSwitcher({ open, onClose, companyId, distributorId }) {
+export function ImpersonationSwitcher({
+  open,
+  onClose,
+  companyId,
+  distributorId,
+  companyName,
+  allowCompanyAdmin = true
+}) {
   const navigate = useNavigate();
-  const { impersonateUser, user } = useAuth();
+  const { impersonateUser, impersonateAdmin, user } = useAuth();
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
@@ -133,11 +141,11 @@ export function ImpersonationSwitcher({ open, onClose, companyId, distributorId 
 
   if (!open) return null;
 
-  async function handleEnter(target) {
-    setBusyId(target._id);
+  async function enterWith(key, request) {
+    setBusyId(key);
     setError('');
     try {
-      const data = await impersonateUser(target._id);
+      const data = await request();
       onClose();
       navigate(data.redirectPath || roleHome[data.user.role] || '/login', {
         replace: true
@@ -149,31 +157,19 @@ export function ImpersonationSwitcher({ open, onClose, companyId, distributorId 
     }
   }
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 p-4 pt-16"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Entrar como otro usuario"
-    >
-      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-lg border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-950">Entrar como otro usuario</h2>
-            <p className="text-xs text-slate-500">
-              Solo aparecen perfiles por debajo de tu rol dentro de tu alcance.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
-            aria-label="Cerrar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+  const handleEnter = (target) =>
+    enterWith(target._id, () => impersonateUser(target._id));
 
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title="Entrar como otro usuario"
+      description="Solo aparecen perfiles por debajo de tu rol dentro de tu alcance."
+      bodyClassName=""
+    >
+      <>
         <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3">
           <label className="relative flex-1" htmlFor="impersonation-search">
             <span className="sr-only">Buscar usuario</span>
@@ -204,6 +200,34 @@ export function ImpersonationSwitcher({ open, onClose, companyId, distributorId 
           <p className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">
             {error}
           </p>
+        ) : null}
+
+        {/*
+          Atajo equivalente al antiguo boton "Entrar" suelto de la tabla de
+          empresas: entra como el ADMIN de la empresa sin tener que buscarlo.
+        */}
+        {companyId && allowCompanyAdmin ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-cyan-50/60 px-5 py-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                <Building2 className="h-4 w-4 shrink-0 text-cyan-700" />
+                Administrador de la empresa
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {companyName
+                  ? `Acceso directo al ADMIN de ${companyName}.`
+                  : 'Acceso directo al ADMIN de esta empresa.'}
+              </p>
+            </div>
+            <Button
+              className="px-3"
+              disabled={Boolean(busyId)}
+              onClick={() => enterWith('__company_admin__', () => impersonateAdmin(companyId))}
+            >
+              <LogIn className="h-4 w-4" />
+              {busyId === '__company_admin__' ? 'Entrando...' : 'Entrar'}
+            </Button>
+          </div>
         ) : null}
 
         <div className="min-h-32 flex-1 overflow-y-auto">
@@ -249,8 +273,8 @@ export function ImpersonationSwitcher({ open, onClose, companyId, distributorId 
             </p>
           )}
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 
@@ -262,7 +286,9 @@ export function ImpersonationSwitcherButton({
   className = 'px-3',
   variant = 'secondary',
   companyId,
-  distributorId
+  distributorId,
+  companyName,
+  allowCompanyAdmin = true
 }) {
   const { canImpersonate } = useAuth();
   const [open, setOpen] = useState(false);
@@ -280,6 +306,8 @@ export function ImpersonationSwitcherButton({
         onClose={() => setOpen(false)}
         companyId={companyId}
         distributorId={distributorId}
+        companyName={companyName}
+        allowCompanyAdmin={allowCompanyAdmin}
       />
     </>
   );
