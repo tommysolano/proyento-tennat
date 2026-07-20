@@ -171,4 +171,31 @@ export class WhatsAppInboundService {
       throw error;
     }
   }
+
+  /**
+   * Ingiere un mensaje `fromMe` (enviado desde el telefono vinculado) como
+   * SALIENTE en la conversacion del destinatario, creandola si no existe. El
+   * dedupe contra los envios de la app vive en recordOutboundEcho.
+   */
+  static async processOutboundEcho({ config, normalized, actorId }) {
+    const provider = normalized.provider || config.channel;
+    const { contact } = await findOrCreateContact(config, normalized, actorId);
+    const { conversation } = await ConversationService.findOrCreateConversation({
+      companyId: config.companyId,
+      distributorId: config.distributorId,
+      contactId: contact._id,
+      channel: provider,
+      channelConfigId: config._id,
+      externalConversationId: normalized.externalConversationId,
+      createdBy: actorId
+    });
+    const result = await ConversationService.recordOutboundEcho({
+      conversation,
+      normalized: {
+        ...normalized,
+        metadata: { ...(normalized.metadata || {}), channelConfigId: config._id }
+      }
+    });
+    return { ...result, conversation, contact };
+  }
 }

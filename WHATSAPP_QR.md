@@ -177,30 +177,104 @@ Al reiniciar el server, `restoreSessions` (con `WHATSAPP_QR_AUTO_RESTORE`)
 restaura las sesiones con authState guardado sin pedir QR (Mongo se conecta
 antes de restaurar).
 
-### Limite conocido
+### Vinculacion en vivo (UI)
 
-Los mensajes `fromMe` (enviados desde el telefono vinculado) aun se descartan en
-el inbound normalizer y no aparecen como salientes en la conversacion. El indice
-unico de deduplicacion (`companyId + provider + channelConfigId +
-externalMessageId`) ya permitiria ingerirlos sin duplicar los enviados desde la
-app; queda pendiente cablear esa ingesta. No se simula: hoy simplemente no se
-reflejan.
+Mientras el estado es `qr_pending`, el panel hace **polling HTTP** a
+`GET /:id/qr` cada 4s (ademas del push SSE): si el SSE se cae, el QR sigue
+llegando. Baileys **rota** el QR periodicamente y cada rotacion reemplaza el de
+pantalla; hay cuenta atras desde `expiresAt` y, al expirar sin escanear, un boton
+**"Generar nuevo QR"** (regenera o reinicia), nunca un QR muerto. Estados en
+vivo: `initializing -> qr_pending -> authenticating` ("QR escaneado,
+sincronizando... puede tardar 1-2 min") `-> connected` (telefono real) / `error`.
 
-### Checklist manual con chip real (priorizado)
+### Watchdog de sincronizacion (`WHATSAPP_QR_SYNC_STUCK_MINUTES`, def. 3)
 
-1. `.env` con `WHATSAPP_QR_ENABLED=true` + clave valida; `GET /health` muestra
-   `whatsappQr.ready=true`.
-2. Crear numero QR -> se crea sesion vinculada; "Iniciar conexion" muestra el QR
-   (no "Error interno del servidor").
-3. Escanear -> `authenticating -> connected`; el telefono real aparece en
-   `connectedPhone`/tabla.
-4. Enviar y recibir texto; verificar dedupe reenviando el mismo mensaje.
-5. Imagen entrante se descarga y se ve; imagen saliente por URL entrega.
-6. Cerrar sesion desde el telefono -> estado `logged_out`, pide QR nuevo (auth
-   borrado).
-7. Abrir la sesion en otro dispositivo -> estado `error` "abierta en otro
-   dispositivo".
-8. Matar y levantar el server con una sesion vinculada -> se restaura sin QR.
+Si tras escanear la sesion se queda en `authenticating` sin llegar a `open`, un
+watchdog reinicia el runtime **conservando el authState**; con un contador de
+reintentos (`WHATSAPP_QR_SYNC_STUCK_RETRIES`, def. 3). Agotados -> estado `error`
+"La sincronizacion se atasco; genera un nuevo QR". Es el fallo mas comun tras
+reiniciar el server con un QR a medias. Logs: `whatsapp_qr.sync_watchdog_armed`,
+`whatsapp_qr.sync_stuck_restart`, `whatsapp_qr.sync_stuck_exhausted`.
+
+### Salud periodica de sesiones connected
+
+Cada `WHATSAPP_QR_HEALTH_INTERVAL_SECONDS` (def. 60) se verifican las sesiones
+`connected` de ESTA instancia: si el socket subyacente esta cerrado -> se marca
+`disconnected`. Ping ligero (`sendPresenceUpdate`) con timeout
+(`WHATSAPP_QR_HEALTH_PING_TIMEOUT_MS`, def. 5000): el timeout **no** da veredicto
+(la sesion puede estar ocupada); solo un error explicito o socket cerrado
+desconecta, limpia runtime, libera lease y publica SSE. Cubre la desvinculacion
+desde el telefono que no emite evento. Log: `whatsapp_qr.health_disconnect`.
+
+### Ingesta de `fromMe` (mensajes enviados desde el telefono)
+
+Los mensajes `fromMe` se ingieren como **salientes** en la conversacion del
+destinatario (creandola si hace falta), con `metadata.origin='phone'`. Anti-
+duplicado: los envios de la propia app tambien vuelven como `fromMe`; se
+deduplican por `externalMessageId` (el outbound guarda el `key.id` de Baileys) y
+por el indice unico `companyId + provider + channelConfigId + externalMessageId`.
+Desactivable con `WHATSAPP_QR_INGEST_FROM_ME=false`. Logs:
+`whatsapp_qr.from_me_ingested`, `whatsapp_qr.from_me_duplicate`.
+
+Riesgo residual honesto: existe una ventana de carrera minima entre el envio de
+la app (que guarda el `externalMessageId` tras el ack) y el eco `fromMe`. El eco
+maneja la colision (11000) tratandola como duplicado, asi que no crea duplicados;
+en el peor caso extremo el mensaje de la app podria registrarse dos veces si el
+eco gana la carrera antes de que la app persista su id. En pruebas reales el eco
+llega despues; se deja anotado.
+
+### Acks de estado y media (limites honestos)
+
+- **Acks**: `messages.update` (DELIVERY_ACK/READ) y `message-receipt.update` se
+  mapean a `delivered`/`read` del mensaje y publican SSE. El estado `sent` se fija
+  al enviar (Baileys no da un ack de servidor separado y fiable mas alla de la
+  respuesta del `sendMessage`). No se simula ningun estado.
+- **Media entrante**: imagen/documento/audio se descargan con los limites de
+  `mediaValidation` y se ven en el inbox.
+- **Media saliente**: imagen/documento/video por archivo almacenado; audio como
+  **nota de voz (ptt)** si es opus/ogg o se marca `ptt`. Lo no soportado falla con
+  un reasonCode claro (`WHATSAPP_QR_TYPE_UNSUPPORTED`,
+  `WHATSAPP_QR_MEDIA_NOT_STORED`), nunca en silencio.
+
+### Variables nuevas
+
+```env
+WHATSAPP_QR_SYNC_STUCK_MINUTES=3
+WHATSAPP_QR_SYNC_STUCK_RETRIES=3
+WHATSAPP_QR_HEALTH_INTERVAL_SECONDS=60
+WHATSAPP_QR_HEALTH_PING_TIMEOUT_MS=5000
+WHATSAPP_QR_INGEST_FROM_ME=true
+```
+
+### Checklist manual: una sesion de prueba con telefono real
+
+Ordenado para una sola corrida de punta a punta:
+
+1. `.env`: `WHATSAPP_QR_ENABLED=true` + `CREDENTIALS_ENCRYPTION_KEY` (32+);
+   `GET /health` muestra `whatsappQr.ready=true`. Reinicia el server.
+2. **Numeros de WhatsApp** -> Agregar numero -> QR (crea sesion vinculada).
+3. Fila QR -> boton **Vincular** -> Drawer "Gestionar conexion" -> "Iniciar
+   conexion": aparece el QR (no "Error interno del servidor").
+4. **Rotacion**: espera ~30-60s sin escanear; el QR se reemplaza solo y la cuenta
+   atras se reinicia. Deja expirar del todo -> aparece "Generar nuevo QR".
+5. Escanea: `authenticating` ("sincronizando...") -> `connected`; el telefono real
+   aparece en la tabla (`connectedPhone`).
+6. **Sync atascado (a proposito)**: con un QR a medias, reinicia el server; al
+   volver, la sesion en `authenticating` se reinicia sola (logs
+   `sync_stuck_restart`) y termina en `connected` o, tras 3 intentos, en `error`
+   pidiendo QR nuevo.
+7. **Texto**: envia desde el inbox y responde desde el telefono; ambos aparecen.
+   Reenvia el mismo entrante para confirmar dedupe.
+8. **fromMe**: envia un mensaje al contacto **desde el telefono**; aparece como
+   saliente en la conversacion, sin duplicar los enviados desde la app.
+9. **Acks**: un mensaje enviado desde el inbox pasa a `delivered` y luego `read`.
+10. **Media**: recibe una imagen (se ve); envia una imagen (llega); envia un audio
+    opus como nota de voz.
+11. **Desvinculacion silenciosa**: quita el dispositivo desde el telefono sin
+    cerrar sesion; en <=60s la verificacion de salud lo marca `disconnected` con
+    accion "Reconectar" (log `health_disconnect`).
+12. **loggedOut**: cierra sesion desde el telefono; estado `logged_out`, auth
+    borrada, exige QR nuevo.
 
 ## Indices al actualizar una base existente
 

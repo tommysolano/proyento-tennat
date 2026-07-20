@@ -77,6 +77,11 @@ function jidForPhone(phone) {
   return digits ? `${digits}@s.whatsapp.net` : '';
 }
 
+/** true si un audio saliente debe enviarse como nota de voz (ptt). */
+export function isVoiceNote(media, mimeType) {
+  return media?.ptt === true || /ogg|opus/i.test(String(mimeType || ''));
+}
+
 async function streamToBuffer(stream, maxBytes) {
   const chunks = [];
   let total = 0;
@@ -101,8 +106,151 @@ class SessionManager {
     this.qrTimers = new Map();
     this.reconnectTimers = new Map();
     this.manualClosures = new Map();
+    // Watchdog de sincronizacion colgada (authenticating que no llega a 'open').
+    this.syncWatchdogs = new Map();
+    this.syncRetries = new Map();
+    // Verificacion de salud periodica de sesiones 'connected' de esta instancia.
+    this.healthTimer = null;
     this.libraryPromise = null;
     this.stopping = false;
+  }
+
+  // ---- Watchdog de sincronizacion (leccion: se atasca tras reiniciar server) ----
+
+  armSyncWatchdog(sessionId) {
+    const key = String(sessionId);
+    clearTimeout(this.syncWatchdogs.get(key));
+    const minutes = numericEnv('WHATSAPP_QR_SYNC_STUCK_MINUTES', 3);
+    const timer = setTimeout(() => {
+      this.syncWatchdogs.delete(key);
+      this.handleSyncStuck(sessionId).catch((error) =>
+        logger.error('whatsapp_qr.sync_watchdog_failed', error, { sessionId })
+      );
+    }, minutes * 60 * 1000);
+    timer.unref?.();
+    this.syncWatchdogs.set(key, timer);
+    logger.info('whatsapp_qr.sync_watchdog_armed', { sessionId, minutes });
+  }
+
+  clearSyncWatchdog(sessionId) {
+    const key = String(sessionId);
+    clearTimeout(this.syncWatchdogs.get(key));
+    this.syncWatchdogs.delete(key);
+  }
+
+  /**
+   * Si tras escanear (authenticating) no se llega a 'open' a tiempo, reinicia el
+   * runtime CONSERVANDO el authState; tras agotar los reintentos, estado error.
+   */
+  async handleSyncStuck(sessionId) {
+    const session = await WhatsAppSession.findById(sessionId);
+    if (!session || session.status !== 'authenticating') return;
+    const key = String(sessionId);
+    const maxRetries = numericEnv('WHATSAPP_QR_SYNC_STUCK_RETRIES', 3);
+    const attempt = Number(this.syncRetries.get(key) || 0) + 1;
+    if (attempt > maxRetries) {
+      this.syncRetries.delete(key);
+      logger.warn('whatsapp_qr.sync_stuck_exhausted', {
+        sessionId,
+        companyId: session.companyId,
+        attempts: attempt - 1
+      });
+      await this.closeRuntime(sessionId, { releaseLease: true });
+      await this.updateSession(sessionId, {
+        status: 'error',
+        lastError: 'La sincronizacion se atasco; genera un nuevo QR.'
+      });
+      await ChannelConfig.updateOne(
+        { _id: session.integrationId },
+        { $set: { status: 'error', error: 'La sincronizacion QR se atasco' } }
+      ).catch(() => {});
+      return;
+    }
+    this.syncRetries.set(key, attempt);
+    logger.warn('whatsapp_qr.sync_stuck_restart', {
+      sessionId,
+      companyId: session.companyId,
+      attempt,
+      maxRetries
+    });
+    await this.connect(sessionId, { forceRestart: true }).catch((error) =>
+      logger.error('whatsapp_qr.sync_restart_failed', error, { sessionId })
+    );
+  }
+
+  // ---- Salud periodica de sesiones 'connected' ----
+
+  startHealthMonitor() {
+    if (this.healthTimer || !enabled() || this.stopping) return;
+    const seconds = numericEnv('WHATSAPP_QR_HEALTH_INTERVAL_SECONDS', 60, 15);
+    this.healthTimer = setInterval(() => {
+      this.runHealthChecks().catch((error) =>
+        logger.error('whatsapp_qr.health_monitor_failed', error)
+      );
+    }, seconds * 1000);
+    this.healthTimer.unref?.();
+    logger.info('whatsapp_qr.health_monitor_started', { seconds });
+  }
+
+  /** true si el socket subyacente ya no esta abierto (barato, sincrono). */
+  socketLooksDead(socket) {
+    const ws = socket?.ws;
+    if (!socket || !ws) return true;
+    // WebSocket.readyState: 0 CONNECTING, 1 OPEN, 2 CLOSING, 3 CLOSED.
+    return ws.readyState === 2 || ws.readyState === 3;
+  }
+
+  /**
+   * Ping ligero: presencia con timeout. El timeout NO da veredicto (la sesion
+   * puede estar ocupada); solo un error explicito o socket cerrado desconecta.
+   */
+  async pingSocket(socket) {
+    const timeoutMs = numericEnv('WHATSAPP_QR_HEALTH_PING_TIMEOUT_MS', 5000, 500);
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([
+        Promise.resolve(socket.sendPresenceUpdate('available')).then(() => 'ok'),
+        timeout
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async runHealthChecks() {
+    for (const [key, context] of this.instances) {
+      const session = await WhatsAppSession.findById(key).select('status');
+      if (!session || session.status !== 'connected') continue;
+      if (this.socketLooksDead(context.socket)) {
+        await this.onSessionUnhealthy(key, 'socket cerrado');
+        continue;
+      }
+      try {
+        await this.pingSocket(context.socket); // 'ok' o 'timeout' => sin accion
+      } catch (error) {
+        await this.onSessionUnhealthy(key, safeError(error, 'ping fallido'));
+      }
+    }
+  }
+
+  /** Marca la sesion desconectada, limpia runtime, libera lease y publica SSE. */
+  async onSessionUnhealthy(sessionId, reason) {
+    logger.warn('whatsapp_qr.health_disconnect', { sessionId, reason });
+    await this.closeRuntime(sessionId, { releaseLease: true });
+    const session = await this.updateSession(sessionId, {
+      status: 'disconnected',
+      lastError: `Desconexion detectada por verificacion de salud: ${reason}`
+    });
+    if (session) {
+      await ChannelConfig.updateOne(
+        { _id: session.integrationId, companyId: session.companyId },
+        { $set: { status: 'pending' } }
+      ).catch(() => {});
+    }
   }
 
   async library() {
@@ -293,12 +441,15 @@ class SessionManager {
       });
     }
 
+    const startingAuthenticated = Boolean(session.getSerializedAuthState());
     await this.updateSession(sessionId, {
-      status: session.getSerializedAuthState() ? 'authenticating' : 'initializing',
+      status: startingAuthenticated ? 'authenticating' : 'initializing',
       providerVersion: PROVIDER_VERSION,
       lastError: '',
       lastActivityAt: new Date()
     });
+    // Arranca con authState (restore/reconexion): vigila la sincronizacion.
+    if (startingAuthenticated) this.armSyncWatchdog(sessionId);
 
     try {
       const baileys = await this.library();
@@ -333,6 +484,7 @@ class SessionManager {
         leaseTimer: null
       };
       this.instances.set(key, context);
+      this.startHealthMonitor();
       context.leaseTimer = setInterval(async () => {
         if (!(await this.renewLease(sessionId))) {
           logger.warn('whatsapp_qr.lease_lost', { sessionId, companyId: session.companyId });
@@ -406,12 +558,17 @@ class SessionManager {
       update.connection === 'connecting' &&
       session.status !== 'qr_pending'
     ) {
+      const nextStatus = session.authStateConfigured ? 'authenticating' : 'initializing';
       await this.updateSession(sessionId, {
-        status: session.authStateConfigured ? 'authenticating' : 'initializing',
+        status: nextStatus,
         lastActivityAt: new Date()
       });
+      // Con authState y sincronizando: vigila que no se quede colgado.
+      if (nextStatus === 'authenticating') this.armSyncWatchdog(sessionId);
     }
     if (update.connection === 'open') {
+      this.clearSyncWatchdog(sessionId);
+      this.syncRetries.delete(String(sessionId));
       this.clearQr(sessionId);
       const context = this.instances.get(String(sessionId));
       const phone = phoneFromJid(context?.socket?.user?.id || '');
@@ -579,7 +736,12 @@ class SessionManager {
 
   async handleInboundMessage(sessionId, message, baileys, sourceContext) {
     if (this.instances.get(String(sessionId)) !== sourceContext) return;
-    if (!message?.key?.id || message.key.fromMe) return;
+    if (!message?.key?.id) return;
+    // fromMe: enviado desde el telefono vinculado -> se ingiere como saliente.
+    if (message.key.fromMe) {
+      await this.handleOutboundEcho(sessionId, message, baileys, sourceContext);
+      return;
+    }
     const remoteJid = String(message.key.remoteJid || '');
     if (
       !remoteJid ||
@@ -664,6 +826,74 @@ class SessionManager {
       lastActivityAt: new Date(),
       lastError: ''
     });
+  }
+
+  /**
+   * Ingiere un mensaje `fromMe` como SALIENTE. Anti-duplicado: los envios de la
+   * propia app tambien vuelven como fromMe; recordOutboundEcho deduplica por
+   * externalMessageId (el outbound de la app guarda el mismo key.id). Se puede
+   * desactivar con WHATSAPP_QR_INGEST_FROM_ME=false.
+   */
+  async handleOutboundEcho(sessionId, message, baileys, sourceContext) {
+    if (process.env.WHATSAPP_QR_INGEST_FROM_ME === 'false') return;
+    if (this.instances.get(String(sessionId)) !== sourceContext) return;
+    const remoteJid = String(message.key.remoteJid || '');
+    if (
+      !remoteJid ||
+      remoteJid === 'status@broadcast' ||
+      (remoteJid.endsWith('@g.us') && process.env.WHATSAPP_QR_ALLOW_GROUPS !== 'true')
+    ) return;
+    const session = await WhatsAppSession.findById(sessionId);
+    if (!session || !session.enabled) return;
+    const config = await ChannelConfig.findOne({
+      _id: session.integrationId,
+      companyId: session.companyId,
+      channel: 'whatsapp_qr',
+      status: { $ne: 'disabled' }
+    });
+    if (!config) return;
+    const normalized = normalizeQrInboundMessage(message);
+    if (!normalized.phone) return;
+    const duplicate = await Message.exists({
+      companyId: session.companyId,
+      provider: 'whatsapp_qr',
+      channelConfigId: config._id,
+      externalMessageId: normalized.externalMessageId
+    });
+    if (duplicate) {
+      logger.debug('whatsapp_qr.from_me_duplicate', {
+        sessionId,
+        externalMessageId: normalized.externalMessageId
+      });
+      return;
+    }
+    normalized.metadata = {
+      ...(normalized.metadata || {}),
+      companyId: String(session.companyId),
+      sessionId: String(session._id),
+      origin: 'phone'
+    };
+    normalized.media = await this.prepareInboundMedia(
+      message,
+      normalized,
+      baileys,
+      sourceContext.socket
+    );
+    delete normalized.mediaDescriptor;
+    const actorId = await ConversationService.actorForChannelConfig(config);
+    const result = await WhatsAppInboundService.processOutboundEcho({
+      config,
+      normalized,
+      actorId
+    });
+    if (!result.duplicate) {
+      logger.info('whatsapp_qr.from_me_ingested', {
+        sessionId,
+        companyId: session.companyId,
+        messageId: result.message?._id
+      });
+    }
+    await this.updateSession(sessionId, { lastActivityAt: new Date() });
   }
 
   async handleMessageUpdates(sessionId, updates, baileys, sourceContext) {
@@ -811,6 +1041,7 @@ class SessionManager {
     }
     clearTimeout(this.reconnectTimers.get(key));
     this.reconnectTimers.delete(key);
+    this.clearSyncWatchdog(sessionId);
     this.clearQr(sessionId);
     if (releaseLease) await this.releaseLease(sessionId);
   }
@@ -986,7 +1217,11 @@ class SessionManager {
         mediaValue.mimetype = metadata.mimeType;
         mediaValue.fileName = metadata.filename;
       }
-      if (type === 'audio') mediaValue.mimetype = metadata.mimeType;
+      if (type === 'audio') {
+        mediaValue.mimetype = metadata.mimeType;
+        // Nota de voz (ptt) si se pide explicitamente o el audio es opus/ogg.
+        if (isVoiceNote(media, metadata.mimeType)) mediaValue.ptt = true;
+      }
       if (media.caption && ['image', 'video', 'document'].includes(type)) {
         mediaValue.caption = media.caption;
       }
@@ -1170,6 +1405,8 @@ class SessionManager {
 
   async stop() {
     this.stopping = true;
+    clearInterval(this.healthTimer);
+    this.healthTimer = null;
     const ids = [...this.instances.keys()];
     for (const id of ids) await this.closeRuntime(id);
   }

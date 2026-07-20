@@ -1,6 +1,7 @@
 import {
   Plus,
   Power,
+  QrCode,
   RefreshCw,
   Settings2,
   Star,
@@ -13,6 +14,7 @@ import {
   createWhatsAppSession,
   disableChannelConfig,
   getChannelConfigs,
+  getWhatsAppSessions,
   refreshChannelQuality,
   setDefaultChannelConfig,
   testChannelConfig,
@@ -60,8 +62,18 @@ function phoneLabel(config) {
   return config.displayPhone || config.connectedPhone || config.phoneNumberId || 'Sin numero';
 }
 
+// Estado de sesion QR -> etiqueta de la accion principal contextual de la fila.
+function qrPrimaryAction(status) {
+  if (status === 'connected') return 'Gestionar';
+  if (status === 'qr_pending') return 'Ver QR';
+  if (status === 'authenticating') return 'Ver progreso';
+  if (['error', 'failed', 'logged_out'].includes(status)) return 'Reconectar';
+  return 'Vincular';
+}
+
 export function WhatsAppNumbersPage() {
   const [configs, setConfigs] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -69,11 +81,17 @@ export function WhatsAppNumbersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState('whatsapp_cloud');
   const [editing, setEditing] = useState(null);
+  const [manageSessionId, setManageSessionId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setConfigs(await getChannelConfigs());
+      const [cfgs, sess] = await Promise.all([
+        getChannelConfigs(),
+        getWhatsAppSessions().catch(() => [])
+      ]);
+      setConfigs(cfgs);
+      setSessions(sess);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -81,6 +99,11 @@ export function WhatsAppNumbersPage() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Sesion QR por ChannelConfig (relacion 1:1): da el estado REAL de la conexion.
+  const sessionByConfig = new Map(
+    sessions.map((session) => [String(session.integrationId?._id || session.integrationId), session])
+  );
 
   async function mutate(action, success) {
     setBusy(true); setError(''); setNotice('');
@@ -216,7 +239,12 @@ export function WhatsAppNumbersPage() {
                 key: 'status',
                 header: 'Estado',
                 nowrap: true,
-                render: (row) => <Badge tone={row.status}>{row.status}</Badge>
+                render: (row) => {
+                  // QR: el estado REAL lo da su sesion, no el ChannelConfig.
+                  const session = !isCloud(row) ? sessionByConfig.get(String(row._id)) : null;
+                  const status = session?.status || row.status;
+                  return <Badge tone={status}>{status}</Badge>;
+                }
               },
               {
                 key: 'quality',
@@ -241,8 +269,19 @@ export function WhatsAppNumbersPage() {
                 header: '',
                 nowrap: true,
                 align: 'right',
-                render: (row) => (
+                render: (row) => {
+                  const session = !isCloud(row) ? sessionByConfig.get(String(row._id)) : null;
+                  return (
                   <div className="flex items-center justify-end gap-2">
+                    {session ? (
+                      <Button
+                        className="min-h-8 px-2"
+                        disabled={busy}
+                        onClick={() => setManageSessionId(session._id)}
+                      >
+                        <QrCode className="h-4 w-4" />{qrPrimaryAction(session.status)}
+                      </Button>
+                    ) : null}
                     <Button
                       variant="secondary"
                       className="min-h-8 px-2"
@@ -284,7 +323,8 @@ export function WhatsAppNumbersPage() {
                       ]}
                     />
                   </div>
-                )
+                  );
+                }
               }
             ]}
           />
@@ -301,20 +341,23 @@ export function WhatsAppNumbersPage() {
         />
       )}
 
-      <Card>
-        <CardHeader
-          title="Vinculacion por QR"
-          description="Numeros conectados por codigo QR (Baileys). Al vincular, el numero real se registra automaticamente."
-          action={
-            <Button as={Link} to="/inbox/channels" variant="secondary">
-              <Settings2 className="h-4 w-4" />Configuracion avanzada
-            </Button>
-          }
-        />
-        <div className="p-1">
-          <WhatsAppQrSessionsPanel />
-        </div>
-      </Card>
+      <div className="flex justify-end">
+        <Button as={Link} to="/inbox/channels" variant="secondary">
+          <Settings2 className="h-4 w-4" />Configuracion avanzada
+        </Button>
+      </div>
+
+      <Drawer
+        open={Boolean(manageSessionId)}
+        onClose={() => { setManageSessionId(''); load(); }}
+        title="Gestionar conexion"
+        description="Codigo QR en vivo, estado de la conexion y acciones avanzadas del numero."
+        size="xl"
+      >
+        {manageSessionId ? (
+          <WhatsAppQrSessionsPanel focusSessionId={manageSessionId} compact />
+        ) : null}
+      </Drawer>
 
       <Drawer
         open={createOpen}

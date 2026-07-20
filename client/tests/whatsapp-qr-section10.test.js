@@ -9,7 +9,8 @@ test('WhatsApp QR administration exposes controlled states, temporary QR and con
   );
   assert.match(panel, /qr_pending/);
   assert.match(panel, /getWhatsAppSessionQr/);
-  assert.match(panel, /Expira:/);
+  // El QR temporal ahora muestra cuenta atras / expiracion en vivo.
+  assert.match(panel, /renueva en|expiro|Expira/);
   assert.match(panel, /window\.prompt/);
   assert.match(panel, /Cerrar y borrar autenticacion/);
   assert.match(panel, /authStateConfigured/);

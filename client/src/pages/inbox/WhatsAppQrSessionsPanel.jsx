@@ -40,12 +40,13 @@ function confirmationFor(session, action) {
   return value === session.name ? value : '';
 }
 
-export function WhatsAppQrSessionsPanel() {
+export function WhatsAppQrSessionsPanel({ focusSessionId = '', compact = false } = {}) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'SUPERADMIN';
   const [sessions, setSessions] = useState([]);
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(focusSessionId || '');
   const [qr, setQr] = useState(null);
+  const [qrCountdown, setQrCountdown] = useState(null);
   const [diagnostics, setDiagnostics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -61,17 +62,20 @@ export function WhatsAppQrSessionsPanel() {
     try {
       const data = await getWhatsAppSessions();
       setSessions(data);
-      setSelectedId((current) =>
-        current && data.some((item) => item._id === current)
+      setSelectedId((current) => {
+        if (focusSessionId && data.some((item) => item._id === focusSessionId)) {
+          return focusSessionId;
+        }
+        return current && data.some((item) => item._id === current)
           ? current
-          : data[0]?._id || ''
-      );
+          : data[0]?._id || '';
+      });
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       if (showLoader) setLoading(false);
     }
-  }, []);
+  }, [focusSessionId]);
 
   const loadQr = useCallback(async (session) => {
     if (!session || session.status !== 'qr_pending') {
@@ -110,6 +114,31 @@ export function WhatsAppQrSessionsPanel() {
     const timer = window.setInterval(() => load(false), delay);
     return () => window.clearInterval(timer);
   }, [load, selected?.status, selectedId]);
+
+  // Polling HTTP del QR mientras esta pendiente: aunque se caiga el SSE, el QR
+  // (que Baileys rota cada ~20-60s) sigue refrescandose en pantalla.
+  useEffect(() => {
+    if (selected?.status !== 'qr_pending') return undefined;
+    const timer = window.setInterval(() => loadQr(selected), 4000);
+    return () => window.clearInterval(timer);
+  }, [loadQr, selected, selected?.status]);
+
+  // Cuenta atras visible del QR desde expiresAt. Al expirar no se deja un QR
+  // muerto: se limpia y la UI ofrece "Generar nuevo QR".
+  useEffect(() => {
+    const expiresAt = qr?.expiresAt || selected?.qrExpiresAt;
+    if (selected?.status !== 'qr_pending' || !expiresAt) {
+      setQrCountdown(null);
+      return undefined;
+    }
+    const tick = () => {
+      const seconds = Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setQrCountdown(seconds);
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [qr?.expiresAt, selected?.qrExpiresAt, selected?.status]);
 
   async function mutate(action, success) {
     setBusy(true);
@@ -150,6 +179,19 @@ export function WhatsAppQrSessionsPanel() {
     if (result) window.setTimeout(() => load(false), 1000);
   }
 
+  // Genera un QR nuevo: si el runtime sigue vivo regenera; si no, reinicia la
+  // conexion. Nunca deja un QR muerto en pantalla.
+  async function regenerate() {
+    const result = await mutate(async () => {
+      try {
+        return await regenerateWhatsAppSessionQr(selected._id);
+      } catch {
+        return connectWhatsAppSession(selected._id, true);
+      }
+    }, 'Generando un QR nuevo...');
+    if (result) window.setTimeout(() => load(false), 1000);
+  }
+
   async function disconnect() {
     const confirmation = confirmationFor(selected, 'Desconectar');
     if (!confirmation) return;
@@ -179,11 +221,13 @@ export function WhatsAppQrSessionsPanel() {
 
   return (
     <Card>
-      <CardHeader
-        title="WhatsApp mediante QR"
-        description="Sesiones aisladas por empresa. El QR es temporal y la autenticacion nunca se envia al navegador."
-        action={<QrCode className="h-5 w-5 text-cyan-700" />}
-      />
+      {!compact ? (
+        <CardHeader
+          title="WhatsApp mediante QR"
+          description="Sesiones aisladas por empresa. El QR es temporal y la autenticacion nunca se envia al navegador."
+          action={<QrCode className="h-5 w-5 text-cyan-700" />}
+        />
+      ) : null}
       {notice || error ? (
         <div className={`mx-5 mt-4 rounded-lg px-4 py-3 text-sm ${
           error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
@@ -191,7 +235,8 @@ export function WhatsAppQrSessionsPanel() {
           {error || notice}
         </div>
       ) : null}
-      <div className="grid gap-5 p-5 xl:grid-cols-[0.8fr_1.2fr]">
+      <div className={`grid gap-5 p-5 ${compact ? '' : 'xl:grid-cols-[0.8fr_1.2fr]'}`}>
+        {!compact ? (
         <div className="space-y-4">
           <form onSubmit={create} className="flex gap-2">
             <input
@@ -230,6 +275,7 @@ export function WhatsAppQrSessionsPanel() {
             </div>
           ) : null}
         </div>
+        ) : null}
 
         {selected ? (
           <div className="space-y-4 rounded-lg border border-slate-200 p-5">
@@ -247,18 +293,46 @@ export function WhatsAppQrSessionsPanel() {
 
             {selected.status === 'qr_pending' ? (
               <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 text-center">
-                {qr?.dataUrl ? (
-                  <img
-                    src={qr.dataUrl}
-                    alt="Codigo QR temporal para vincular WhatsApp"
-                    className="mx-auto h-72 w-72 max-w-full rounded-lg bg-white p-2"
-                  />
+                {qr?.dataUrl && qrCountdown !== 0 ? (
+                  <>
+                    <img
+                      src={qr.dataUrl}
+                      alt="Codigo QR temporal para vincular WhatsApp"
+                      className="mx-auto h-72 w-72 max-w-full rounded-lg bg-white p-2"
+                    />
+                    <p className="mt-2 text-xs text-cyan-900">
+                      Escanea desde WhatsApp &gt; Dispositivos vinculados.
+                      {qrCountdown != null ? ` El QR se renueva en ${qrCountdown}s.` : ''}
+                    </p>
+                  </>
+                ) : qrCountdown === 0 ? (
+                  <div className="space-y-3 py-4">
+                    <p className="text-sm font-medium text-cyan-900">
+                      El codigo QR expiro sin escanearse.
+                    </p>
+                    <Button disabled={busy} onClick={regenerate}>
+                      <RotateCw className="h-4 w-4" />Generar nuevo QR
+                    </Button>
+                  </div>
                 ) : (
                   <CrmLoading label="Preparando QR temporal..." />
                 )}
-                <p className="mt-2 text-xs text-cyan-900">
-                  Expira: {localDate(qr?.expiresAt || selected.qrExpiresAt)}
-                </p>
+              </div>
+            ) : null}
+
+            {selected.status === 'authenticating' ? (
+              <div className="flex items-start gap-2 rounded-lg bg-sky-50 p-4 text-sm text-sky-800">
+                <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                QR escaneado, sincronizando... Puede tardar 1-2 min. No cierres esta pantalla.
+              </div>
+            ) : null}
+
+            {['initializing', 'reconnecting'].includes(selected.status) ? (
+              <div className="flex items-start gap-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
+                <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                {selected.status === 'reconnecting'
+                  ? `Reconectando (intento ${selected.reconnectAttempts || 1})...`
+                  : 'Iniciando conexion...'}
               </div>
             ) : null}
 

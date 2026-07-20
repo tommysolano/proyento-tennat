@@ -317,6 +317,73 @@ export class ConversationService {
     return { message, duplicate: false };
   }
 
+  /**
+   * Registra un mensaje SALIENTE que ya salio por fuera del pipeline (eco de un
+   * mensaje enviado desde el telefono vinculado por QR, `fromMe`). NO envia: solo
+   * persiste. Dedupe por externalMessageId (indice unico); si la app ya lo
+   * registro, se ignora. `metadata.origin='phone'` distingue el origen.
+   */
+  static async recordOutboundEcho({ conversation, normalized }) {
+    if (normalized.externalMessageId) {
+      const duplicate = await Message.findOne({
+        companyId: conversation.companyId,
+        provider: normalized.provider,
+        channelConfigId: conversation.channelConfigId || null,
+        externalMessageId: normalized.externalMessageId
+      });
+      if (duplicate) return { message: duplicate, duplicate: true };
+    }
+    const when = normalized.timestamp || new Date();
+    let message;
+    try {
+      message = await Message.create({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        conversationId: conversation._id,
+        contactId: conversation.contactId,
+        channel: canonicalChannel(conversation.channel),
+        direction: 'outbound',
+        type: normalized.type || 'text',
+        text: normalized.text || '',
+        media: normalized.media || {},
+        status: 'sent',
+        sentAt: when,
+        externalMessageId: normalized.externalMessageId || '',
+        provider: normalized.provider || canonicalChannel(conversation.channel),
+        channelConfigId: conversation.channelConfigId || null,
+        providerPayload: normalized.providerPayload || {},
+        metadata: { ...(normalized.metadata || {}), origin: 'phone' },
+        createdAt: when
+      });
+    } catch (error) {
+      // Carrera con el envio de la app (mismo externalMessageId): la app gano.
+      if (error.code === 11000) return { message: null, duplicate: true };
+      throw error;
+    }
+    this.updateLastMessage(conversation, message, when);
+    await conversation.save();
+    realtimeConversation('message.created', conversation, { message: message.toJSON() });
+    if (message.media?.providerMediaId || message.media?.externalMediaId) {
+      await JobService.enqueue({
+        type: 'media.whatsapp.download',
+        payload: { messageId: message._id },
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metadata: { conversationId: conversation._id, messageId: message._id }
+      }).catch(() => {});
+    }
+    if (isWhatsAppChannel(conversation.channel)) {
+      await trackUsage({
+        companyId: conversation.companyId,
+        distributorId: conversation.distributorId,
+        metric: 'whatsapp_messages',
+        quantity: 1,
+        metadata: { messageId: message._id, direction: 'outbound', origin: 'phone' }
+      }).catch(() => {});
+    }
+    return { message, duplicate: false };
+  }
+
   static async createOutboundMessage({
     user,
     conversation,
