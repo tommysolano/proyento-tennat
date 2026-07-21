@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import {
   createPlatformSubscription,
@@ -17,9 +17,18 @@ import {
   localDateTimeInput,
   subscriptionPayload
 } from '../../../utils/billing.js';
+import { idOf } from '../../../utils/contacts.js';
 
 const inputClass =
   'w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100';
+
+// Estados que se pueden fijar desde este panel al cambiar de plan.
+const STATUS_OPTIONS = [
+  { value: 'trial', label: 'Trial' },
+  { value: 'active', label: 'Activa' },
+  { value: 'past_due', label: 'Past due' },
+  { value: 'suspended', label: 'Suspendida' }
+];
 
 function dateLabel(value) {
   if (!value) return '-';
@@ -33,44 +42,83 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
   const { subscriptions = [], distributors = [], plans = [], busy, mutate, setError } =
     workspace;
   const [open, setOpen] = useState(false);
+  // Suscripcion que se esta cambiando; null = alta de un plan nuevo.
+  const [editing, setEditing] = useState(null);
+  const [distributorId, setDistributorId] = useState('');
   const [planId, setPlanId] = useState('');
   const [status, setStatus] = useState('trial');
+  const [startsAt, setStartsAt] = useState(localDateTimeInput());
+  const [trialEndsAt, setTrialEndsAt] = useState(addDaysDateTimeInput(14));
 
-  async function handleCreateSubscription(event) {
+  const isEditing = Boolean(editing);
+  const activePlans = plans.filter((item) => item.status === 'active');
+
+  function resetForm() {
+    setEditing(null);
+    setDistributorId('');
+    setPlanId('');
+    setStatus('trial');
+    setStartsAt(localDateTimeInput());
+    setTrialEndsAt(addDaysDateTimeInput(14));
+  }
+
+  function openAssign() {
+    resetForm();
+    setOpen(true);
+  }
+
+  function openChange(subscription) {
+    setEditing(subscription);
+    setDistributorId(idOf(subscription.distributorId) || '');
+    setPlanId(idOf(subscription.platformPlanId) || '');
+    setStatus(subscription.status || 'active');
+    setStartsAt(
+      subscription.startsAt
+        ? localDateTimeInput(new Date(subscription.startsAt))
+        : localDateTimeInput()
+    );
+    setTrialEndsAt(
+      subscription.trialEndsAt
+        ? localDateTimeInput(new Date(subscription.trialEndsAt))
+        : addDaysDateTimeInput(14)
+    );
+    setOpen(true);
+  }
+
+  function closeDrawer() {
+    setOpen(false);
+    resetForm();
+  }
+
+  async function handleSubmit(event) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
     let terms;
     try {
-      terms = subscriptionPayload({
-        planId: data.get('platformPlanId'),
-        status: data.get('status'),
-        startsAt: data.get('startsAt'),
-        trialEndsAt: data.get('trialEndsAt')
-      });
+      terms = subscriptionPayload({ planId, status, startsAt, trialEndsAt });
     } catch (validationError) {
       setError(validationError.message);
       return;
     }
-    const created = await mutate(
-      'subscription-create',
+    const payload = {
+      platformPlanId: terms.planId,
+      status: terms.status,
+      startsAt: terms.startsAt,
+      ...(terms.trialEndsAt ? { trialEndsAt: terms.trialEndsAt } : {})
+    };
+
+    const ok = await mutate(
+      isEditing ? `subscription-change-${editing._id}` : 'subscription-create',
       () =>
-        createPlatformSubscription({
-          distributorId: data.get('distributorId'),
-          platformPlanId: terms.planId,
-          status: terms.status,
-          startsAt: terms.startsAt,
-          ...(terms.trialEndsAt ? { trialEndsAt: terms.trialEndsAt } : {}),
-          paymentProvider: 'manual'
-        }),
-      'Suscripcion de plataforma creada.'
+        isEditing
+          ? updatePlatformSubscription(editing._id, payload)
+          : createPlatformSubscription({
+              ...payload,
+              distributorId,
+              paymentProvider: 'manual'
+            }),
+      isEditing ? 'Suscripcion de plataforma actualizada.' : 'Suscripcion de plataforma creada.'
     );
-    if (created) {
-      form.reset();
-      setPlanId('');
-      setStatus('trial');
-      setOpen(false);
-    }
+    if (ok) closeDrawer();
   }
 
   async function handleSubscriptionStatus(subscription) {
@@ -85,6 +133,13 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
     );
   }
 
+  // Al cambiar de plan mostramos planes activos y ademas el plan vigente aunque
+  // este inactivo, para no perder la referencia del plan actual.
+  const planChoices = plans.filter(
+    (item) => item.status === 'active' || item._id === planId
+  );
+  const busyKey = isEditing ? `subscription-change-${editing?._id}` : 'subscription-create';
+
   return (
     <>
       <Card>
@@ -92,7 +147,7 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
           title="Suscripciones de distribuidores"
           description="Plan vigente y periodos de cada tenant."
           action={
-            <Button onClick={() => setOpen(true)} disabled={Boolean(busy)}>
+            <Button onClick={openAssign} disabled={Boolean(busy)}>
               <Plus className="h-4 w-4" />
               Asignar plan
             </Button>
@@ -122,13 +177,19 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
               header: 'Acciones',
               nowrap: true,
               render: (row) => (
-                <Button className="px-3" variant="secondary" onClick={() => handleSubscriptionStatus(row)}>
-                  {row.status === 'trial'
-                    ? 'Activar'
-                    : row.status === 'suspended'
-                      ? 'Reactivar'
-                      : 'Suspender'}
-                </Button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button className="px-3" variant="secondary" onClick={() => openChange(row)}>
+                    <RefreshCw className="h-4 w-4" />
+                    Cambiar plan
+                  </Button>
+                  <Button className="px-3" variant="secondary" onClick={() => handleSubscriptionStatus(row)}>
+                    {row.status === 'trial'
+                      ? 'Activar'
+                      : row.status === 'suspended'
+                        ? 'Reactivar'
+                        : 'Suspender'}
+                  </Button>
+                </div>
               )
             }
           ]}
@@ -137,29 +198,39 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
 
       <Drawer
         open={open}
-        onClose={() => setOpen(false)}
-        title="Asignar plan"
-        description="Solo una suscripcion vigente por distribuidor."
+        onClose={closeDrawer}
+        title={isEditing ? 'Cambiar plan' : 'Asignar plan'}
+        description={
+          isEditing
+            ? 'Actualiza el plan o los terminos de la suscripcion vigente.'
+            : 'Solo una suscripcion vigente por distribuidor.'
+        }
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setOpen(false)}>
+            <Button variant="secondary" onClick={closeDrawer}>
               Cancelar
             </Button>
             <Button type="submit" form="superadmin-subscription-form" disabled={Boolean(busy)}>
-              {busy === 'subscription-create' ? 'Creando...' : 'Crear suscripcion'}
+              {busy === busyKey
+                ? 'Guardando...'
+                : isEditing
+                  ? 'Guardar cambios'
+                  : 'Crear suscripcion'}
             </Button>
           </>
         }
       >
-        <form id="superadmin-subscription-form" onSubmit={handleCreateSubscription}>
+        <form id="superadmin-subscription-form" onSubmit={handleSubmit}>
           <FormGrid columns={1}>
             <FormField label="Distribuidor" htmlFor="platform-subscription-distributor" required>
               <select
                 id="platform-subscription-distributor"
                 required
                 name="distributorId"
-                defaultValue=""
+                value={distributorId}
+                disabled={isEditing}
+                onChange={(event) => setDistributorId(event.target.value)}
                 className={inputClass}
               >
                 <option value="" disabled>
@@ -184,17 +255,15 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
                 <option value="" disabled>
                   Selecciona plan
                 </option>
-                {plans
-                  .filter((item) => item.status === 'active')
-                  .map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.name}
-                    </option>
-                  ))}
+                {(isEditing ? planChoices : activePlans).map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {item.name}
+                  </option>
+                ))}
               </select>
             </FormField>
             <FormField
-              label="Estado inicial"
+              label="Estado"
               htmlFor="platform-subscription-status"
               hint="El trial no genera facturas hasta que la suscripcion se active."
             >
@@ -205,8 +274,11 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
                 onChange={(event) => setStatus(event.target.value)}
                 className={inputClass}
               >
-                <option value="trial">Trial</option>
-                <option value="active">Activa</option>
+                {(isEditing ? STATUS_OPTIONS : STATUS_OPTIONS.slice(0, 2)).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </FormField>
             <FormField label="Inicio" htmlFor="platform-subscription-start">
@@ -214,7 +286,8 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
                 id="platform-subscription-start"
                 type="datetime-local"
                 name="startsAt"
-                defaultValue={localDateTimeInput()}
+                value={startsAt}
+                onChange={(event) => setStartsAt(event.target.value)}
                 className={inputClass}
               />
             </FormField>
@@ -230,7 +303,8 @@ export function SuperAdminSubscriptionsSection({ workspace }) {
                   required
                   type="datetime-local"
                   name="trialEndsAt"
-                  defaultValue={addDaysDateTimeInput(14)}
+                  value={trialEndsAt}
+                  onChange={(event) => setTrialEndsAt(event.target.value)}
                   className={inputClass}
                 />
               </FormField>

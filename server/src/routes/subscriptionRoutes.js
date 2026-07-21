@@ -94,32 +94,41 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
     );
     assertActivePlan(plan);
 
-    const existingSubscription = await Subscription.findOne({
-      companyId: req.body.companyId,
-      distributorId: req.user.distributorId,
-      status: { $in: CURRENT_SUBSCRIPTION_STATUSES }
-    });
-    if (existingSubscription) {
-      return res.status(409).json({
-        message: 'La empresa ya tiene una suscripcion activa o en prueba'
-      });
-    }
-
     if ('status' in req.body && !SUBSCRIPTION_STATUSES.includes(req.body.status)) {
       return res.status(400).json({ message: 'status de suscripcion invalido' });
     }
 
-    const subscription = await Subscription.create({
-      companyId: company._id,
-      planId: plan._id,
+    // Upsert: asignar un plan a una empresa que ya tiene una suscripcion vigente
+    // actualiza la existente en vez de bloquear con un 409. Mismo criterio que el
+    // cambio de plan del distribuidor: el distribuidor debe poder cambiar la
+    // suscripcion de cualquiera de sus empresas.
+    const existingSubscription = await Subscription.findOne({
+      companyId: req.body.companyId,
       distributorId: req.user.distributorId,
-      ...buildSubscriptionTerms(req.body, plan, { defaultStatus: 'active' })
-    });
+      status: { $in: CURRENT_SUBSCRIPTION_STATUSES }
+    }).sort({ createdAt: -1 });
+
+    let subscription = existingSubscription;
+    if (subscription) {
+      subscription.planId = plan._id;
+      Object.assign(
+        subscription,
+        buildSubscriptionTerms(req.body, plan, { current: subscription, defaultStatus: 'active' })
+      );
+      await subscription.save();
+    } else {
+      subscription = await Subscription.create({
+        companyId: company._id,
+        planId: plan._id,
+        distributorId: req.user.distributorId,
+        ...buildSubscriptionTerms(req.body, plan, { defaultStatus: 'active' })
+      });
+    }
     await recordActivity({
       user: req.user,
-      type: 'subscription_created',
+      type: existingSubscription ? 'subscription_updated' : 'subscription_created',
       companyId: subscription.companyId,
-      summary: 'Suscripcion creada',
+      summary: existingSubscription ? 'Suscripcion actualizada' : 'Suscripcion creada',
       metadata: {
         subscriptionId: subscription._id,
         companyId: subscription.companyId,
@@ -136,7 +145,7 @@ router.post('/', roleMiddleware('DISTRIBUTOR'), async (req, res, next) => {
       },
       { path: 'distributorId', select: 'name' }
     ]);
-    res.status(201).json(subscription);
+    res.status(existingSubscription ? 200 : 201).json(subscription);
   } catch (error) {
     next(error);
   }

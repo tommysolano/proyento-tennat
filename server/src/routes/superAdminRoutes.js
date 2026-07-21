@@ -518,31 +518,47 @@ router.post(
         PlatformSubscription.findOne({
           distributorId: req.body.distributorId,
           status: { $in: ACTIVE_SUBSCRIPTION_STATUSES }
-        })
+        }).sort({ createdAt: -1 })
       ]);
       if (!distributor || !plan) {
         return res.status(400).json({ message: 'Distribuidor o plan no encontrado' });
       }
-      assertActivePlan(plan);
-      if (existing) {
-        return res.status(409).json({
-          message: 'El distribuidor ya tiene una suscripcion de plataforma vigente'
+      // Asignar un plan es un upsert: si el distribuidor ya tiene una suscripcion
+      // vigente cambiamos su plan/terminos en lugar de bloquear (el programador debe
+      // poder reasignar el plan de cualquier distribuidor). Solo exigimos plan activo
+      // cuando el plan realmente cambia, para no bloquear ajustes de estado/fechas.
+      if (!existing || String(existing.platformPlanId) !== String(plan._id)) {
+        assertActivePlan(plan);
+      }
+      const terms = buildSubscriptionTerms(req.body, plan, {
+        current: existing,
+        defaultStatus: 'trial'
+      });
+
+      let subscription = existing;
+      if (subscription) {
+        subscription.platformPlanId = plan._id;
+        Object.assign(subscription, terms);
+        await subscription.save();
+      } else {
+        subscription = await PlatformSubscription.create({
+          distributorId: distributor._id,
+          platformPlanId: plan._id,
+          ...terms
         });
       }
-
-      const subscription = await PlatformSubscription.create({
-        distributorId: distributor._id,
-        platformPlanId: plan._id,
-        ...buildSubscriptionTerms(req.body, plan, { defaultStatus: 'trial' })
-      });
       await recordActivity({
         user: req.user,
-        type: 'platform_subscription_created',
+        type: existing ? 'platform_subscription_updated' : 'platform_subscription_created',
         distributorId: distributor._id,
-        summary: `Suscripcion de plataforma creada para ${distributor.name}`,
+        summary: `Suscripcion de plataforma ${
+          existing ? 'actualizada' : 'creada'
+        } para ${distributor.name}`,
         metadata: { platformSubscriptionId: subscription._id, platformPlanId: plan._id }
       });
-      res.status(201).json(await populateSubscription(PlatformSubscription.findById(subscription._id)));
+      res
+        .status(existing ? 200 : 201)
+        .json(await populateSubscription(PlatformSubscription.findById(subscription._id)));
     } catch (error) {
       next(error);
     }
